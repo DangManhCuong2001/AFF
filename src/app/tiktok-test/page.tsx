@@ -485,14 +485,21 @@ export default function TikTokTestPage() {
             </div>
 
             <div className="flex gap-2">
-              {!connection?.connected || connection?.expired ? (
-                <a
-                  href="/api/tiktok/auth"
-                  className="flex-1 py-2 px-3 text-center rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow transition flex items-center justify-center gap-1.5"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  {connection?.expired ? 'Reconnect TikTok' : 'Connect TikTok'}
-                </a>
+                <div className="flex flex-col gap-2 w-full">
+                  <a
+                    href="/api/tiktok/auth"
+                    className="w-full py-2 px-3 text-center rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow transition flex items-center justify-center gap-1.5"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    {connection?.expired ? 'Reconnect TikTok' : 'Connect TikTok (Full Scopes)'}
+                  </a>
+                  <a
+                    href="/api/tiktok/auth?scope=basic"
+                    className="w-full py-1.5 px-3 text-center rounded-lg text-[11px] font-medium bg-neutral-950 border border-neutral-800 hover:bg-neutral-800 text-neutral-400 transition flex items-center justify-center gap-1.5"
+                  >
+                    Test Connect with Basic Scope Only
+                  </a>
+                </div>
               ) : (
                 <>
                   <a
