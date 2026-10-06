@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Film, ShoppingBag, ShieldCheck, ArrowRight, Play } from 'lucide-react'
+import { Film, ShoppingBag, ShieldCheck, ArrowRight, Play, Sparkles } from 'lucide-react'
 
 export default function Home() {
   return (
@@ -38,19 +38,27 @@ export default function Home() {
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
           <Link
-            href="/tiktok-test"
-            className="w-full sm:w-auto px-6 py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white shadow-lg shadow-rose-600/20 transition flex items-center justify-center gap-2"
+            href="/create"
+            className="w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-rose-500 via-pink-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white shadow-lg shadow-rose-600/25 transition flex items-center justify-center gap-2"
           >
-            <Play className="w-4 h-4 fill-white" />
-            Open TikTok Test Suite (/tiktok-test)
+            <Sparkles className="w-4 h-4" />
+            Tạo Video với AI (/create)
+          </Link>
+
+          <Link
+            href="/tiktok-test"
+            className="w-full sm:w-auto px-6 py-3 rounded-xl font-semibold text-sm bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-neutral-200 transition flex items-center justify-center gap-2"
+          >
+            <Play className="w-4 h-4 fill-current text-rose-400" />
+            TikTok Test Suite (/tiktok-test)
           </Link>
 
           <Link
             href="/integrations"
-            className="w-full sm:w-auto px-6 py-3 rounded-xl font-medium text-sm bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-neutral-300 transition flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-6 py-3 rounded-xl font-medium text-sm bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 transition flex items-center justify-center gap-2"
           >
             <ShieldCheck className="w-4 h-4" />
-            Integrations Status
+            Status
             <ArrowRight className="w-4 h-4 text-neutral-500" />
           </Link>
         </div>

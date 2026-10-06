@@ -1,0 +1,67 @@
+import { HomeFormatDefinition, HomeVideoFormat } from './types'
+
+export const HOME_FORMAT_DEFINITIONS: Record<Exclude<HomeVideoFormat, 'auto'>, HomeFormatDefinition> = {
+  'problem-solution': {
+    id: 'problem-solution',
+    name: 'Problem → Solution',
+    description: 'Highlights everyday household friction, introduces product, and shows instant relief.',
+    bestFor: 'Cable organizers, desk clips, spice racks, cord holders, corner bumpers',
+    requiresDemoFootage: false,
+    defaultDurationSec: 15,
+    typicalScenes: ['problem_hook', 'product_hero', 'solution_demo', 'result_clean', 'call_to_action'],
+  },
+  'before-after': {
+    id: 'before-after',
+    name: 'Before & After Contrast',
+    description: 'Visual contrast between a cluttered/messy space and a clean, organized layout.',
+    bestFor: 'Drawer dividers, wardrobe organizers, fridge containers, makeup storage',
+    requiresDemoFootage: false,
+    defaultDurationSec: 14,
+    typicalScenes: ['clutter_problem', 'product_hero', 'after_transformation', 'call_to_action'],
+  },
+  'product-test': {
+    id: 'product-test',
+    name: 'Real Product Test',
+    description: 'Stress testing product claims under realistic household conditions.',
+    bestFor: 'Mini vacuums, stain removers, heavy-duty suction hooks, waterproof sealant',
+    requiresDemoFootage: true, // Strictly requires real demo video, never fake AI evidence
+    defaultDurationSec: 16,
+    typicalScenes: ['test_question', 'test_execution', 'verified_result', 'call_to_action'],
+  },
+  'satisfying-demo': {
+    id: 'satisfying-demo',
+    name: 'Satisfying Demo (ASMR Flow)',
+    description: 'Focuses on the smooth, repetitive, therapeutic motion of cleaning, slicing, or folding.',
+    bestFor: 'Spin brushes, mandoline slicers, lint rollers, magnetic organizers',
+    requiresDemoFootage: true,
+    defaultDurationSec: 15,
+    typicalScenes: ['satisfying_action', 'macro_detail', 'clean_reveal', 'call_to_action'],
+  },
+  'three-benefits': {
+    id: 'three-benefits',
+    name: '3 Key Practical Benefits',
+    description: 'Rapid-fire breakdown of the top 3 verified reasons to own this everyday item.',
+    bestFor: 'Multi-compartment storage, foldable buckets, wall-mounted holders',
+    requiresDemoFootage: false,
+    defaultDurationSec: 16,
+    typicalScenes: ['hook', 'benefit_one', 'benefit_two', 'benefit_three', 'call_to_action'],
+  },
+  'how-to': {
+    id: 'how-to',
+    name: 'How To Use (3-Step Setup)',
+    description: 'Clear, frictionless tutorial showing how effortless it is to install and operate.',
+    bestFor: 'No-drill wall hooks, automatic soap dispensers, sealers, drain catchers',
+    requiresDemoFootage: false,
+    defaultDurationSec: 15,
+    typicalScenes: ['install_hook', 'step_one', 'step_two', 'completed_use', 'call_to_action'],
+  },
+  'product-showcase': {
+    id: 'product-showcase',
+    name: 'Clean Product Showcase',
+    description: 'Aesthetic product highlights with clean ambient backgrounds and highlighted features.',
+    bestFor: 'Aesthetic tissue boxes, decorative coasters, minimalist trash cans',
+    requiresDemoFootage: false,
+    defaultDurationSec: 13,
+    typicalScenes: ['aesthetic_hero', 'material_detail', 'space_integration', 'call_to_action'],
+  },
+}

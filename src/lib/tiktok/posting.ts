@@ -8,7 +8,6 @@ import {
 } from './types'
 import {
   initVideoPostApiResponseSchema,
-  publishStatusApiResponseSchema,
 } from './schemas'
 
 /**
