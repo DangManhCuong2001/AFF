@@ -341,7 +341,7 @@ export default function TikTokTestPage() {
       // Step 6: Polling publish status
       updateStep('poll_status', 'running', 'Polling TikTok processing status...')
       let attempts = 0
-      const maxAttempts = 30
+      const maxAttempts = 40
       let isCompleted = false
 
       while (attempts < maxAttempts && !isCompleted) {
@@ -374,12 +374,44 @@ export default function TikTokTestPage() {
       }
 
       if (!isCompleted) {
-        updateStep('poll_status', 'failed', 'Polling timed out after 60 seconds. Video may still be processing on TikTok servers.')
+        updateStep('poll_status', 'failed', 'Polling timed out after 120s. Video processing may still be finalizing on TikTok servers. Click "Re-check Status" below to refresh.')
       }
     } catch (err: unknown) {
       alert('Test pipeline error: ' + (err as Error)?.message)
     } finally {
       setIsTesting(false)
+      fetchDebugLogs()
+    }
+  }
+
+  // Standalone Check Status Handler
+  const handleCheckStatus = async (idToCheck?: string) => {
+    const targetId = idToCheck || publishId
+    if (!targetId) return
+    updateStep('poll_status', 'running', `Querying TikTok publish status for ${targetId}...`)
+    try {
+      const pollRes = await fetch(`/api/tiktok/publish-status?publish_id=${targetId}`)
+      const pollJson = await pollRes.json()
+      if (!pollRes.ok || pollJson.error) {
+        const errDetail = pollJson.error?.message || 'Query status failed'
+        updateStep('poll_status', 'failed', `[${pollJson.error?.code}] ${errDetail}`, pollJson.error?.logId)
+        return
+      }
+
+      const rawStatus = pollJson.status
+      setPublishStatusText(rawStatus)
+
+      if (rawStatus === 'SUCCESS' || rawStatus === 'PUBLISH_COMPLETE' || rawStatus === 'SEND_TO_USER_INBOX') {
+        const postText = pollJson.postIds?.length ? ` (Post ID: ${pollJson.postIds.join(', ')})` : ''
+        updateStep('poll_status', 'success', `Published successfully! Status: ${rawStatus}${postText}`)
+      } else if (rawStatus === 'FAILED') {
+        updateStep('poll_status', 'failed', `TikTok processing failed: ${pollJson.failReason || 'Unknown reason'}`)
+      } else {
+        updateStep('poll_status', 'running', `TikTok Status: ${rawStatus} (In processing)`)
+      }
+    } catch (err: unknown) {
+      updateStep('poll_status', 'failed', (err as Error)?.message || 'Failed to check status')
+    } finally {
       fetchDebugLogs()
     }
   }
@@ -886,16 +918,30 @@ export default function TikTokTestPage() {
           </div>
 
           {publishId && (
-            <div className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs font-mono flex items-center justify-between">
-              <span className="text-neutral-400">
-                Publish ID: <strong className="text-white">{publishId}</strong>
+            <div className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs font-mono flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <span className="text-neutral-400 truncate">
+                Publish ID: <strong className="text-white select-all">{publishId}</strong>
               </span>
-              <span className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5 shrink-0">
                 <span className="text-neutral-500">TikTok State:</span>
-                <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold">
+                <span
+                  className={`px-2 py-0.5 rounded border font-bold ${
+                    publishStatusText === 'PUBLISH_COMPLETE' || publishStatusText === 'SUCCESS'
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                  }`}
+                >
                   {publishStatusText || 'PROCESSING'}
                 </span>
-              </span>
+                <button
+                  type="button"
+                  onClick={() => handleCheckStatus()}
+                  className="px-2.5 py-1 rounded-lg text-[11px] bg-neutral-900 border border-neutral-700 hover:bg-neutral-800 text-neutral-200 transition flex items-center gap-1 font-sans"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Re-check Status
+                </button>
+              </div>
             </div>
           )}
 
