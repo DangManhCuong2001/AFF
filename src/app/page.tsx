@@ -1,69 +1,60 @@
-import Image from "next/image";
+import Link from 'next/link'
+import { Film, ShoppingBag, ShieldCheck, ArrowRight, Play } from 'lucide-react'
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-6 selection:bg-rose-500/30 selection:text-white">
+      <div className="max-w-2xl w-full text-center space-y-8">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-mono">
+          <Film className="w-3.5 h-3.5" />
+          TikTok & TikTok Shop POC Integration
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-white leading-tight">
+          Automated TikTok Direct Post & <br />
+          <span className="bg-gradient-to-r from-rose-500 via-pink-500 to-purple-400 bg-clip-text text-transparent">
+            Shoppable Video Verification
+          </span>
+        </h1>
+
+        <p className="text-neutral-400 text-base max-w-xl mx-auto leading-relaxed">
+          Official API integration test suite for TikTok Content Posting API and TikTok Shop Creator Showcase. Built strictly adhering to official developer requirements.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto text-left text-xs font-mono">
+          <div className="p-4 rounded-xl bg-neutral-900 border border-neutral-800 space-y-1">
+            <span className="text-rose-400 font-semibold flex items-center gap-1.5">
+              <Film className="w-4 h-4" /> Direct Post Pipeline
+            </span>
+            <p className="text-neutral-400">OAuth → Creator Info → MP4 Upload → Status Polling</p>
+          </div>
+          <div className="p-4 rounded-xl bg-neutral-900 border border-neutral-800 space-y-1">
+            <span className="text-purple-400 font-semibold flex items-center gap-1.5">
+              <ShoppingBag className="w-4 h-4" /> TikTok Shop Creator
+            </span>
+            <p className="text-neutral-400">Shop Auth → Products → Precheck → Shoppable Link</p>
+          </div>
         </div>
-      </main>
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
+          <Link
+            href="/tiktok-test"
+            className="w-full sm:w-auto px-6 py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white shadow-lg shadow-rose-600/20 transition flex items-center justify-center gap-2"
+          >
+            <Play className="w-4 h-4 fill-white" />
+            Open TikTok Test Suite (/tiktok-test)
+          </Link>
+
+          <Link
+            href="/integrations"
+            className="w-full sm:w-auto px-6 py-3 rounded-xl font-medium text-sm bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-neutral-300 transition flex items-center justify-center gap-2"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            Integrations Status
+            <ArrowRight className="w-4 h-4 text-neutral-500" />
+          </Link>
+        </div>
+      </div>
     </div>
-  );
+  )
 }
