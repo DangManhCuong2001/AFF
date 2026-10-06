@@ -9,7 +9,18 @@ const TIKTOK_API_BASE = 'https://open.tiktokapis.com/v2'
 export function getTikTokConfig() {
   const clientKey = process.env.TIKTOK_CLIENT_KEY?.trim() || ''
   const clientSecret = process.env.TIKTOK_CLIENT_SECRET?.trim() || ''
-  const redirectUri = process.env.TIKTOK_REDIRECT_URI?.trim() || ''
+  let redirectUri = process.env.TIKTOK_REDIRECT_URI?.trim() || ''
+
+  if (!redirectUri) {
+    const appUrl =
+      process.env.APP_URL?.trim() ||
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'https://affapp-teal.vercel.app')
+    redirectUri = `${appUrl.replace(/\/$/, '')}/api/tiktok/callback`
+  }
 
   return { clientKey, clientSecret, redirectUri }
 }
@@ -21,9 +32,14 @@ export function generateOAuthState(): string {
 export function getAuthorizationUrl(state: string): string {
   const { clientKey, redirectUri } = getTikTokConfig()
 
-  if (!clientKey || !redirectUri) {
+  if (!clientKey) {
     throw new Error(
-      'Missing TIKTOK_CLIENT_KEY or TIKTOK_REDIRECT_URI in environment variables.'
+      'TIKTOK_CLIENT_KEY is not defined in server environment variables.'
+    )
+  }
+  if (!redirectUri) {
+    throw new Error(
+      'TIKTOK_REDIRECT_URI is not defined in server environment variables.'
     )
   }
 
