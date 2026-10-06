@@ -107,6 +107,7 @@ export default function TikTokTestPage() {
   // Debug Panel
   const [debugLogs, setDebugLogs] = useState<DebugLog[]>([])
   const [debugOpen, setDebugOpen] = useState(false)
+  const [showPrivateAccountGuide, setShowPrivateAccountGuide] = useState(false)
 
   // Callbacks for fetching data
   const fetchConnection = useCallback(async () => {
@@ -246,6 +247,7 @@ export default function TikTokTestPage() {
     setIsTesting(true)
     setPublishId(null)
     setPublishStatusText(null)
+    setShowPrivateAccountGuide(false)
 
     // Reset steps
     setPipelineSteps((prev) =>
@@ -321,6 +323,9 @@ export default function TikTokTestPage() {
       if (!uploadRes.ok || uploadJson.error) {
         const errDetail = uploadJson.error?.message || 'Direct Post upload failed'
         const errCode = uploadJson.error?.code || 'UPLOAD_ERROR'
+        if (errCode === 'unaudited_client_can_only_post_to_private_accounts' || String(errDetail).includes('unaudited_client')) {
+          setShowPrivateAccountGuide(true)
+        }
         updateStep('init_post', 'failed', `[${errCode}] ${errDetail}`, uploadJson.error?.logId)
         updateStep('upload_video', 'failed', 'Upload halted due to initialization failure')
         setIsTesting(false)
@@ -751,12 +756,12 @@ export default function TikTokTestPage() {
                   {creatorInfo?.privacyLevelOptions?.length ? (
                     creatorInfo.privacyLevelOptions.map((opt) => (
                       <option key={opt} value={opt}>
-                        {opt}
+                        {opt} {opt === 'SELF_ONLY' ? '(Required for Unaudited/Dev Apps)' : ''}
                       </option>
                     ))
                   ) : (
                     <>
-                      <option value="SELF_ONLY">SELF_ONLY (Recommended for Dev Apps)</option>
+                      <option value="SELF_ONLY">SELF_ONLY (Required for Unaudited/Dev Apps)</option>
                       <option value="PUBLIC_TO_EVERYONE">PUBLIC_TO_EVERYONE</option>
                       <option value="MUTUAL_FOLLOW_FRIENDS">MUTUAL_FOLLOW_FRIENDS</option>
                       <option value="FOLLOWER_OF_CREATOR">FOLLOWER_OF_CREATOR</option>
@@ -947,6 +952,34 @@ export default function TikTokTestPage() {
               </div>
             ))}
           </div>
+
+          {/* Unaudited Client Private Account Guidance Alert */}
+          {showPrivateAccountGuide && (
+            <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-500/50 text-amber-200 text-xs space-y-3 shadow-lg shadow-amber-950/20">
+              <div className="flex items-center gap-2 font-semibold text-amber-300 text-sm">
+                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                <span>Yêu cầu TikTok API: Cần bật &quot;Tài khoản riêng tư&quot; trên ứng dụng TikTok</span>
+              </div>
+              <p className="leading-relaxed text-amber-200/90 text-xs">
+                Ứng dụng TikTok Developer hiện ở chế độ <strong>Chưa kiểm duyệt (Unaudited / Sandbox Development)</strong>.
+                Chính sách bảo mật của TikTok quy định app chưa qua xét duyệt <strong>chỉ được phép Direct Post vào tài khoản TikTok được bật chế độ &quot;Tài khoản riêng tư&quot; (Private Account)</strong>.
+              </p>
+              <div className="bg-neutral-950/80 p-3.5 rounded-lg border border-neutral-800 space-y-2 text-neutral-300">
+                <p className="font-semibold text-white">Các bước khắc phục ngay trên điện thoại (để Direct Post thành công):</p>
+                <ol className="list-decimal list-inside space-y-1.5 text-neutral-300 text-xs pl-1">
+                  <li>Mở ứng dụng <strong>TikTok</strong> trên điện thoại với tài khoản <strong className="text-rose-400">@{creatorInfo?.creatorUsername || 'vipeeperfume'}</strong>.</li>
+                  <li>Vào mục <strong>Hồ sơ (Profile)</strong> → Bấm menu <strong>3 dấu gạch</strong> ở góc phải trên → Chọn <strong>Cài đặt và quyền riêng tư (Settings and privacy)</strong>.</li>
+                  <li>Chọn mục <strong>Quyền riêng tư (Privacy)</strong>.</li>
+                  <li>Bật nút <strong>Tài khoản riêng tư (Private account)</strong> sang trạng thái <span className="text-emerald-400 font-bold">BẬT (Xanh lá)</span>.</li>
+                  <li className="text-[11px] text-amber-300/80 italic">
+                    (Lưu ý: Nếu tài khoản đang là Doanh nghiệp/Business, vào Cài đặt → Tài khoản → Chuyển sang tài khoản cá nhân, sau đó mới bật Tài khoản riêng tư).
+                  </li>
+                  <li>Tại bảng cấu hình phía trên trang web này, đảm bảo mục <strong>Privacy Level</strong> chọn <code className="bg-neutral-900 px-1 py-0.5 rounded text-rose-300 border border-neutral-700">SELF_ONLY</code>.</li>
+                  <li>Bấm lại nút <strong>Run TikTok Upload Test</strong> để hoàn tất Step 4 &amp; 5!</li>
+                </ol>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Section 23: Collapsible Debug Panel */}
