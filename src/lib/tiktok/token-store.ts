@@ -9,9 +9,7 @@ export interface TokenStore<T> {
 }
 
 /**
- * File-based token storage for local POC single-user development.
- * Automatically saves to .data/ directory in server workspace.
- * Ready to be swapped with DB (Postgres, Supabase, Redis, etc.) in production.
+ * File-based token storage for local / tmp persistence.
  */
 export class FileTokenStore<T> implements TokenStore<T> {
   private filePath: string
@@ -27,7 +25,7 @@ export class FileTokenStore<T> implements TokenStore<T> {
     try {
       await fs.mkdir(dir, { recursive: true })
     } catch {
-      // ignore if exists
+      // ignore
     }
   }
 
@@ -61,10 +59,75 @@ export class FileTokenStore<T> implements TokenStore<T> {
     try {
       await fs.unlink(this.filePath)
     } catch {
-      // file might not exist
+      // ignore
+    }
+  }
+}
+
+/**
+ * Hybrid token store for Serverless (Vercel) & local development.
+ * Combines httpOnly session cookie with file/memory storage so all serverless instances
+ * share the active authorized token seamlessly.
+ */
+export class HybridTokenStore implements TokenStore<TikTokTokenData> {
+  private fileStore = new FileTokenStore<TikTokTokenData>('tiktok-token.json')
+
+  async get(): Promise<TikTokTokenData | null> {
+    // 1. Try reading from httpOnly request cookie
+    try {
+      const { cookies } = await import('next/headers')
+      const cookieStore = await cookies()
+      const raw = cookieStore.get('tiktok_token_session')?.value
+      if (raw) {
+        const decoded = Buffer.from(raw, 'base64').toString('utf-8')
+        const parsed = JSON.parse(decoded) as TikTokTokenData
+        if (parsed?.accessToken) {
+          // Sync with file/memory
+          void this.fileStore.set(parsed)
+          return parsed
+        }
+      }
+    } catch {
+      // Fallback if called outside Next.js request context
+    }
+
+    // 2. Fallback to file/memory storage
+    return this.fileStore.get()
+  }
+
+  async set(data: TikTokTokenData): Promise<void> {
+    // Save to file & memory
+    await this.fileStore.set(data)
+
+    // Save to httpOnly cookie if inside request context
+    try {
+      const { cookies } = await import('next/headers')
+      const cookieStore = await cookies()
+      const base64 = Buffer.from(JSON.stringify(data)).toString('base64')
+      cookieStore.set('tiktok_token_session', base64, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 30 * 24 * 3600, // 30 days
+      })
+    } catch {
+      // Ignore if outside request context
+    }
+  }
+
+  async clear(): Promise<void> {
+    await this.fileStore.clear()
+
+    try {
+      const { cookies } = await import('next/headers')
+      const cookieStore = await cookies()
+      cookieStore.delete('tiktok_token_session')
+    } catch {
+      // Ignore
     }
   }
 }
 
 // Singleton instance for TikTok User Token Store
-export const tikTokTokenStore = new FileTokenStore<TikTokTokenData>('tiktok-token.json')
+export const tikTokTokenStore = new HybridTokenStore()

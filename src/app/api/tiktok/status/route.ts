@@ -28,13 +28,28 @@ export async function GET() {
     expiresInSeconds,
   }
 
-  return NextResponse.json(status)
+  const response = NextResponse.json(status)
+
+  if (tokenData && tokenData.accessToken) {
+    const base64 = Buffer.from(JSON.stringify(tokenData)).toString('base64')
+    response.cookies.set('tiktok_token_session', base64, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 30 * 24 * 3600,
+    })
+  }
+
+  return response
 }
 
 export async function DELETE() {
   try {
     await disconnectTikTok()
-    return NextResponse.json({ success: true, message: 'Disconnected TikTok account successfully' })
+    const response = NextResponse.json({ success: true, message: 'Disconnected TikTok account successfully' })
+    response.cookies.delete('tiktok_token_session')
+    return response
   } catch (err: unknown) {
     return NextResponse.json(
       { error: (err as Error)?.message || 'Failed to disconnect' },

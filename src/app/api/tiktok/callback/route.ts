@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await exchangeCodeForTokens(code)
+    const tokenData = await exchangeCodeForTokens(code)
 
     const redirectUrl = new URL('/tiktok-test', baseUrl)
     redirectUrl.searchParams.set('auth', 'success')
@@ -47,6 +47,16 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.redirect(redirectUrl)
     // Clear state cookie
     response.cookies.delete('tiktok_oauth_state')
+
+    // Set persistent httpOnly session cookie for Serverless cross-lambda sharing
+    response.cookies.set('tiktok_token_session', Buffer.from(JSON.stringify(tokenData)).toString('base64'), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 30 * 24 * 3600,
+    })
+
     return response
   } catch (err: unknown) {
     const redirectUrl = new URL('/tiktok-test', baseUrl)
