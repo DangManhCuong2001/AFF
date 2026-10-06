@@ -485,6 +485,7 @@ export default function TikTokTestPage() {
             </div>
 
             <div className="flex gap-2">
+              {!connection?.connected || connection?.expired ? (
                 <div className="flex flex-col gap-2 w-full">
                   <a
                     href="/api/tiktok/auth"
