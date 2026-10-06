@@ -341,7 +341,7 @@ export default function TikTokTestPage() {
       // Step 6: Polling publish status
       updateStep('poll_status', 'running', 'Polling TikTok processing status...')
       let attempts = 0
-      const maxAttempts = 20
+      const maxAttempts = 30
       let isCompleted = false
 
       while (attempts < maxAttempts && !isCompleted) {
@@ -361,8 +361,9 @@ export default function TikTokTestPage() {
         const rawStatus = pollJson.status
         setPublishStatusText(rawStatus)
 
-        if (rawStatus === 'SUCCESS') {
-          updateStep('poll_status', 'success', `Published successfully! Post IDs: ${pollJson.postIds?.join(', ') || 'N/A'}`)
+        if (rawStatus === 'SUCCESS' || rawStatus === 'PUBLISH_COMPLETE' || rawStatus === 'SEND_TO_USER_INBOX') {
+          const postText = pollJson.postIds?.length ? ` (Post ID: ${pollJson.postIds.join(', ')})` : ''
+          updateStep('poll_status', 'success', `Published successfully! Status: ${rawStatus}${postText}`)
           isCompleted = true
         } else if (rawStatus === 'FAILED') {
           updateStep('poll_status', 'failed', `TikTok processing failed: ${pollJson.failReason || 'Unknown reason'}`)

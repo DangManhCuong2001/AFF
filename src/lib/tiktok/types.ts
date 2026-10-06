@@ -79,8 +79,11 @@ export interface DirectPostInitResult {
 export type TikTokPublishRawStatus =
   | 'PROCESSING_DOWNLOAD'
   | 'PROCESSING_UPLOAD'
+  | 'SEND_TO_USER_INBOX'
+  | 'PUBLISH_COMPLETE'
   | 'FAILED'
   | 'SUCCESS'
+  | string
 
 export type UiPublishStatus =
   | 'INITIALIZING'

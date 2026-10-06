@@ -48,13 +48,18 @@ export const initVideoPostApiResponseSchema = z.object({
 
 export const publishStatusApiResponseSchema = z.object({
   data: z.object({
-    status: z.enum(['PROCESSING_DOWNLOAD', 'PROCESSING_UPLOAD', 'FAILED', 'SUCCESS']),
+    status: z.string(),
     fail_reason: z.string().optional(),
-    post_ids: z.array(z.string()).optional(),
+    post_ids: z.array(z.union([z.string(), z.number()])).optional(),
+    publicaly_available_post_id: z.union([
+      z.array(z.union([z.string(), z.number()])),
+      z.string(),
+      z.number(),
+    ]).optional(),
     publicity_check_state: z.string().optional(),
-  }).optional(),
-  error: tikTokErrorSchema,
-})
+  }).passthrough().optional(),
+  error: tikTokErrorSchema.optional(),
+}).passthrough()
 
 export const directPostClientRequestSchema = z.object({
   title: z.string().min(1, 'Title is required').max(2200, 'Title cannot exceed 2200 characters'),

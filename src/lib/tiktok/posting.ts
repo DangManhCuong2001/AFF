@@ -103,24 +103,34 @@ export async function getPublishStatus(publishId: string): Promise<PublishStatus
     requireAuth: true,
   })
 
-  const parsed = publishStatusApiResponseSchema.safeParse(result.raw)
+  const rawJson = (result.raw || {}) as Record<string, unknown>
+  const data = (rawJson.data || {}) as Record<string, unknown>
 
-  if (!parsed.success || !parsed.data.data) {
+  if (!data || typeof data.status !== 'string') {
     throw new TikTokApiError({
       code: 'STATUS_FETCH_FAILED',
-      message: 'Invalid status response payload from TikTok publish status fetch.',
+      message: `Invalid status response payload from TikTok publish status fetch: ${JSON.stringify(rawJson)}`,
       logId: result.logId,
       httpStatus: 502,
     })
   }
 
-  const raw = parsed.data.data
+  // Handle post IDs flexibly (TikTok returns publicaly_available_post_id or post_ids)
+  const rawPostIds = (data.publicaly_available_post_id ?? data.post_ids) as unknown
+  const postIds: string[] = []
+  if (Array.isArray(rawPostIds)) {
+    for (const id of rawPostIds) {
+      if (id !== null && id !== undefined) postIds.push(String(id))
+    }
+  } else if (rawPostIds !== null && rawPostIds !== undefined) {
+    postIds.push(String(rawPostIds))
+  }
 
   return {
     publishId,
-    status: raw.status as TikTokPublishRawStatus,
-    failReason: raw.fail_reason,
-    postIds: raw.post_ids,
-    publicityCheckState: raw.publicity_check_state,
+    status: data.status as TikTokPublishRawStatus,
+    failReason: typeof data.fail_reason === 'string' ? data.fail_reason : undefined,
+    postIds: postIds.length > 0 ? postIds : undefined,
+    publicityCheckState: typeof data.publicity_check_state === 'string' ? data.publicity_check_state : undefined,
   }
 }
