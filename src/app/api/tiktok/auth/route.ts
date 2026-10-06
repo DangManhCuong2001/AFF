@@ -1,12 +1,18 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { generateOAuthState, getAuthorizationUrl } from '@/lib/tiktok/auth'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const scopeParam = request.nextUrl.searchParams.get('scope')
+    let customScope: string | undefined
+    if (scopeParam === 'basic') {
+      customScope = 'user.info.basic'
+    }
+
     const state = generateOAuthState()
-    const url = getAuthorizationUrl(state)
+    const url = getAuthorizationUrl(state, customScope)
 
     const response = NextResponse.redirect(url)
 

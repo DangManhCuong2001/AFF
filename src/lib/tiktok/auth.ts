@@ -29,7 +29,7 @@ export function generateOAuthState(): string {
   return crypto.randomBytes(24).toString('hex')
 }
 
-export function getAuthorizationUrl(state: string): string {
+export function getAuthorizationUrl(state: string, customScope?: string): string {
   const { clientKey, redirectUri } = getTikTokConfig()
 
   if (!clientKey) {
@@ -43,7 +43,7 @@ export function getAuthorizationUrl(state: string): string {
     )
   }
 
-  const scopes = ['user.info.basic', 'video.publish', 'video.upload'].join(',')
+  const scopes = customScope || ['user.info.basic', 'video.publish', 'video.upload'].join(',')
 
   const params = new URLSearchParams({
     client_key: clientKey,
