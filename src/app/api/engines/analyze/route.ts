@@ -1,50 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { engineRegistry } from '@/engines/core/engine-registry'
-import { ProductInput, ProductCategory } from '@/engines/core/types'
-// Import HomeUtilityEngine to ensure auto-registration
-import '@/engines/home/HomeUtilityEngine'
+import { ProductInput } from '@/engines/core/types'
+import { analyzeProductWithGemini } from '@/lib/ai/gemini'
 
 export const dynamic = 'force-dynamic'
 
+interface AnalyzeRequestBody extends ProductInput {
+  geminiApiKey?: string
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const product = (await request.json()) as ProductInput
+    const body = (await request.json()) as AnalyzeRequestBody
 
-    if (!product || !product.name) {
+    if (!body || !body.name) {
       return NextResponse.json(
         { error: 'Tên sản phẩm là bắt buộc để phân tích' },
         { status: 400 }
       )
     }
 
-    const category: ProductCategory = product.category || 'home'
-    const engine = engineRegistry.getEngine(category)
+    const { geminiApiKey, ...product } = body
 
-    if (!engine) {
-      return NextResponse.json(
-        { error: `Engine cho ngành hàng "${category}" chưa được kích hoạt` },
-        { status: 400 }
-      )
-    }
-
-    const analysis = await engine.analyzeProduct(product)
-    const strategy = await engine.generateStrategy(product, analysis)
-    const storyboard = await engine.generateStoryboard(product, strategy)
+    const result = await analyzeProductWithGemini(product, geminiApiKey)
 
     return NextResponse.json({
       success: true,
+      analysis: result.analysis,
+      strategy: result.strategy,
+      storyboard: result.storyboard,
+      suggestedCaption: result.suggestedCaption,
+      suggestedHashtags: result.suggestedHashtags,
       engine: {
-        id: engine.id,
-        name: engine.name,
-        category: engine.category,
+        id: 'home-utility-engine',
+        name: 'Home & Utility Engine (Gemini AI Powered)',
+        category: 'home',
       },
-      analysis,
-      strategy,
-      storyboard,
     })
   } catch (err: unknown) {
     return NextResponse.json(
-      { error: (err as Error)?.message || 'Lỗi khi phân tích sản phẩm' },
+      { error: (err as Error)?.message || 'Lỗi khi phân tích sản phẩm với Gemini' },
       { status: 500 }
     )
   }

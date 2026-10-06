@@ -16,6 +16,9 @@ import {
   RefreshCw,
   Clock,
   Send,
+  Download,
+  Key,
+  X,
 } from 'lucide-react'
 import {
   ProductInput,
@@ -140,6 +143,25 @@ export default function CreateVideoPage() {
     message?: string
   } | null>(null)
 
+  // Gemini API Key config
+  const [geminiApiKey, setGeminiApiKey] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('gemini_api_key') || ''
+    }
+    return ''
+  })
+  const [tempApiKey, setTempApiKey] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('gemini_api_key') || ''
+    }
+    return ''
+  })
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false)
+
+  // Rendered video state
+  const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null)
+  const [renderedVideoFile, setRenderedVideoFile] = useState<File | null>(null)
+
   // Load Seed Product
   const handleLoadSeed = () => {
     setProduct({
@@ -260,7 +282,7 @@ export default function CreateVideoPage() {
     }))
   }
 
-  // Execute AI Product Analysis
+  // Execute AI Product Analysis (Gemini API with Algorithmic Fallback)
   const handleAnalyzeProduct = async () => {
     if (!product.name.trim()) {
       alert('Vui lòng nhập tên sản phẩm trước khi phân tích.')
@@ -272,7 +294,10 @@ export default function CreateVideoPage() {
       const res = await fetch('/api/engines/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(product),
+        body: JSON.stringify({
+          ...product,
+          geminiApiKey: geminiApiKey.trim() || undefined,
+        }),
       })
 
       const data = await res.json()
@@ -288,15 +313,18 @@ export default function CreateVideoPage() {
       })
       setCurrentStep(2)
       setCaption(
-        `${data.strategy.hook} 😅 ${data.analysis.mainBenefit}. Nhỏ mà tiện hơn mình nghĩ nhiều!`
+        data.suggestedCaption ||
+          `${data.strategy.hook} 😅 ${data.analysis.mainBenefit}. Nhỏ mà tiện hơn mình nghĩ nhiều!`
       )
-      setHashtags([
-        '#dogiadung',
-        '#giadungthongminh',
-        '#organizer',
-        '#meovatgiadinh',
-        '#reviewgiadung',
-      ])
+      setHashtags(
+        data.suggestedHashtags || [
+          '#dogiadung',
+          '#giadungthongminh',
+          '#organizer',
+          '#meovatgiadinh',
+          '#reviewgiadung',
+        ]
+      )
     } catch (err: unknown) {
       alert('Lỗi: ' + (err as Error).message)
     } finally {
@@ -304,63 +332,87 @@ export default function CreateVideoPage() {
     }
   }
 
-  // Start Step 3: Video Generation Flow
+  // Start Step 3: Video Generation Flow (Real FFmpeg + Vietnamese TTS Rendering)
   const handleStartGeneratingVideo = async () => {
     setCurrentStep(3)
     setGenerationProgress({
-      stage: 'Khởi động quy trình...',
-      percent: 10,
-      logs: ['Bắt đầu tạo video tự động với Home & Utility Engine'],
+      stage: '1/4. Khởi tạo & nạp kịch bản Storyboard 15s...',
+      percent: 15,
+      logs: ['Bắt đầu quy trình sản xuất video TikTok 9:16 thật...'],
     })
 
-    await new Promise((r) => setTimeout(r, 600))
-    setGenerationProgress({
-      stage: 'Phân tích visual & cấu trúc chuyển động...',
-      percent: 30,
-      logs: [
-        'Bắt đầu tạo video tự động với Home & Utility Engine',
-        'Xác định Real Product Asset: giữ 100% hình thái sản phẩm',
-      ],
-    })
+    try {
+      const formData = new FormData()
+      formData.append('productName', product.name)
+      if (product.price) formData.append('price', String(product.price))
+      if (analysisResult?.storyboard) {
+        formData.append('storyboard', JSON.stringify(analysisResult.storyboard))
+      }
 
-    await new Promise((r) => setTimeout(r, 800))
-    setGenerationProgress({
-      stage: 'Tổng hợp giọng đọc AI tiếng Việt (TTS)...',
-      percent: 55,
-      logs: [
-        'Bắt đầu tạo video tự động với Home & Utility Engine',
-        'Xác định Real Product Asset: giữ 100% hình thái sản phẩm',
-        `Tổng hợp giọng đọc tự nhiên: "${analysisResult?.strategy.hook || 'Nhà ai dây sạc cứ rơi...'}"`,
-      ],
-    })
+      // Attach primary image or first available asset
+      const primaryAsset = product.assets.find((a) => a.isPrimary) || product.assets[0]
+      if (primaryAsset?.file) {
+        formData.append('image', primaryAsset.file)
+      }
 
-    await new Promise((r) => setTimeout(r, 800))
-    setGenerationProgress({
-      stage: 'Chọn nhạc nền không bản quyền (Cleared Background Music)...',
-      percent: 75,
-      logs: [
-        'Bắt đầu tạo video tự động với Home & Utility Engine',
-        'Xác định Real Product Asset: giữ 100% hình thái sản phẩm',
-        `Tổng hợp giọng đọc tự nhiên: "${analysisResult?.strategy.hook || 'Nhà ai dây sạc cứ rơi...'}"`,
-        'Khớp nhạc nền nhịp điệu phong cách Home & Living (Ducking volume: 15%)',
-      ],
-    })
+      setGenerationProgress((prev) => ({
+        stage: '2/4. Đang tạo giọng đọc thuyết minh tiếng Việt (TTS)...',
+        percent: 40,
+        logs: [
+          ...prev.logs,
+          'Gọi dịch vụ TTS tiếng Việt cho 5 phân cảnh Storyboard',
+          `Lời thoại cảnh 1: "${analysisResult?.storyboard.scenes[0]?.voice || analysisResult?.strategy.hook}"`,
+        ],
+      }))
 
-    await new Promise((r) => setTimeout(r, 900))
-    setGenerationProgress({
-      stage: 'Ghép nối phân cảnh & xuất định dạng 9:16 MP4...',
-      percent: 100,
-      logs: [
-        'Bắt đầu tạo video tự động với Home & Utility Engine',
-        'Xác định Real Product Asset: giữ 100% hình thái sản phẩm',
-        `Tổng hợp giọng đọc tự nhiên: "${analysisResult?.strategy.hook || 'Nhà ai dây sạc cứ rơi...'}"`,
-        'Khớp nhạc nền nhịp điệu phong cách Home & Living (Ducking volume: 15%)',
-        'Hoàn tất video 15s chuẩn TikTok. Sẵn sàng xem trước!',
-      ],
-    })
+      setGenerationProgress((prev) => ({
+        stage: '3/4. Render video 1080x1920 (Hiệu ứng chuyển động & TikTok Overlay)...',
+        percent: 70,
+        logs: [
+          ...prev.logs,
+          'Thiết lập khung hình dọc chuẩn TikTok 1080x1920, 30fps',
+          'Áp dụng bộ lọc chuyển động Ken Burns & chèn bảng text thông tin',
+          'Hòa âm nhạc nền BGM (Audio Ducking khi có lời thoại)',
+        ],
+      }))
 
-    await new Promise((r) => setTimeout(r, 500))
-    setCurrentStep(4)
+      const res = await fetch('/api/video/render', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Render video thất bại')
+      }
+
+      setRenderedVideoUrl(data.videoUrl)
+
+      // Fetch blob to prepare real File object for TikTok publish
+      const videoBlobRes = await fetch(data.videoUrl)
+      const blob = await videoBlobRes.blob()
+      const file = new File([blob], data.fileName || 'product_video.mp4', {
+        type: 'video/mp4',
+      })
+      setRenderedVideoFile(file)
+
+      setGenerationProgress((prev) => ({
+        stage: '4/4. Hoàn tất video 15s chuẩn TikTok!',
+        percent: 100,
+        logs: [
+          ...prev.logs,
+          `Xuất thành công: ${data.fileName} (${(data.fileSizeBytes / 1024).toFixed(1)} KB)`,
+          'Video MP4 sẵn sàng xem trước và đăng trực tiếp lên TikTok!',
+        ],
+      }))
+
+      setTimeout(() => {
+        setCurrentStep(4)
+      }, 700)
+    } catch (err: unknown) {
+      alert('Lỗi render video: ' + (err as Error).message)
+      setCurrentStep(2)
+    }
   }
 
   // Publish Directly to TikTok
@@ -372,19 +424,24 @@ export default function CreateVideoPage() {
       const fullCaption = `${caption} ${hashtags.join(' ')}`
       const formData = new FormData()
 
-      // Find an uploaded video file
-      const videoAsset = product.assets.find(
-        (a) => (a.type === 'PRODUCT_VIDEO' || a.type === 'DEMO_VIDEO') && a.file
-      )
-
-      if (videoAsset && videoAsset.file) {
-        formData.append('video', videoAsset.file)
+      // Prioritize the newly rendered MP4 video
+      if (renderedVideoFile) {
+        formData.append('video', renderedVideoFile)
+      } else if (renderedVideoUrl) {
+        const res = await fetch(renderedVideoUrl)
+        const blob = await res.blob()
+        formData.append('video', new File([blob], 'tiktok_video.mp4', { type: 'video/mp4' }))
       } else {
-        alert(
-          'Để trực tiếp đăng lên TikTok qua API ở bước này, bạn hãy tải lên ít nhất 1 file video MP4 của sản phẩm ở mục Media.'
+        const videoAsset = product.assets.find(
+          (a) => (a.type === 'PRODUCT_VIDEO' || a.type === 'DEMO_VIDEO') && a.file
         )
-        setPublishing(false)
-        return
+        if (videoAsset && videoAsset.file) {
+          formData.append('video', videoAsset.file)
+        } else {
+          alert('Chưa có file video hoàn chỉnh để đăng. Vui lòng quay lại Bước 3 để tạo video trước.')
+          setPublishing(false)
+          return
+        }
       }
 
       formData.append('title', fullCaption)
@@ -409,7 +466,7 @@ export default function CreateVideoPage() {
         setPublishResult({
           success: true,
           publishId: json.publishId,
-          message: 'Video đã được đăng lên TikTok thành công!',
+          message: 'Video đã được đăng lên TikTok thành công! Đang chờ TikTok xử lý hiển thị.',
         })
       }
     } catch (err: unknown) {
@@ -447,6 +504,22 @@ export default function CreateVideoPage() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => {
+                setTempApiKey(geminiApiKey)
+                setShowApiKeyModal(true)
+              }}
+              className={`px-3.5 py-2 rounded-xl text-xs font-medium border transition flex items-center gap-1.5 cursor-pointer ${
+                geminiApiKey
+                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300 hover:border-emerald-500/60'
+                  : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700'
+              }`}
+            >
+              <Key className="w-3.5 h-3.5 text-amber-400" />
+              {geminiApiKey ? 'Gemini API Connected' : 'Cài đặt Gemini API Key'}
+            </button>
+
             <Link
               href="/tiktok-test"
               className="px-3.5 py-2 rounded-xl text-xs font-medium bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 transition flex items-center gap-1.5 text-neutral-300"
@@ -456,6 +529,77 @@ export default function CreateVideoPage() {
             </Link>
           </div>
         </header>
+
+        {/* Gemini API Key Modal */}
+        {showApiKeyModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl relative">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                    <Key className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-white">Cấu hình Google Gemini API</h3>
+                    <p className="text-xs text-neutral-400">Dùng để phân tích sản phẩm và tạo kịch bản thật</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowApiKeyModal(false)}
+                  className="p-1 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-neutral-300 block">
+                  Gemini API Key:
+                </label>
+                <input
+                  type="password"
+                  value={tempApiKey}
+                  onChange={(e) => setTempApiKey(e.target.value)}
+                  placeholder="AIzaSy..."
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
+                />
+                <p className="text-[11px] text-neutral-500 leading-relaxed">
+                  Khóa API được lưu an toàn trên trình duyệt. Bạn có thể lấy key miễn phí tại{' '}
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-rose-400 hover:underline"
+                  >
+                    Google AI Studio
+                  </a>.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setShowApiKeyModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-300 cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGeminiApiKey(tempApiKey.trim())
+                    localStorage.setItem('gemini_api_key', tempApiKey.trim())
+                    setShowApiKeyModal(false)
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-rose-600 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white shadow-lg shadow-rose-600/20 cursor-pointer"
+                >
+                  Lưu khóa API
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Section 5: Category Engine Selector Tabs */}
         <div className="space-y-3">
@@ -637,14 +781,25 @@ export default function CreateVideoPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               {/* Left Column: 9:16 Video Player Preview */}
-              <div className="lg:col-span-5 flex flex-col items-center">
+              <div className="lg:col-span-5 flex flex-col items-center space-y-4">
                 <div className="w-full max-w-[340px] aspect-[9/16] rounded-3xl overflow-hidden border-2 border-neutral-800 shadow-2xl bg-black relative flex flex-col justify-between">
-                  {product.assets.some((a) => (a.type === 'PRODUCT_VIDEO' || a.type === 'DEMO_VIDEO') && a.url) ? (
+                  {renderedVideoUrl ? (
+                    <video
+                      key={renderedVideoUrl}
+                      src={renderedVideoUrl}
+                      controls
+                      autoPlay
+                      loop
+                      playsInline
+                      className="w-full h-full object-cover"
+                    />
+                  ) : product.assets.some((a) => (a.type === 'PRODUCT_VIDEO' || a.type === 'DEMO_VIDEO') && a.url) ? (
                     <video
                       src={product.assets.find((a) => a.type === 'PRODUCT_VIDEO' || a.type === 'DEMO_VIDEO')?.url}
                       controls
                       autoPlay
                       loop
+                      playsInline
                       className="w-full h-full object-cover"
                     />
                   ) : (
@@ -676,6 +831,17 @@ export default function CreateVideoPage() {
                     </div>
                   )}
                 </div>
+
+                {renderedVideoUrl && (
+                  <a
+                    href={renderedVideoUrl}
+                    download="tiktok_product_video.mp4"
+                    className="px-4 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-xs text-neutral-200 hover:text-white transition flex items-center gap-2 shadow"
+                  >
+                    <Download className="w-4 h-4 text-emerald-400" />
+                    Tải video MP4 về máy (1080x1920)
+                  </a>
+                )}
               </div>
 
               {/* Right Column: Publish Settings */}
