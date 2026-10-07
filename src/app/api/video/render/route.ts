@@ -3,6 +3,7 @@ import { renderProductVideo } from '@/lib/video/generator'
 import { StoryboardScene } from '@/engines/core/types'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
   try {

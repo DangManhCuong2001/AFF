@@ -112,15 +112,26 @@ export async function renderProductVideo(
     const masterVoicePath = path.join(tempDir, 'master_voice.mp3')
     fs.writeFileSync(masterVoicePath, speechAudioResult.audioBuffer)
 
-    // 4. Build 5 Video Segments (3 seconds each)
+    // 4. Build Video Segments with multi-path font resolution
     const segmentFiles: string[] = []
-    const fontPath = fs.existsSync('/System/Library/Fonts/Supplemental/Arial Bold.ttf')
-      ? '/System/Library/Fonts/Supplemental/Arial Bold.ttf'
-      : fs.existsSync('/System/Library/Fonts/Supplemental/Arial.ttf')
-      ? '/System/Library/Fonts/Supplemental/Arial.ttf'
-      : fs.existsSync('/System/Library/Fonts/Helvetica.ttc')
-      ? '/System/Library/Fonts/Helvetica.ttc'
-      : ''
+    const fontCandidates = [
+      path.join(process.cwd(), 'src', 'assets', 'fonts', 'Roboto-Bold.ttf'),
+      path.join(process.cwd(), 'public', 'fonts', 'Roboto-Bold.ttf'),
+      path.join(__dirname, '..', '..', 'assets', 'fonts', 'Roboto-Bold.ttf'),
+      path.join(__dirname, '..', '..', '..', 'public', 'fonts', 'Roboto-Bold.ttf'),
+      '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
+      '/System/Library/Fonts/Supplemental/Arial.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+      '/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf',
+    ]
+
+    let fontPath = ''
+    for (const c of fontCandidates) {
+      if (fs.existsSync(/*turbopackIgnore: true*/ c)) {
+        fontPath = c
+        break
+      }
+    }
 
     const fontParam = fontPath ? `:fontfile='${fontPath}'` : ''
 
@@ -156,8 +167,21 @@ export async function renderProductVideo(
           ? 'kitchen_modern.png'
           : 'minimal_lifestyle.png'
 
-      const bgImagePath = path.join(process.cwd(), 'public', 'backgrounds', bgFilename)
-      const hasBgImage = fs.existsSync(bgImagePath)
+      const bgCandidates = [
+        path.join(process.cwd(), 'src', 'assets', 'backgrounds', bgFilename),
+        path.join(process.cwd(), 'public', 'backgrounds', bgFilename),
+        path.join(__dirname, '..', '..', 'assets', 'backgrounds', bgFilename),
+        path.join(__dirname, '..', '..', '..', 'public', 'backgrounds', bgFilename),
+      ]
+
+      let bgImagePath = ''
+      for (const b of bgCandidates) {
+        if (fs.existsSync(/*turbopackIgnore: true*/ b)) {
+          bgImagePath = b
+          break
+        }
+      }
+      const hasBgImage = Boolean(bgImagePath)
 
       const sceneImgPath = availableImagePaths[i % availableImagePaths.length]
 
@@ -232,7 +256,33 @@ export async function renderProductVideo(
         `"${segPath}"`,
       ].join(' ')
 
-      await execPromise(cmd)
+      try {
+        await execPromise(cmd)
+      } catch (segmentErr: any) {
+        console.warn(
+          `[VideoGenerator] Segment ${i} failed with text overlay filter:`,
+          segmentErr.stderr || segmentErr.message
+        )
+
+        // Resilient Fallback: If drawtext fails due to font or environment issues, render clean Ken Burns product video
+        const fallbackFilterComplex = [
+          `[0:v]scale='1080*(1+${bgScaleRate}*t)':'1920*(1+${bgScaleRate}*t)':eval=frame,crop=1080:1920[bg]`,
+          `[1:v]scale=740:740:force_original_aspect_ratio=decrease,pad=780:780:(ow-iw)/2:(oh-ih)/2:color=0x000000@0.25,scale='780*(1+${prodScaleRate}*t)':'780*(1+${prodScaleRate}*t)':eval=frame[prod]`,
+          `[bg][prod]overlay=(W-w)/2:460-(h-780)/2[out]`,
+        ].join(';')
+
+        const fallbackCmd = [
+          `"${ffmpeg}" -y`,
+          bgInput,
+          `-loop 1 -t ${sceneDuration} -i "${sceneImgPath}"`,
+          `-filter_complex "${fallbackFilterComplex}"`,
+          `-map "[out]"`,
+          `-c:v libx264 -pix_fmt yuv420p -r 30`,
+          `"${segPath}"`,
+        ].join(' ')
+
+        await execPromise(fallbackCmd)
+      }
     }
 
     // 5. Concatenate video segments
