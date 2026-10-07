@@ -42,7 +42,7 @@ export async function generateVietnameseTTS(
           'python3',
           [helperScript, cleanText, voice, tempFile, rate],
           {
-            timeout: 20000,
+            timeout: 45000,
             env: {
               ...process.env,
               PYTHONIOENCODING: 'utf-8',
@@ -71,7 +71,7 @@ export async function generateVietnameseTTS(
       }
     } catch (edgeError) {
       console.warn('[TTS] Edge Neural TTS primary attempt failed:', edgeError)
-      // Retry once more with safe default parameters
+      // Retry once more with safe default parameters (+0% rate)
       try {
         const tempFile2 = path.join(
           os.tmpdir(),
@@ -82,7 +82,7 @@ export async function generateVietnameseTTS(
             'python3',
             [helperScript, cleanText, voice, tempFile2, '+0%'],
             {
-              timeout: 15000,
+              timeout: 30000,
               env: {
                 ...process.env,
                 PYTHONIOENCODING: 'utf-8',
@@ -111,13 +111,13 @@ export async function generateVietnameseTTS(
     }
   }
 
-  // 2. Only fallback to Google TTS if explicitly allowed or no other option exists
+  // 2. Only fallback to Google TTS if caller explicitly allows robot voice
   if (options?.allowRobotFallback) {
     return fetchGoogleTTSFallback(cleanText.slice(0, 200))
   }
 
-  // If robot fallback not allowed, try one last Google fallback as emergency
-  return fetchGoogleTTSFallback(cleanText.slice(0, 200))
+  // If robot fallback is not allowed, throw error to maintain voice integrity
+  throw new Error(`Không thể khởi tạo giọng đọc neural ${voice}. Vui lòng thử lại.`)
 }
 
 function fetchGoogleTTSFallback(text: string): Promise<Buffer> {

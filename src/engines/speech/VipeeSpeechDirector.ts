@@ -12,10 +12,10 @@ import https from 'https'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { exec } from 'child_process'
+import { exec, execFile } from 'child_process'
 import { promisify } from 'util'
 import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
-import { generateVietnameseTTS } from '@/lib/audio/tts'
+import { generateVietnameseTTS, VietnameseVoice } from '@/lib/audio/tts'
 
 const execPromise = promisify(exec)
 
@@ -230,16 +230,48 @@ export class VipeeTTSProvider implements TTSProvider {
           ? '+8%'
           : '+5%'
 
-      for (let i = 0; i < plan.segments.length; i++) {
-        if (i > 0) {
-          // Micro-pause between network synthesis calls to maintain connection health
-          await new Promise((r) => setTimeout(r, 150))
-        }
+      // 1. Prepare batch manifest with STRICT VOICE LOCK - all segments guaranteed same voice
+      const helperScript = path.join(process.cwd(), 'src', 'lib', 'audio', 'tts_helper.py')
+      const manifestPath = path.join(tempDir, 'tts_manifest.json')
+      const manifest = {
+        voice,
+        rate,
+        segments: plan.segments.map((seg, idx) => ({
+          index: idx,
+          text: seg.ttsScript,
+          outputPath: path.join(tempDir, `raw_seg_${idx}.mp3`),
+        })),
+      }
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
 
+      // 2. Synthesize all segments in ONE single execution with consistent voice & connection pacing
+      await new Promise<void>((resolve, reject) => {
+        execFile(
+          'python3',
+          [helperScript, '--batch', manifestPath],
+          {
+            timeout: 120000,
+            env: {
+              ...process.env,
+              PYTHONIOENCODING: 'utf-8',
+              LANG: 'en_US.UTF-8',
+              LC_ALL: 'en_US.UTF-8',
+            },
+          },
+          (error, stdout, stderr) => {
+            if (error) {
+              reject(new Error(stderr || error.message))
+            } else {
+              resolve()
+            }
+          }
+        )
+      })
+
+      // 3. Process each segment with studio broadcast filters and calculate timings
+      for (let i = 0; i < plan.segments.length; i++) {
         const seg = plan.segments[i]
-        const rawChunkBuffer = await generateVietnameseTTS(seg.ttsScript, { voice, rate })
         const rawSegPath = path.join(tempDir, `raw_seg_${i}.mp3`)
-        fs.writeFileSync(rawSegPath, rawChunkBuffer)
 
         // Studio Broadcast Vocal Processing (Warmth EQ + Presence EQ + Compand + Breath micro-pause)
         const paddedSegPath = path.join(tempDir, `padded_seg_${i}.mp3`)
