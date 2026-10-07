@@ -187,12 +187,28 @@ export default function CreateVideoPage() {
       })
       const data = await res.json()
 
-      if (data.requiresManualFallback) {
+      if (data.success && data.product) {
+        setProduct((prev) => ({
+          ...prev,
+          name: data.product.name || prev.name,
+          price: data.product.price ? String(data.product.price) : prev.price,
+          description: data.product.description || prev.description,
+          productUrl: data.product.productUrl || prev.productUrl,
+          shopProductId: data.product.shopProductId || prev.shopProductId,
+          assets:
+            data.product.assets && data.product.assets.length > 0
+              ? data.product.assets
+              : prev.assets,
+        }))
+        setImportNotice({
+          message: data.message || 'Đã trích xuất thông tin sản phẩm thành công!',
+          requiresFallback: false,
+        })
+      } else if (data.requiresManualFallback) {
         setImportNotice({
           message: data.message,
           requiresFallback: true,
         })
-        setInputMode('manual')
         if (data.product?.productUrl) {
           setProduct((prev) => ({
             ...prev,
@@ -200,12 +216,6 @@ export default function CreateVideoPage() {
             shopProductId: data.product.shopProductId,
           }))
         }
-      } else if (data.success && data.product) {
-        setProduct((prev) => ({
-          ...prev,
-          ...data.product,
-        }))
-        setInputMode('manual')
       } else {
         setImportNotice({
           message: data.message || 'Không thể nhập dữ liệu từ URL này.',
@@ -1013,7 +1023,7 @@ export default function CreateVideoPage() {
                     }`}
                   >
                     <LinkIcon className="w-3.5 h-3.5" />
-                    <span>Dán link Shop (Cần Partner API)</span>
+                    <span>Dán link TikTok Shop (Tự động lấy thông tin)</span>
                   </button>
                 </div>
 
@@ -1034,8 +1044,8 @@ export default function CreateVideoPage() {
                     <label className="text-xs font-medium text-neutral-300 block">
                       Đường dẫn sản phẩm TikTok Shop (Product URL):
                     </label>
-                    <span className="text-[11px] text-amber-400/90 font-mono">
-                      Yêu cầu tài khoản TikTok Shop Partner
+                    <span className="text-[11px] text-emerald-400/90 font-mono">
+                      Hỗ trợ vt.tiktok.com &amp; shop.tiktok.com
                     </span>
                   </div>
                   <div className="flex gap-2">
@@ -1043,7 +1053,7 @@ export default function CreateVideoPage() {
                       type="url"
                       value={tiktokUrl}
                       onChange={(e) => setTiktokUrl(e.target.value)}
-                      placeholder="https://shop.tiktok.com/view/product/..."
+                      placeholder="Dán link sản phẩm TikTok Shop hoặc link từ Zalo..."
                       className="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 focus:outline-none focus:border-rose-500"
                     />
                     <button
@@ -1053,36 +1063,48 @@ export default function CreateVideoPage() {
                       className="px-4 py-2 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-50 transition shrink-0 flex items-center gap-1.5 cursor-pointer"
                     >
                       {importingUrl ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
-                      IMPORT PRODUCT
+                      LẤY THÔNG TIN SẢN PHẨM
                     </button>
                   </div>
 
-                  <p className="text-[11px] text-neutral-400">
-                    💡 <em>Lưu ý:</em> TikTok bảo vệ dữ liệu sản phẩm và chỉ cấp quyền đọc link cho công ty đăng ký TikTok Shop Partner Center. Nếu bạn là Creator Affiliate cá nhân, hãy bấm <strong>Nhập thông tin</strong> ở trên để tự điền tên &amp; ảnh trong 15 giây.
+                  <p className="text-[11px] text-neutral-400 leading-relaxed">
+                    💡 Hỗ trợ link rút gọn <code>vt.tiktok.com</code>, link <code>shop.tiktok.com</code> hoặc link chuyển tiếp từ Zalo. Hệ thống sẽ tự động quét Tên, Giá, Ảnh gốc và Mô tả sản phẩm!
                   </p>
 
                   {importNotice && (
-                    <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-xs space-y-2.5">
+                    <div
+                      className={`p-3.5 rounded-xl border text-xs space-y-2.5 ${
+                        importNotice.requiresFallback
+                          ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                          : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                      }`}
+                    >
                       <div className="flex items-start gap-2">
-                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                        <p className="leading-relaxed">{importNotice.message}</p>
+                        {importNotice.requiresFallback ? (
+                          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                        )}
+                        <p className="leading-relaxed font-medium">{importNotice.message}</p>
                       </div>
-                      <div className="pt-2 border-t border-amber-500/20 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setInputMode('manual')}
-                          className="px-3 py-1.5 rounded-lg bg-amber-500 text-neutral-950 font-bold text-xs hover:bg-amber-400 transition"
-                        >
-                          Chuyển sang Nhập thông tin &amp; Tải ảnh →
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleLoadSeed}
-                          className="px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-700 text-neutral-300 hover:text-white text-xs transition"
-                        >
-                          Nạp mẫu Demo nhanh
-                        </button>
-                      </div>
+                      {importNotice.requiresFallback && (
+                        <div className="pt-2 border-t border-amber-500/20 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setInputMode('manual')}
+                            className="px-3 py-1.5 rounded-lg bg-amber-500 text-neutral-950 font-bold text-xs hover:bg-amber-400 transition"
+                          >
+                            Chuyển sang Nhập thông tin &amp; Tải ảnh →
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleLoadSeed}
+                            className="px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-700 text-neutral-300 hover:text-white text-xs transition"
+                          >
+                            Nạp mẫu Demo nhanh
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
