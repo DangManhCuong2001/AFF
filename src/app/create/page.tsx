@@ -30,6 +30,7 @@ import {
   ShieldCheck,
   Flame,
   Award,
+  ExternalLink,
 } from 'lucide-react'
 import {
   ProductInput,
@@ -183,6 +184,16 @@ export default function CreateVideoPage() {
     return ''
   })
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
+
+  // TikTok Connection State
+  const [tiktokConnected, setTiktokConnected] = useState<boolean | null>(null)
+
+  React.useEffect(() => {
+    fetch('/api/tiktok/status')
+      .then((r) => r.json())
+      .then((data) => setTiktokConnected(!!data.connected && !data.expired))
+      .catch(() => setTiktokConnected(false))
+  }, [])
 
   // Rendered video state
   const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null)
@@ -771,12 +782,25 @@ export default function CreateVideoPage() {
               {geminiApiKey ? 'Gemini API Connected' : 'Cài đặt Gemini API Key'}
             </button>
 
-            <Link
-              href="/tiktok-test"
-              className="px-3.5 py-2 rounded-xl text-xs font-medium bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 transition flex items-center gap-1.5 text-neutral-300"
+            <a
+              href="/api/tiktok/auth"
+              className={`px-3.5 py-2 rounded-xl text-xs font-medium border transition flex items-center gap-1.5 cursor-pointer ${
+                tiktokConnected
+                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300 hover:border-emerald-500/60'
+                  : 'bg-rose-950/30 border-rose-500/30 text-rose-300 hover:bg-rose-900/40 hover:border-rose-500/50'
+              }`}
+              title={tiktokConnected ? 'TikTok đã kết nối - Bấm để kết nối lại' : 'Bấm để kết nối tài khoản TikTok'}
             >
               <Film className="w-3.5 h-3.5 text-rose-400" />
-              TikTok Direct Post Pipeline
+              {tiktokConnected ? 'TikTok Connected' : 'Kết nối TikTok'}
+            </a>
+
+            <Link
+              href="/integrations"
+              className="px-3.5 py-2 rounded-xl text-xs font-medium bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 transition flex items-center gap-1.5 text-neutral-300"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+              Integrations
             </Link>
           </div>
         </header>
@@ -1174,15 +1198,36 @@ export default function CreateVideoPage() {
 
                   {/* Publish Result Feedback */}
                   {publishResult && (
-                    <div className={`p-4 rounded-xl border text-xs space-y-2 ${
+                    <div className={`p-4 rounded-xl border text-xs space-y-3 ${
                       publishResult.success
                         ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
                         : 'bg-rose-950/40 border-rose-500/50 text-rose-200'
                     }`}>
-                      <p className="font-bold flex items-center gap-1.5">
+                      <p className="font-bold flex items-center gap-1.5 text-sm">
                         {publishResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertTriangle className="w-4 h-4 text-rose-400" />}
                         {publishResult.message}
                       </p>
+
+                      {!publishResult.success && publishResult.message?.toLowerCase().includes('connect') && (
+                        <div className="pt-1 space-y-2">
+                          <div>
+                            <a
+                              href="/api/tiktok/auth"
+                              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition cursor-pointer"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                              KẾT NỐI TÀI KHOẢN TIKTOK NGAY (CONNECT TIKTOK)
+                            </a>
+                          </div>
+                          <p className="text-[11px] text-neutral-400">
+                            Hoặc quản lý &amp; kiểm tra tài khoản tại trang{' '}
+                            <Link href="/integrations" className="text-rose-400 underline font-semibold hover:text-rose-300">
+                              Integrations Overview
+                            </Link>
+                          </p>
+                        </div>
+                      )}
+
                       {publishResult.publishId && (
                         <div className="bg-neutral-950/80 p-2.5 rounded-lg border border-neutral-800 space-y-1">
                           <p className="font-mono text-[11px] text-neutral-400">
