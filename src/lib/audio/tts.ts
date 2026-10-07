@@ -8,13 +8,13 @@ export type VietnameseVoice = 'vi-VN-HoaiMyNeural' | 'vi-VN-NamMinhNeural'
 
 export interface TTSOptions {
   voice?: VietnameseVoice
-  rate?: string // e.g. "+12%" or "+15%"
+  rate?: string // e.g. "+10%" or "+12%"
+  allowRobotFallback?: boolean
 }
 
 /**
  * Generates natural Vietnamese neural speech audio buffer (MP3) from text.
- * Uses Microsoft Edge Neural TTS (HoaiMy / NamMinh) via dedicated helper.
- * Falls back gracefully to Google TTS if edge_tts is unavailable.
+ * Uses Microsoft Edge Neural TTS (HoaiMy / NamMinh) via multi-tier robust helper.
  */
 export async function generateVietnameseTTS(
   text: string,
@@ -26,10 +26,10 @@ export async function generateVietnameseTTS(
   }
 
   const voice: VietnameseVoice = options?.voice || 'vi-VN-HoaiMyNeural'
-  const rate = options?.rate || '+12%'
+  const rate = options?.rate || '+10%'
   const helperScript = path.join(process.cwd(), 'src', 'lib', 'audio', 'tts_helper.py')
 
-  // 1. Try High-Quality Microsoft Edge Neural Voice via python3 tts_helper.py
+  // 1. High-Quality Microsoft Edge Neural Voice via multi-tier python3 tts_helper.py
   if (fs.existsSync(helperScript)) {
     try {
       const tempFile = path.join(
@@ -42,7 +42,7 @@ export async function generateVietnameseTTS(
           'python3',
           [helperScript, cleanText, voice, tempFile, rate],
           {
-            timeout: 15000,
+            timeout: 20000,
             env: {
               ...process.env,
               PYTHONIOENCODING: 'utf-8',
@@ -65,16 +65,58 @@ export async function generateVietnameseTTS(
         try {
           fs.unlinkSync(tempFile)
         } catch {}
-        if (buffer.length > 500) {
+        if (buffer.length > 300) {
           return buffer
         }
       }
     } catch (edgeError) {
-      console.warn('[TTS] Edge Neural TTS error, falling back to Google TTS:', edgeError)
+      console.warn('[TTS] Edge Neural TTS primary attempt failed:', edgeError)
+      // Retry once more with safe default parameters
+      try {
+        const tempFile2 = path.join(
+          os.tmpdir(),
+          `edge_tts_retry_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`
+        )
+        await new Promise<void>((resolve, reject) => {
+          execFile(
+            'python3',
+            [helperScript, cleanText, voice, tempFile2, '+0%'],
+            {
+              timeout: 15000,
+              env: {
+                ...process.env,
+                PYTHONIOENCODING: 'utf-8',
+                LANG: 'en_US.UTF-8',
+                LC_ALL: 'en_US.UTF-8',
+              },
+            },
+            (error, stdout, stderr) => {
+              if (error) reject(new Error(stderr || error.message))
+              else resolve()
+            }
+          )
+        })
+        if (fs.existsSync(tempFile2)) {
+          const buffer = fs.readFileSync(tempFile2)
+          try {
+            fs.unlinkSync(tempFile2)
+          } catch {}
+          if (buffer.length > 300) {
+            return buffer
+          }
+        }
+      } catch (retryError) {
+        console.warn('[TTS] Edge Neural TTS retry failed:', retryError)
+      }
     }
   }
 
-  // 2. Fallback to Google TTS if Edge TTS fails
+  // 2. Only fallback to Google TTS if explicitly allowed or no other option exists
+  if (options?.allowRobotFallback) {
+    return fetchGoogleTTSFallback(cleanText.slice(0, 200))
+  }
+
+  // If robot fallback not allowed, try one last Google fallback as emergency
   return fetchGoogleTTSFallback(cleanText.slice(0, 200))
 }
 

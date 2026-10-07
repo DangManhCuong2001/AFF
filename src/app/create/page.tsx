@@ -138,6 +138,7 @@ export default function CreateVideoPage() {
   const [selectedHookId, setSelectedHookId] = useState<string>('')
   const [selectedApproach, setSelectedApproach] = useState<StoryApproach>('micro-story')
   const [isVoicePlaying, setIsVoicePlaying] = useState(false)
+  const [isVoiceLoading, setIsVoiceLoading] = useState(false)
   const [isRegeneratingAngle, setIsRegeneratingAngle] = useState(false)
   const previewAudioRef = React.useRef<HTMLAudioElement | null>(null)
 
@@ -506,14 +507,15 @@ export default function CreateVideoPage() {
     }
   }
 
-  // Voice Preview player
-  const handlePreviewVoice = (textToPlay?: string) => {
-    if (isVoicePlaying) {
+  // Voice Preview player with Audio Blob fetching for universal browser compatibility
+  const handlePreviewVoice = async (textToPlay?: string) => {
+    if (isVoicePlaying || isVoiceLoading) {
       if (previewAudioRef.current) {
         previewAudioRef.current.pause()
         previewAudioRef.current = null
       }
       setIsVoicePlaying(false)
+      setIsVoiceLoading(false)
       return
     }
 
@@ -524,24 +526,43 @@ export default function CreateVideoPage() {
       analysisResult?.storyboard.scenes[0]?.voice ||
       'Chào bạn, đây là bản xem trước giọng đọc thuyết minh tiếng Việt tự nhiên.'
 
-    const audioUrl = `/api/audio/tts?text=${encodeURIComponent(text)}&preset=${encodeURIComponent(selectedVoicePreset)}`
-    const audio = new Audio(audioUrl)
-    previewAudioRef.current = audio
-    setIsVoicePlaying(true)
+    setIsVoiceLoading(true)
 
-    audio.onended = () => {
+    try {
+      const audioUrl = `/api/audio/tts?text=${encodeURIComponent(text)}&preset=${encodeURIComponent(selectedVoicePreset)}`
+      const res = await fetch(audioUrl)
+      if (!res.ok) throw new Error('Không thể tải giọng đọc')
+
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const audio = new Audio(objectUrl)
+      previewAudioRef.current = audio
+
+      audio.onended = () => {
+        setIsVoicePlaying(false)
+        setIsVoiceLoading(false)
+        previewAudioRef.current = null
+        URL.revokeObjectURL(objectUrl)
+      }
+
+      audio.onerror = () => {
+        setIsVoicePlaying(false)
+        setIsVoiceLoading(false)
+        previewAudioRef.current = null
+        URL.revokeObjectURL(objectUrl)
+      }
+
+      await audio.play()
+      setIsVoiceLoading(false)
+      setIsVoicePlaying(true)
+    } catch (e) {
+      console.warn('[handlePreviewVoice] Error:', e)
+      setIsVoiceLoading(false)
       setIsVoicePlaying(false)
-      previewAudioRef.current = null
+      if (previewAudioRef.current) {
+        previewAudioRef.current = null
+      }
     }
-
-    audio.onerror = () => {
-      setIsVoicePlaying(false)
-      previewAudioRef.current = null
-    }
-
-    audio.play().catch(() => {
-      setIsVoicePlaying(false)
-    })
   }
 
   // Start Step 3: Video Generation Flow (Real FFmpeg + Vietnamese TTS Rendering)
@@ -1849,9 +1870,15 @@ export default function CreateVideoPage() {
                       <button
                         type="button"
                         onClick={() => handlePreviewVoice()}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-rose-500/10 border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 transition flex items-center gap-1 cursor-pointer"
+                        disabled={isVoiceLoading}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-rose-500/10 border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 transition flex items-center gap-1 cursor-pointer disabled:opacity-60"
                       >
-                        {isVoicePlaying ? (
+                        {isVoiceLoading ? (
+                          <>
+                            <RefreshCw className="w-3 h-3 text-rose-400 animate-spin" />
+                            <span>Đang tạo giọng...</span>
+                          </>
+                        ) : isVoicePlaying ? (
                           <>
                             <VolumeX className="w-3 h-3 text-rose-400" />
                             <span>Dừng nghe</span>

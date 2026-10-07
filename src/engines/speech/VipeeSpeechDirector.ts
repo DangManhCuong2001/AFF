@@ -223,14 +223,19 @@ export class VipeeTTSProvider implements TTSProvider {
           : 'vi-VN-HoaiMyNeural'
       const rate =
         plan.voicePreset === 'Energetic Seller'
-          ? '+15%'
-          : plan.voicePreset === 'Natural Friend'
           ? '+12%'
-          : plan.voicePreset === 'Curious Tester'
+          : plan.voicePreset === 'Natural Friend'
           ? '+10%'
-          : '+6%'
+          : plan.voicePreset === 'Curious Tester'
+          ? '+8%'
+          : '+5%'
 
       for (let i = 0; i < plan.segments.length; i++) {
+        if (i > 0) {
+          // Micro-pause between network synthesis calls to maintain connection health
+          await new Promise((r) => setTimeout(r, 150))
+        }
+
         const seg = plan.segments[i]
         const rawChunkBuffer = await generateVietnameseTTS(seg.ttsScript, { voice, rate })
         const rawSegPath = path.join(tempDir, `raw_seg_${i}.mp3`)
