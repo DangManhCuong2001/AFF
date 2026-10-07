@@ -359,7 +359,24 @@ export default function CreateVideoPage() {
         formData.append('storyboard', JSON.stringify(analysisResult.storyboard))
       }
 
-      // Attach primary image or first available asset
+      // Attach all gallery images: both uploaded files and external URLs
+      const imageFiles = product.assets
+        .filter((a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && a.file)
+        .map((a) => a.file!)
+
+      for (const f of imageFiles) {
+        formData.append('images', f)
+      }
+
+      const imageUrls = product.assets
+        .filter((a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && a.url && !a.file)
+        .map((a) => a.url)
+
+      if (imageUrls.length > 0) {
+        formData.append('imageUrls', JSON.stringify(imageUrls))
+      }
+
+      // Single image fallback
       const primaryAsset = product.assets.find((a) => a.isPrimary) || product.assets[0]
       if (primaryAsset?.file) {
         formData.append('image', primaryAsset.file)

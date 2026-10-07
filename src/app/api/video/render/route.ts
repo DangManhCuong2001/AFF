@@ -77,19 +77,42 @@ export async function POST(request: NextRequest) {
       ]
     }
 
-    const imageFile = formData.get('image') as File | null
-    let imageBuffer: Buffer | undefined
+    // 1. Check for multiple image files
+    const imageFiles = formData.getAll('images') as File[]
+    const imageBuffers: Buffer[] = []
 
-    if (imageFile && typeof imageFile.arrayBuffer === 'function') {
-      const bytes = await imageFile.arrayBuffer()
-      imageBuffer = Buffer.from(bytes)
+    for (const f of imageFiles) {
+      if (f && typeof f.arrayBuffer === 'function') {
+        const bytes = await f.arrayBuffer()
+        imageBuffers.push(Buffer.from(bytes))
+      }
+    }
+
+    // Single image file fallback
+    const singleImageFile = formData.get('image') as File | null
+    if (singleImageFile && typeof singleImageFile.arrayBuffer === 'function' && imageBuffers.length === 0) {
+      const bytes = await singleImageFile.arrayBuffer()
+      imageBuffers.push(Buffer.from(bytes))
+    }
+
+    // 2. Check for image URLs (e.g. from TikTok Shop CDN)
+    let imageUrls: string[] = []
+    const imageUrlsRaw = formData.get('imageUrls') as string | null
+    if (imageUrlsRaw) {
+      try {
+        const parsed = JSON.parse(imageUrlsRaw)
+        if (Array.isArray(parsed)) imageUrls = parsed
+      } catch (e) {
+        console.warn('Failed to parse imageUrls JSON:', e)
+      }
     }
 
     const result = await renderProductVideo({
       productName,
       price,
       scenes,
-      imageBuffer,
+      imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
+      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
     })
 
     return NextResponse.json({

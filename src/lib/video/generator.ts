@@ -40,6 +40,8 @@ export interface RenderVideoParams {
   price?: number
   scenes: StoryboardScene[]
   imageBuffer?: Buffer
+  imageBuffers?: Buffer[]
+  imageUrls?: string[]
   imageMimeType?: string
 }
 
@@ -72,14 +74,45 @@ export async function renderProductVideo(
   fs.mkdirSync(tempDir, { recursive: true })
 
   try {
-    // 1. Prepare Product Image
-    const inputImagePath = path.join(tempDir, 'product_input.png')
-    if (params.imageBuffer && params.imageBuffer.length > 0) {
-      fs.writeFileSync(inputImagePath, params.imageBuffer)
-    } else {
-      // Create a solid fallback image with product title
-      const createImgCmd = `${ffmpeg} -y -f lavfi -i color=c=0x18181b:s=800x800:d=1 -vframes 1 "${inputImagePath}"`
+    // 1. Prepare Product Images for each scene
+    const availableImagePaths: string[] = []
+
+    if (params.imageBuffers && params.imageBuffers.length > 0) {
+      for (let idx = 0; idx < params.imageBuffers.length; idx++) {
+        const imgPath = path.join(tempDir, `product_img_${idx}.png`)
+        fs.writeFileSync(imgPath, params.imageBuffers[idx])
+        availableImagePaths.push(imgPath)
+      }
+    } else if (params.imageUrls && params.imageUrls.length > 0) {
+      for (let idx = 0; idx < params.imageUrls.length; idx++) {
+        try {
+          const imgRes = await fetch(params.imageUrls[idx], {
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            },
+          })
+          if (imgRes.ok) {
+            const buf = Buffer.from(await imgRes.arrayBuffer())
+            const imgPath = path.join(tempDir, `product_img_${idx}.png`)
+            fs.writeFileSync(imgPath, buf)
+            availableImagePaths.push(imgPath)
+          }
+        } catch (e) {
+          console.warn(`[VideoGenerator] Failed to fetch image ${idx}:`, e)
+        }
+      }
+    } else if (params.imageBuffer && params.imageBuffer.length > 0) {
+      const imgPath = path.join(tempDir, 'product_img_0.png')
+      fs.writeFileSync(imgPath, params.imageBuffer)
+      availableImagePaths.push(imgPath)
+    }
+
+    if (availableImagePaths.length === 0) {
+      const fallbackPath = path.join(tempDir, 'product_img_fallback.png')
+      const createImgCmd = `${ffmpeg} -y -f lavfi -i color=c=0x18181b:s=800x800:d=1 -vframes 1 "${fallbackPath}"`
       await execPromise(createImgCmd)
+      availableImagePaths.push(fallbackPath)
     }
 
     // 2. Generate Voiceover MP3 for each scene and track audio files
@@ -154,10 +187,12 @@ export async function renderProductVideo(
           : `[b2]drawtext=text='Gio hang o goc trai man hinh'${fontParam}:fontcolor=0x38bdf8:fontsize=38:x=(w-text_w)/2:y=1480:box=1:boxcolor=0x0c4a6e@0.8:boxborderw=18[out]`,
       ].join(';')
 
+      const sceneImgPath = availableImagePaths[i % availableImagePaths.length]
+
       const cmd = [
         `"${ffmpeg}" -y`,
         `-f lavfi -i color=c=0x09090b:s=1080x1920:d=3:r=30`,
-        `-loop 1 -t 3 -i "${inputImagePath}"`,
+        `-loop 1 -t 3 -i "${sceneImgPath}"`,
         `-filter_complex "${filterComplex}"`,
         `-map "[out]"`,
         `-c:v libx264 -pix_fmt yuv420p -r 30`,

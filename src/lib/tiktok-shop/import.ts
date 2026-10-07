@@ -103,11 +103,49 @@ export async function importTikTokShopProduct(rawUrl: string): Promise<TikTokSho
       .replace(/\s*\|\s*TikTok Shop.*$/i, '')
       .trim()
 
-    // 2. Extract Product Image
+    // 2. Extract ALL Product Images from Gallery
+    const assets: ProductAsset[] = []
+    const seenHashes = new Set<string>()
+
+    // Check og:image first
     const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*)["']/i)
-    let imageUrl = ogImageMatch?.[1] || ''
-    if (imageUrl) {
-      imageUrl = imageUrl.replace(/&amp;/g, '&')
+    let primaryImageUrl = ogImageMatch?.[1] || ''
+    if (primaryImageUrl) {
+      primaryImageUrl = primaryImageUrl.replace(/&amp;/g, '&')
+      const hashMatch = primaryImageUrl.match(/tos-maliva[a-zA-Z0-9_\-]+\/([a-f0-9]{32})/)
+      if (hashMatch) seenHashes.add(hashMatch[1])
+
+      assets.push({
+        id: 'asset-imported-' + Date.now() + '-0',
+        name: `${title || 'Sản phẩm'} (Ảnh chính).jpg`,
+        type: 'PRODUCT_IMAGE',
+        url: primaryImageUrl,
+        size: 0,
+        isPrimary: true,
+      })
+    }
+
+    // Extract all secondary gallery images from page HTML
+    const imgRegex = /https:\/\/[^"'<>\s]+\/tos-maliva-[^"'<>\s]+(?:800:800|\.jpeg|\.webp)[^"'<>\s]*/gi
+    const rawMatches = html.match(imgRegex) || []
+
+    for (const m of rawMatches) {
+      const hashMatch = m.match(/tos-maliva[a-zA-Z0-9_\-]+\/([a-f0-9]{32})/)
+      if (hashMatch) {
+        const hash = hashMatch[1]
+        if (!seenHashes.has(hash) && assets.length < 8) {
+          seenHashes.add(hash)
+          const highResUrl = `https://p16-oec-va.ibyteimg.com/tos-maliva-i-o3syd03w52-us/${hash}~tplv-o3syd03w52-resize-jpeg:800:800.jpeg`
+          assets.push({
+            id: 'asset-imported-' + Date.now() + '-' + assets.length,
+            name: `${title || 'Sản phẩm'} (Góc ${assets.length + 1}).jpg`,
+            type: 'DETAIL_IMAGE',
+            url: highResUrl,
+            size: 0,
+            isPrimary: assets.length === 0,
+          })
+        }
+      }
     }
 
     // 3. Extract Description
@@ -125,19 +163,6 @@ export async function importTikTokShopProduct(rawUrl: string): Promise<TikTokSho
     } else if (formatPriceMatch && formatPriceMatch[1]) {
       const numStr = formatPriceMatch[1].replace(/[^\d]/g, '')
       if (numStr) price = parseInt(numStr, 10)
-    }
-
-    // Build Assets array if image found
-    const assets: ProductAsset[] = []
-    if (imageUrl) {
-      assets.push({
-        id: 'asset-imported-' + Date.now(),
-        name: `${title || 'Sản phẩm'}.jpg`,
-        type: 'PRODUCT_IMAGE',
-        url: imageUrl,
-        size: 0,
-        isPrimary: true,
-      })
     }
 
     if (title && title.length > 2) {
