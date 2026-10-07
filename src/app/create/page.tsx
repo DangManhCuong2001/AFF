@@ -643,7 +643,18 @@ export default function CreateVideoPage() {
         body: formData,
       })
 
-      const data = await res.json()
+      let data: any
+      const rawText = await res.text()
+      try {
+        data = JSON.parse(rawText)
+      } catch {
+        throw new Error(
+          !res.ok
+            ? `Máy chủ phản hồi mã lỗi ${res.status}. Vui lòng thử lại.`
+            : 'Phản hồi không hợp lệ: ' + rawText.slice(0, 100)
+        )
+      }
+
       if (!res.ok || data.error) {
         throw new Error(data.error || 'Render video thất bại')
       }

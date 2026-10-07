@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      videoUrl: `/renders/${result.fileName}`,
+      videoUrl: `/api/video/stream?file=${result.fileName}`,
       fileName: result.fileName,
       duration: result.duration,
       fileSizeBytes: result.fileSizeBytes,

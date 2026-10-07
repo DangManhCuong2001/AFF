@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { generateVietnameseTTS } from '@/lib/audio/tts'
@@ -45,7 +46,7 @@ export async function renderProductVideo(
   params: RenderVideoParams
 ): Promise<RenderVideoResult> {
   const ffmpeg = getFfmpegBinaryPath()
-  const tempDir = path.join('/tmp', 'aff-render-' + Date.now())
+  const tempDir = path.join(os.tmpdir(), 'aff-render-' + Date.now())
   fs.mkdirSync(tempDir, { recursive: true })
 
   try {
@@ -252,7 +253,7 @@ export async function renderProductVideo(
         `-loop 1 -t ${sceneDuration} -i "${sceneImgPath}"`,
         `-filter_complex "${filterComplex}"`,
         `-map "[out]"`,
-        `-c:v libx264 -pix_fmt yuv420p -r 30`,
+        `-c:v libx264 -preset ultrafast -tune fastdecode -pix_fmt yuv420p -r 30`,
         `"${segPath}"`,
       ].join(' ')
 
@@ -277,7 +278,7 @@ export async function renderProductVideo(
           `-loop 1 -t ${sceneDuration} -i "${sceneImgPath}"`,
           `-filter_complex "${fallbackFilterComplex}"`,
           `-map "[out]"`,
-          `-c:v libx264 -pix_fmt yuv420p -r 30`,
+          `-c:v libx264 -preset ultrafast -tune fastdecode -pix_fmt yuv420p -r 30`,
           `"${segPath}"`,
         ].join(' ')
 
@@ -299,16 +300,24 @@ export async function renderProductVideo(
 
     // 6. Final Sound Design: Combine Video + Master Voice + Synced SFX + Ducked BGM into final MP4
     const outputFileName = `product_video_${Date.now()}.mp4`
-    const outputDir = path.join(process.cwd(), 'public', 'renders')
-    fs.mkdirSync(outputDir, { recursive: true })
-    const finalOutputPath = path.join(outputDir, outputFileName)
+    const tmpRendersDir = path.join(os.tmpdir(), 'renders')
+    fs.mkdirSync(tmpRendersDir, { recursive: true })
+    const finalOutputPath = path.join(tmpRendersDir, outputFileName)
 
-    const bgmPath = path.join(process.cwd(), 'public', 'music', 'lofi-beat.aac')
-    const whooshPath = path.join(process.cwd(), 'public', 'sfx', 'whoosh.mp3')
-    const popPath = path.join(process.cwd(), 'public', 'sfx', 'pop.mp3')
+    const bgmCandidates = [
+      path.join(process.cwd(), 'src', 'assets', 'music', 'lofi-beat.aac'),
+      path.join(process.cwd(), 'public', 'music', 'lofi-beat.aac'),
+    ]
+    const bgmPath = bgmCandidates.find((p) => fs.existsSync(p)) || ''
 
-    const hasBgm = fs.existsSync(bgmPath)
-    const hasWhoosh = fs.existsSync(whooshPath)
+    const whooshCandidates = [
+      path.join(process.cwd(), 'src', 'assets', 'sfx', 'whoosh.mp3'),
+      path.join(process.cwd(), 'public', 'sfx', 'whoosh.mp3'),
+    ]
+    const whooshPath = whooshCandidates.find((p) => fs.existsSync(p)) || ''
+
+    const hasBgm = Boolean(bgmPath)
+    const hasWhoosh = Boolean(whooshPath)
 
     let finalCmd: string
     if (hasBgm && hasWhoosh) {
@@ -347,6 +356,15 @@ export async function renderProductVideo(
     }
 
     await execPromise(finalCmd)
+
+    // Best-effort mirror to public/renders for local development (safe on read-only environments)
+    try {
+      const publicDir = path.join(process.cwd(), 'public', 'renders')
+      fs.mkdirSync(publicDir, { recursive: true })
+      fs.copyFileSync(finalOutputPath, path.join(publicDir, outputFileName))
+    } catch {
+      // Ignore EROFS on read-only serverless filesystems like Vercel
+    }
 
     const stats = fs.statSync(finalOutputPath)
 

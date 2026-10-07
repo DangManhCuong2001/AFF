@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
     '/api/**/*': [
       './public/**/*',
       './src/assets/**/*',
+      './node_modules/ffmpeg-static/**/*',
     ],
   },
 };
