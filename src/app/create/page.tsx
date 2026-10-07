@@ -643,30 +643,42 @@ export default function CreateVideoPage() {
         body: formData,
       })
 
-      let data: any
-      const rawText = await res.text()
-      try {
-        data = JSON.parse(rawText)
-      } catch {
-        throw new Error(
-          !res.ok
-            ? `Máy chủ phản hồi mã lỗi ${res.status}. Vui lòng thử lại.`
-            : 'Phản hồi không hợp lệ: ' + rawText.slice(0, 100)
-        )
+      if (!res.ok) {
+        let errMsg = 'Render video thất bại'
+        try {
+          const errData = await res.json()
+          errMsg = errData.error || errMsg
+        } catch {
+          const text = await res.text()
+          errMsg = text.slice(0, 150) || errMsg
+        }
+        throw new Error(errMsg)
       }
 
-      if (!res.ok || data.error) {
-        throw new Error(data.error || 'Render video thất bại')
+      const contentType = res.headers.get('content-type') || ''
+      let videoBlobUrl = ''
+      let file: File
+      let fileName = `product_video_${Date.now()}.mp4`
+      let fileSizeBytes = 0
+
+      if (contentType.includes('application/json')) {
+        const data = await res.json()
+        fileName = data.fileName || fileName
+        fileSizeBytes = data.fileSizeBytes || 0
+        videoBlobUrl = data.videoUrl
+        const videoBlobRes = await fetch(data.videoUrl)
+        const blob = await videoBlobRes.blob()
+        file = new File([blob], fileName, { type: 'video/mp4' })
+      } else {
+        // Direct MP4 binary response (instant playback, 100% resilient across serverless Lambda instances)
+        const blob = await res.blob()
+        videoBlobUrl = URL.createObjectURL(blob)
+        fileName = res.headers.get('X-Video-Filename') || fileName
+        fileSizeBytes = Number(res.headers.get('X-Video-Filesize')) || blob.size
+        file = new File([blob], fileName, { type: 'video/mp4' })
       }
 
-      setRenderedVideoUrl(data.videoUrl)
-
-      // Fetch blob to prepare real File object for TikTok publish
-      const videoBlobRes = await fetch(data.videoUrl)
-      const blob = await videoBlobRes.blob()
-      const file = new File([blob], data.fileName || 'product_video.mp4', {
-        type: 'video/mp4',
-      })
+      setRenderedVideoUrl(videoBlobUrl)
       setRenderedVideoFile(file)
 
       setGenerationProgress((prev) => ({
@@ -674,7 +686,7 @@ export default function CreateVideoPage() {
         percent: 100,
         logs: [
           ...prev.logs,
-          `Xuất thành công: ${data.fileName} (${(data.fileSizeBytes / 1024).toFixed(1)} KB)`,
+          `Xuất thành công: ${fileName} (${(fileSizeBytes / 1024).toFixed(1)} KB)`,
           'Video MP4 sẵn sàng xem trước và đăng trực tiếp lên TikTok!',
         ],
       }))

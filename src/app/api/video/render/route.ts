@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import fs from 'fs'
 import { renderProductVideo } from '@/lib/video/generator'
 import { StoryboardScene } from '@/engines/core/types'
 
@@ -148,12 +149,19 @@ export async function POST(request: NextRequest) {
       voicePreset,
     })
 
-    return NextResponse.json({
-      success: true,
-      videoUrl: `/api/video/stream?file=${result.fileName}`,
-      fileName: result.fileName,
-      duration: result.duration,
-      fileSizeBytes: result.fileSizeBytes,
+    // Return direct MP4 stream for 100% resilience on serverless Lambda environments
+    const fileBuffer = fs.readFileSync(result.filePath)
+
+    return new NextResponse(fileBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'video/mp4',
+        'Content-Length': String(result.fileSizeBytes),
+        'X-Video-Filename': result.fileName,
+        'X-Video-Duration': String(result.duration),
+        'X-Video-Filesize': String(result.fileSizeBytes),
+        'Cache-Control': 'no-store',
+      },
     })
   } catch (err: unknown) {
     console.error('[VideoRenderAPI] Error:', err)
@@ -163,3 +171,4 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+

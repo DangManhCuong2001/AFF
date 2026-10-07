@@ -224,28 +224,29 @@ export async function renderProductVideo(
       // 6. Main Headline (Bold white with heavy black stroke - CapCut style, NO black box)
       // 7. Dynamic Voice Subtitle (High-contrast yellow with black stroke - NO black box)
       // 8. Bottom High-CTR Affiliate CTA Pill (Vibrant Rose/Red pill)
+      // Multi-layer FFmpeg filtergraph (720x1280 9:16 vertical UGC format):
       const filterComplex = [
         // 1. Animated background with smooth multi-threaded parallax drift
-        `[0:v]scale='1080*(1+${bgScaleRate}*t)':'1920*(1+${bgScaleRate}*t)':eval=frame,crop=1080:1920[bg]`,
-        // 2. Product Card: Scaled inside a sleek frosted card (780x780) with dynamic Ken Burns zoom
-        `[1:v]scale=740:740:force_original_aspect_ratio=decrease,pad=780:780:(ow-iw)/2:(oh-ih)/2:color=0x000000@0.25,scale='780*(1+${prodScaleRate}*t)':'780*(1+${prodScaleRate}*t)':eval=frame[prod]`,
+        `[0:v]scale='720*(1+${bgScaleRate}*t)':'1280*(1+${bgScaleRate}*t)':eval=frame,crop=720:1280[bg]`,
+        // 2. Product Card: Scaled inside a sleek frosted card (520x520) with dynamic Ken Burns zoom
+        `[1:v]scale=500:500:force_original_aspect_ratio=decrease,pad=520:520:(ow-iw)/2:(oh-ih)/2:color=0x000000@0.25,scale='520*(1+${prodScaleRate}*t)':'520*(1+${prodScaleRate}*t)':eval=frame[prod]`,
         // 3. Composite product over background keeping center position
-        `[bg][prod]overlay=(W-w)/2:460-(h-780)/2[comp]`,
+        `[bg][prod]overlay=(W-w)/2:310-(h-520)/2[comp]`,
         // 4. Animated TikTok Progress Line at top
-        `[comp]drawbox=x=0:y=0:w='iw*t/${sceneDuration}':h=12:color=0xf43f5e@0.95:t=fill[prog]`,
+        `[comp]drawbox=x=0:y=0:w='iw*t/${sceneDuration}':h=8:color=0xf43f5e@0.95:t=fill[prog]`,
         // 5. Top Story Beat Badge
-        `[prog]drawtext=text='${badgeText}'${fontParam}:fontcolor=0xfacc15:fontsize=32:x=(w-text_w)/2:y=160:box=1:boxcolor=0x000000@0.75:boxborderw=14[b1]`,
+        `[prog]drawtext=text='${badgeText}'${fontParam}:fontcolor=0xfacc15:fontsize=22:x=(w-text_w)/2:y=105:box=1:boxcolor=0x000000@0.75:boxborderw=10[b1]`,
         // 6. Main Headline (Bold white with heavy black stroke, CapCut style)
-        `[b1]drawtext=text='${headlineEscaped}'${fontParam}:fontcolor=white:fontsize=50:borderw=6:bordercolor=black:shadowcolor=black@0.8:shadowx=3:shadowy=3:x=(w-text_w)/2:y=240[b2]`,
+        `[b1]drawtext=text='${headlineEscaped}'${fontParam}:fontcolor=white:fontsize=34:borderw=4:bordercolor=black:shadowcolor=black@0.8:shadowx=2:shadowy=2:x=(w-text_w)/2:y=160[b2]`,
         // 7. Dynamic Subtitle (Yellow punchy text with black stroke)
-        `[b2]drawtext=text='${voiceSubtitle}'${fontParam}:fontcolor=0xfef08a:fontsize=36:borderw=4:bordercolor=black:shadowcolor=black@0.8:shadowx=2:shadowy=2:x=(w-text_w)/2:y=1360[b3]`,
+        `[b2]drawtext=text='${voiceSubtitle}'${fontParam}:fontcolor=0xfef08a:fontsize=24:borderw=3:bordercolor=black:shadowcolor=black@0.8:shadowx=2:shadowy=2:x=(w-text_w)/2:y=910[b3]`,
         // 8. Bottom TikTok Shop High-CTR Pill
-        `[b3]drawtext=text='🛒 GIỎ HÀNG GÓC TRÁI • XEM NGAY'${fontParam}:fontcolor=white:fontsize=36:x=(w-text_w)/2:y=1500:box=1:boxcolor=0xe11d48@0.95:boxborderw=18[out]`,
+        `[b3]drawtext=text='🛒 GIỎ HÀNG GÓC TRÁI • XEM NGAY'${fontParam}:fontcolor=white:fontsize=24:x=(w-text_w)/2:y=1000:box=1:boxcolor=0xe11d48@0.95:boxborderw=12[out]`,
       ].join(';')
 
       const bgInput = hasBgImage
         ? `-loop 1 -t ${sceneDuration} -i "${bgImagePath}"`
-        : `-f lavfi -i color=c=0x18181b:s=1080x1920:d=${sceneDuration}:r=30`
+        : `-f lavfi -i color=c=0x18181b:s=720x1280:d=${sceneDuration}:r=30`
 
       const cmd = [
         `"${ffmpeg}" -y`,
@@ -253,7 +254,7 @@ export async function renderProductVideo(
         `-loop 1 -t ${sceneDuration} -i "${sceneImgPath}"`,
         `-filter_complex "${filterComplex}"`,
         `-map "[out]"`,
-        `-c:v libx264 -preset ultrafast -tune fastdecode -pix_fmt yuv420p -r 30`,
+        `-c:v libx264 -preset ultrafast -tune fastdecode -crf 26 -pix_fmt yuv420p -r 30`,
         `"${segPath}"`,
       ].join(' ')
 
@@ -267,9 +268,9 @@ export async function renderProductVideo(
 
         // Resilient Fallback: If drawtext fails due to font or environment issues, render clean Ken Burns product video
         const fallbackFilterComplex = [
-          `[0:v]scale='1080*(1+${bgScaleRate}*t)':'1920*(1+${bgScaleRate}*t)':eval=frame,crop=1080:1920[bg]`,
-          `[1:v]scale=740:740:force_original_aspect_ratio=decrease,pad=780:780:(ow-iw)/2:(oh-ih)/2:color=0x000000@0.25,scale='780*(1+${prodScaleRate}*t)':'780*(1+${prodScaleRate}*t)':eval=frame[prod]`,
-          `[bg][prod]overlay=(W-w)/2:460-(h-780)/2[out]`,
+          `[0:v]scale='720*(1+${bgScaleRate}*t)':'1280*(1+${bgScaleRate}*t)':eval=frame,crop=720:1280[bg]`,
+          `[1:v]scale=500:500:force_original_aspect_ratio=decrease,pad=520:520:(ow-iw)/2:(oh-ih)/2:color=0x000000@0.25,scale='520*(1+${prodScaleRate}*t)':'520*(1+${prodScaleRate}*t)':eval=frame[prod]`,
+          `[bg][prod]overlay=(W-w)/2:310-(h-520)/2[out]`,
         ].join(';')
 
         const fallbackCmd = [
@@ -278,7 +279,7 @@ export async function renderProductVideo(
           `-loop 1 -t ${sceneDuration} -i "${sceneImgPath}"`,
           `-filter_complex "${fallbackFilterComplex}"`,
           `-map "[out]"`,
-          `-c:v libx264 -preset ultrafast -tune fastdecode -pix_fmt yuv420p -r 30`,
+          `-c:v libx264 -preset ultrafast -tune fastdecode -crf 26 -pix_fmt yuv420p -r 30`,
           `"${segPath}"`,
         ].join(' ')
 
