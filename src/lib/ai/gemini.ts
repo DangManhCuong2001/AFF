@@ -16,39 +16,46 @@ export interface GeminiAnalysisResponse {
 }
 
 const GEMINI_SYSTEM_PROMPT = `Bạn là Đạo diễn Video & Chuyên gia Tăng trưởng TikTok UGC hàng đầu cho TikTok Shop Affiliate tại Việt Nam.
-Nhiệm vụ của bạn: Nhận thông tin sản phẩm và phân tích chiến lược, viết kịch bản video TikTok 15 giây (5 phân cảnh, mỗi cảnh 3 giây) có tỷ lệ chuyển đổi cao nhất.
+Nhiệm vụ của bạn: Nhận thông tin sản phẩm và phân tích chiến lược, viết kịch bản video TikTok chuyển đổi cao với độ dài theo yêu cầu (15 giây, 30 giây hoặc 45 giây).
 
 CÁC NGUYÊN TẮC BẮT BUỘC:
 1. REAL PRODUCT FIRST: Bám sát đặc tính thực tế của sản phẩm từ mô tả. Không bịa đặt tính năng không có thật.
 2. 3-SECOND ORGANIC HOOK: 3 giây đầu phải chạm đúng nỗi đau (pain point) hoặc thói quen khó chịu thường ngày của người dùng. Tránh văn phong quảng cáo truyền thống, hãy dùng văn phong người dùng thật chia sẻ kinh nghiệm ("Bực mình nhất là...", "Ai hay bị...", "Đừng vội mua... nếu chưa biết cái này").
-3. 5 PHÂN CẢNH (15 GIÂY):
-   - Scene 1 (0-3s, type: "hook"): Hook giật gân, khơi gợi vấn đề.
-   - Scene 2 (3-6s, type: "problem"): Nỗi đau & tình trạng lộn xộn/khó khăn khi chưa có sản phẩm.
-   - Scene 3 (6-9s, type: "demo"): Cơ chế sản phẩm giải quyết vấn đề (cách hoạt động thực tế).
-   - Scene 4 (9-12s, type: "benefit"): Lợi ích, cảm giác tiện lợi & gọn gàng sau khi dùng.
-   - Scene 5 (12-15s, type: "cta"): Kêu gọi hành động (CTA) nhẹ nhàng, tự nhiên cho Affiliate.
-4. LỜI THOẠI (VOICEOVER): Tiếng Việt tự nhiên, súc tích, ngắt nghỉ hợp lý, độ dài mỗi câu từ 10 - 18 từ để đọc vừa vặn trong 3 giây.
-5. TIÊU ĐỀ CHỮ (HEADLINE): Ngắn gọn, giật tít, viết hoa từ khóa quan trọng để hiển thị trên màn hình dọc 9:16.
+3. QUY ĐỊNH THỜI LƯỢNG VÀ PHÂN CẢNH:
+   - Thời lượng 15 giây: 5 phân cảnh, mỗi cảnh 3 giây (Hook -> Problem -> Demo -> Benefit -> CTA).
+   - Thời lượng 30 giây: 6 phân cảnh, mỗi cảnh 5 giây (Hook -> Problem -> Chi tiết sản phẩm -> Demo giải pháp -> Lợi ích -> CTA).
+   - Thời lượng 45 giây: 9 phân cảnh, mỗi cảnh 5 giây (Hook -> Problem -> Chi tiết -> Cách dùng -> Cơ chế -> Lợi ích -> So sánh/Độ bền -> Đánh giá người dùng -> CTA).
+   Tổng duration của các cảnh phải bằng đúng thời lượng yêu cầu.
+4. TUYỆT ĐỐI KHÔNG NÓI HOẶC HIỂN THỊ TRỰC TIẾP GIÁ TIỀN (SỐ TIỀN CỤ THỂ):
+   - Không được viết hoặc đọc số tiền (như "150k", "155.000đ") vì giá TikTok Shop liên tục thay đổi theo Flash Sale và Voucher.
+   - Thay vào đó, hãy dùng lời kêu gọi tò mò: "Đang có deal cực hời kèm freeship", "Bấm ngay vào giỏ hàng góc trái săn ưu đãi nhé", "Xem giá ưu đãi hôm nay ở giỏ hàng góc trái".
+5. LỜI THOẠI (VOICEOVER): Tiếng Việt tự nhiên, súc tích, ngắt nghỉ hợp lý, khớp với thời lượng từng phân cảnh (khoảng 3 - 4 từ mỗi giây).
+6. TIÊU ĐỀ CHỮ (HEADLINE): Ngắn gọn (dưới 35 ký tự), giật tít, viết hoa từ khóa quan trọng để hiển thị trên màn hình dọc 9:16.
 
 TRẢ VỀ KẾT QUẢ DƯỚI DẠNG ĐÚNG ĐỊNH DẠNG JSON THEO SCHEMA ĐÃ ĐỊNH.`
 
 export async function analyzeProductWithGemini(
   product: ProductInput,
-  customApiKey?: string
+  customApiKey?: string,
+  targetDuration: 15 | 30 | 45 = 15
 ): Promise<GeminiAnalysisResponse> {
   const apiKey = customApiKey || process.env.GEMINI_API_KEY
 
   if (!apiKey || apiKey.trim() === '') {
     // Graceful fallback to algorithmic HomeUtilityEngine if no API key is provided
-    return fallbackToAlgorithmicEngine(product)
+    return fallbackToAlgorithmicEngine(product, targetDuration)
   }
+
+  const sceneCount = targetDuration === 45 ? 9 : targetDuration === 30 ? 6 : 5
+  const sceneSec = targetDuration === 15 ? 3 : 5
 
   const prompt = `Phân tích sản phẩm sau đây cho ngành hàng Home & Utility (Đồ gia dụng / Đồ tiện ích):
 - Tên sản phẩm: ${product.name}
-- Giá bán: ${product.price ? product.price.toLocaleString('vi-VN') + ' đ' : 'Chưa rõ'}
 - Mô tả / Tính năng: ${product.description || 'Sản phẩm tiện ích gia dụng'}
 - Đối tượng hướng tới: ${product.targetAudience || 'Người đi làm, gia đình, học sinh sinh viên'}
 - Danh mục: ${product.category}
+- THỜI LƯỢNG YÊU CẦU: ${targetDuration} GIÂY (Gồm chính xác ${sceneCount} phân cảnh, mỗi cảnh ${sceneSec} giây).
+- NGUYÊN TẮC: TUYỆT ĐỐI KHÔNG ghi số tiền hoặc nói giá tiền cụ thể trong kịch bản. Thay vào đó hãy kêu gọi bấm vào giỏ hàng góc trái màn hình nhận giá ưu đãi.
 
 Hãy trả về kết quả JSON với cấu trúc chính xác:
 {
@@ -71,13 +78,13 @@ Hãy trả về kết quả JSON với cấu trúc chính xác:
     "hook": "Câu mở đầu 3s giật gân, tự nhiên",
     "angle": "Góc tiếp cận bán hàng",
     "tone": "thân thiện, hữu ích",
-    "targetDuration": 15,
-    "cta": "Bấm vào giỏ hàng góc trái màn hình nhé",
+    "targetDuration": ${targetDuration},
+    "cta": "Bấm vào giỏ hàng góc trái săn ưu đãi nhé",
     "visualDirection": {
       "mood": "sáng sủa, gọn gàng",
       "lighting": "tự nhiên",
       "palette": ["#f8fafc", "#0f172a"],
-      "environment": "bàn làm việc hiện đại"
+      "environment": "không gian gia đình hiện đại"
     }
   },
   "storyboard": {
@@ -85,56 +92,16 @@ Hãy trả về kết quả JSON với cấu trúc chính xác:
       {
         "id": "scene-1",
         "type": "hook",
-        "duration": 3,
+        "duration": ${sceneSec},
         "headline": "Tiêu đề chữ ngắn gọn giật tít",
         "subheadline": "Mô tả phụ",
-        "voice": "Lời đọc tiếng Việt 3 giây",
+        "voice": "Lời đọc tiếng Việt",
         "visualPrompt": "Mô tả góc máy",
         "motionPreset": "zoom-in"
-      },
-      {
-        "id": "scene-2",
-        "type": "problem",
-        "duration": 3,
-        "headline": "Tiêu đề cảnh 2",
-        "subheadline": "Mô tả phụ",
-        "voice": "Lời đọc cảnh 2",
-        "visualPrompt": "Mô tả góc máy cảnh 2",
-        "motionPreset": "pan-right"
-      },
-      {
-        "id": "scene-3",
-        "type": "demo",
-        "duration": 3,
-        "headline": "Tiêu đề cảnh 3",
-        "subheadline": "Mô tả phụ",
-        "voice": "Lời đọc cảnh 3",
-        "visualPrompt": "Mô tả góc máy cảnh 3",
-        "motionPreset": "zoom-in"
-      },
-      {
-        "id": "scene-4",
-        "type": "benefit",
-        "duration": 3,
-        "headline": "Tiêu đề cảnh 4",
-        "subheadline": "Mô tả phụ",
-        "voice": "Lời đọc cảnh 4",
-        "visualPrompt": "Mô tả góc máy cảnh 4",
-        "motionPreset": "static"
-      },
-      {
-        "id": "scene-5",
-        "type": "cta",
-        "duration": 3,
-        "headline": "Tiêu đề cảnh 5 CTA",
-        "subheadline": "Mô tả phụ",
-        "voice": "Lời đọc cảnh 5",
-        "visualPrompt": "Mô tả góc máy cảnh 5",
-        "motionPreset": "zoom-out"
       }
     ]
   },
-  "suggestedCaption": "Nội dung caption TikTok tự nhiên kèm icon",
+  "suggestedCaption": "Nội dung caption TikTok tự nhiên kèm icon (không ghi giá tiền)",
   "suggestedHashtags": ["#dogiadung", "#meovat", "#tiktokmademebuyit", "#giadungthongminh", "#reviewgiadung"]
 }`
 
@@ -222,7 +189,7 @@ Hãy trả về kết quả JSON với cấu trúc chính xác:
         hook: parsed.strategy?.hook || `Đừng bỏ qua ${product.name} nếu bạn thích sự gọn gàng, tiện lợi!`,
         angle: parsed.strategy?.angle || 'Giải pháp tiện lợi cho gia đình',
         tone: parsed.strategy?.tone || 'hữu ích, tự nhiên',
-        targetDuration: parsed.strategy?.targetDuration || 15,
+        targetDuration: Number(parsed.strategy?.targetDuration) || targetDuration,
         cta: parsed.strategy?.cta || 'Bấm vào góc trái màn hình nhé',
         visualDirection: parsed.strategy?.visualDirection || {
           mood: 'gọn gàng, sáng sủa',
@@ -232,7 +199,7 @@ Hãy trả về kết quả JSON với cấu trúc chính xác:
         },
       },
       storyboard: {
-        totalDuration: 15,
+        totalDuration: targetDuration,
         scenes: mappedScenes,
       },
       suggestedCaption: parsed.suggestedCaption || `${product.name} nhỏ gọn mà tiện bất ngờ!`,
@@ -246,14 +213,17 @@ Hãy trả về kết quả JSON với cấu trúc chính xác:
   }
 
   console.warn('[Gemini API] All candidate models exhausted, falling back to algorithmic engine:', lastError)
-  return fallbackToAlgorithmicEngine(product)
+  return fallbackToAlgorithmicEngine(product, targetDuration)
 }
 
-async function fallbackToAlgorithmicEngine(product: ProductInput): Promise<GeminiAnalysisResponse> {
+async function fallbackToAlgorithmicEngine(
+  product: ProductInput,
+  targetDuration: 15 | 30 | 45 = 15
+): Promise<GeminiAnalysisResponse> {
   const engine = new HomeUtilityEngine()
   const analysis = await engine.analyzeProduct(product)
-  const strategy = await engine.generateStrategy(product, analysis)
-  const storyboard = await engine.generateStoryboard(product, strategy)
+  const strategy = await engine.generateStrategy(product, analysis, targetDuration)
+  const storyboard = await engine.generateStoryboard(product, strategy, targetDuration)
 
   return {
     analysis,

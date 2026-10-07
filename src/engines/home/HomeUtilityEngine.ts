@@ -71,7 +71,8 @@ export class HomeUtilityEngine implements ProductVideoEngine {
    */
   async generateStrategy(
     product: ProductInput,
-    analysis: ProductAnalysis
+    analysis: ProductAnalysis,
+    targetDuration: number = 15
   ): Promise<VideoStrategy> {
     const format = analysis.recommendedFormat || 'problem-solution'
     const nameLower = (product.name || '').toLowerCase()
@@ -90,9 +91,7 @@ export class HomeUtilityEngine implements ProductVideoEngine {
       hook = `Bạn đã biết đến ${product.name} cực kỳ tiện lợi này chưa?`
     }
 
-    const ctaText = isKitchen
-      ? 'Muốn góc bếp gọn gàng hơn thì mình để sản phẩm ở giỏ hàng góc trái nhé.'
-      : 'Mình để thông tin và giá ưu đãi ở giỏ hàng góc trái màn hình nhé.'
+    const ctaText = 'Mình để thông tin và ưu đãi ở giỏ hàng góc trái màn hình, nhanh tay bấm vào nhận mã freeship nhé.'
 
     return {
       concept: `Giải quyết vấn đề bất tiện thực tế tại nhà với ${product.name}`,
@@ -100,7 +99,7 @@ export class HomeUtilityEngine implements ProductVideoEngine {
       hook,
       angle: 'Góc nhìn chân thật người dùng trải nghiệm thực tế tại nhà (Organic TikTok UGC)',
       tone: 'Gần gũi, thực tế, trò chuyện tự nhiên, không quảng cáo nói quá',
-      targetDuration: 15,
+      targetDuration,
       cta: ctaText,
       visualDirection: {
         mood: 'Sáng sủa, hiện đại, sạch sẽ và ngăn nắp',
@@ -112,11 +111,12 @@ export class HomeUtilityEngine implements ProductVideoEngine {
   }
 
   /**
-   * Generate structured 15-second storyboard
+   * Generate structured storyboard (15s, 30s, or 45s)
    */
   async generateStoryboard(
     product: ProductInput,
-    strategy: VideoStrategy
+    strategy: VideoStrategy,
+    targetDuration: number = 15
   ): Promise<VideoStoryboard> {
     const assets = product.assets || []
     const primaryAssetId = assets.find((a) => a.isPrimary)?.id || assets[0]?.id || 'asset-1'
@@ -162,78 +162,305 @@ export class HomeUtilityEngine implements ProductVideoEngine {
       ? `Bàn làm việc nhìn gọn hơn hẳn, dây sạc cần là với tay lấy được ngay.`
       : `Không gian nhà gọn gàng, đẹp mắt hơn hẳn, cần dùng là thấy ngay.`
 
-    const scenes: StoryboardScene[] = [
-      {
-        id: 'scene-1',
-        type: 'hook',
-        duration: 2.5,
-        voice: strategy.hook,
-        tts: strategy.hook,
-        headline: scene1Headline,
-        subheadline: 'Bực mình nhất mỗi lần tìm đồ',
-        keywords: scene1Keywords,
-        productAssetIds: [primaryAssetId],
-        backgroundType: 'cluttered_desk_context',
-        visualPrompt: 'modern minimalist home context with clean ambient light, 9:16 vertical, no product, soft shadow',
-        motionPreset: 'slow_push_in',
-      },
-      {
-        id: 'scene-2',
-        type: 'product_hero',
-        duration: 3.5,
-        voice: scene2Voice,
-        tts: scene2Voice,
-        headline: product.name.slice(0, 30),
-        subheadline: 'Thiết kế thông minh, bám dính chắc chắn',
-        keywords: [product.name, 'chắc chắn', 'tiện lợi'],
-        productAssetIds: [primaryAssetId],
-        backgroundType: 'clean_surface',
-        visualPrompt: 'bright clean surface, warm sunlight, minimal Scandinavian interior, vertical 9:16',
-        motionPreset: 'parallax_float',
-      },
-      {
-        id: 'scene-3',
-        type: 'demo',
-        duration: 4.5,
-        voice: scene3Voice,
-        tts: scene3Voice,
-        headline: scene3Headline,
-        subheadline: 'Không còn cảnh bừa bộn tìm đồ',
-        keywords: ['gọn gàng', 'cố định', 'tiện dụng'],
-        productAssetIds: [secondaryAssetId],
-        backgroundType: 'setup_action',
-        visualPrompt: 'aesthetic space edge, clean minimalist apartment, vertical 9:16',
-        motionPreset: 'subtle_zoom',
-      },
-      {
-        id: 'scene-4',
-        type: 'result',
-        duration: 2.5,
-        voice: scene4Voice,
-        tts: scene4Voice,
-        headline: 'Không gian gọn gàng 100%',
-        subheadline: 'Tiết kiệm thời gian, thẩm mỹ cao',
-        keywords: ['ngăn nắp', 'thẩm mỹ', 'gọn gàng'],
-        productAssetIds: [primaryAssetId],
-        backgroundType: 'clean_organized_result',
-        visualPrompt: 'modern tidy aesthetic setup, warm daylight, vertical 9:16',
-        motionPreset: 'slow_pan',
-      },
-      {
-        id: 'scene-5',
-        type: 'cta',
-        duration: 2.0,
-        voice: strategy.cta,
-        tts: strategy.cta,
-        headline: 'Xem chi tiết ở góc trái',
-        subheadline: product.price ? `Giá ưu đãi chỉ ${typeof product.price === 'number' ? product.price.toLocaleString('vi-VN') : product.price}đ` : 'Xem trong giỏ hàng',
-        keywords: ['giỏ hàng', 'ưu đãi', 'mua ngay'],
-        productAssetIds: [primaryAssetId],
-        backgroundType: 'cta_gradient',
-        visualPrompt: 'soft neutral gradient background with warm indoor ambiance, 9:16',
-        motionPreset: 'scale_up',
-      },
-    ]
+    let scenes: StoryboardScene[] = []
+
+    if (targetDuration === 30) {
+      // 30 seconds = 6 scenes x 5 seconds
+      scenes = [
+        {
+          id: 'scene-1',
+          type: 'hook',
+          duration: 5,
+          voice: strategy.hook,
+          tts: strategy.hook,
+          headline: scene1Headline,
+          subheadline: 'Bực mình nhất mỗi lần tìm đồ',
+          keywords: scene1Keywords,
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'cluttered_desk_context',
+          visualPrompt: 'modern minimalist home context with clean ambient light, 9:16 vertical, no product, soft shadow',
+          motionPreset: 'slow_push_in',
+        },
+        {
+          id: 'scene-2',
+          type: 'problem',
+          duration: 5,
+          voice: isKitchen
+            ? 'Mỗi lần nấu ăn nêm nếm là một lần bừa bộn, hũ gia vị thì lỏng lẻo dễ ẩm mốc và hút kiến gián.'
+            : 'Đồ đạc bừa bộn tìm mãi không ra, vừa mất thời gian lại dễ cáu gắt mỗi khi cần dùng gấp.',
+          tts: isKitchen
+            ? 'Mỗi lần nấu ăn nêm nếm là một lần bừa bộn, hũ gia vị thì lỏng lẻo dễ ẩm mốc và hút kiến gián.'
+            : 'Đồ đạc bừa bộn tìm mãi không ra, vừa mất thời gian lại dễ cáu gắt mỗi khi cần dùng gấp.',
+          headline: 'Vấn đề thường gặp',
+          subheadline: 'Bực mình mỗi ngày',
+          keywords: ['bừa bộn', 'ẩm mốc', 'phiền phức'],
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'clean_surface',
+          motionPreset: 'parallax_float',
+        },
+        {
+          id: 'scene-3',
+          type: 'product_hero',
+          duration: 5,
+          voice: scene2Voice,
+          tts: scene2Voice,
+          headline: product.name.slice(0, 30),
+          subheadline: 'Chất liệu cao cấp, độ bền vượt trội',
+          keywords: [product.name, 'chắc chắn', 'tiện lợi'],
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'clean_surface',
+          visualPrompt: 'bright clean surface, warm sunlight, minimal interior, vertical 9:16',
+          motionPreset: 'parallax_float',
+        },
+        {
+          id: 'scene-4',
+          type: 'demo',
+          duration: 5,
+          voice: scene3Voice,
+          tts: scene3Voice,
+          headline: scene3Headline,
+          subheadline: 'Thao tác dễ dàng trong 1 giây',
+          keywords: ['gọn gàng', 'cố định', 'tiện dụng'],
+          productAssetIds: [secondaryAssetId],
+          backgroundType: 'setup_action',
+          visualPrompt: 'aesthetic space edge, clean apartment, vertical 9:16',
+          motionPreset: 'subtle_zoom',
+        },
+        {
+          id: 'scene-5',
+          type: 'benefit',
+          duration: 5,
+          voice: scene4Voice,
+          tts: scene4Voice,
+          headline: 'Không gian gọn gàng 100%',
+          subheadline: 'Nâng tầm thẩm mỹ cho ngôi nhà',
+          keywords: ['ngăn nắp', 'thẩm mỹ', 'gọn gàng'],
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'clean_organized_result',
+          visualPrompt: 'modern tidy aesthetic setup, warm daylight, vertical 9:16',
+          motionPreset: 'slow_pan',
+        },
+        {
+          id: 'scene-6',
+          type: 'cta',
+          duration: 5,
+          voice: strategy.cta,
+          tts: strategy.cta,
+          headline: 'Xem ưu đãi trong giỏ hàng',
+          subheadline: 'Bấm góc trái để săn deal và freeship',
+          keywords: ['giỏ hàng', 'ưu đãi', 'mua ngay'],
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'cta_gradient',
+          visualPrompt: 'soft neutral gradient background with warm indoor ambiance, 9:16',
+          motionPreset: 'scale_up',
+        },
+      ]
+    } else if (targetDuration === 45) {
+      // 45 seconds = 9 scenes x 5 seconds
+      scenes = [
+        {
+          id: 'scene-1',
+          type: 'hook',
+          duration: 5,
+          voice: strategy.hook,
+          tts: strategy.hook,
+          headline: scene1Headline,
+          subheadline: 'Bực mình nhất mỗi lần tìm đồ',
+          keywords: scene1Keywords,
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'cluttered_desk_context',
+          visualPrompt: 'modern minimalist home context, 9:16 vertical',
+          motionPreset: 'slow_push_in',
+        },
+        {
+          id: 'scene-2',
+          type: 'problem',
+          duration: 5,
+          voice: isKitchen
+            ? 'Mỗi lần nấu ăn là một cực hình khi gia vị lung tung, nắp đóng không kín làm đồ nêm bị vón cục ẩm ướt.'
+            : 'Đồ đạc rơi rớt bừa bãi khắp sàn và gầm bàn, tìm kiếm mất thời gian mà lại nhanh hỏng hóc đồ dùng.',
+          tts: isKitchen
+            ? 'Mỗi lần nấu ăn là một cực hình khi gia vị lung tung, nắp đóng không kín làm đồ nêm bị vón cục ẩm ướt.'
+            : 'Đồ đạc rơi rớt bừa bãi khắp sàn và gầm bàn, tìm kiếm mất thời gian mà lại nhanh hỏng hóc đồ dùng.',
+          headline: 'Nỗi đau bừa bộn kéo dài',
+          subheadline: 'Làm mất thời gian quý báu',
+          keywords: ['bừa bộn', 'vón cục', 'ẩm mốc'],
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'clean_surface',
+          motionPreset: 'parallax_float',
+        },
+        {
+          id: 'scene-3',
+          type: 'product_hero',
+          duration: 5,
+          voice: scene2Voice,
+          tts: scene2Voice,
+          headline: product.name.slice(0, 30),
+          subheadline: 'Giải pháp hoàn hảo cho mọi gia đình',
+          keywords: [product.name, 'thông minh', 'bền đẹp'],
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'clean_surface',
+          motionPreset: 'parallax_float',
+        },
+        {
+          id: 'scene-4',
+          type: 'demo',
+          duration: 5,
+          voice: scene3Voice,
+          tts: scene3Voice,
+          headline: scene3Headline,
+          subheadline: 'Trải nghiệm sử dụng cực đã',
+          keywords: ['tiện lợi', 'dễ dùng', 'nhanh chóng'],
+          productAssetIds: [secondaryAssetId],
+          backgroundType: 'setup_action',
+          motionPreset: 'subtle_zoom',
+        },
+        {
+          id: 'scene-5',
+          type: 'demo',
+          duration: 5,
+          voice: isKitchen
+            ? 'Chất liệu thủy tinh và mica cao cấp trong suốt, nhìn rõ bên trong giúp bạn nêm nếm chuẩn xác không bao giờ nhầm lẫn.'
+            : 'Được gia công từ chất liệu cao cấp chịu lực, thiết kế tinh xảo bám dính chắc chắn trên mọi bề mặt phẳng.',
+          tts: isKitchen
+            ? 'Chất liệu thủy tinh và mica cao cấp trong suốt, nhìn rõ bên trong giúp bạn nêm nếm chuẩn xác không bao giờ nhầm lẫn.'
+            : 'Được gia công từ chất liệu cao cấp chịu lực, thiết kế tinh xảo bám dính chắc chắn trên mọi bề mặt phẳng.',
+          headline: 'Chất liệu cao cấp',
+          subheadline: 'An toàn và bền đẹp dài lâu',
+          keywords: ['chất liệu', 'cao cấp', 'an toàn'],
+          productAssetIds: [secondaryAssetId],
+          backgroundType: 'setup_action',
+          motionPreset: 'subtle_zoom',
+        },
+        {
+          id: 'scene-6',
+          type: 'benefit',
+          duration: 5,
+          voice: scene4Voice,
+          tts: scene4Voice,
+          headline: 'Không gian gọn gàng 100%',
+          subheadline: 'Nâng cấp trải nghiệm sống',
+          keywords: ['gọn gàng', 'sạch đẹp', 'hiện đại'],
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'clean_organized_result',
+          motionPreset: 'slow_pan',
+        },
+        {
+          id: 'scene-7',
+          type: 'benefit',
+          duration: 5,
+          voice: 'Từ ngày có món này, việc nhà trở nên nhẹ nhàng hơn hẳn, ai đến chơi nhà cũng khen gọn gàng ngăn nắp.',
+          tts: 'Từ ngày có món này, việc nhà trở nên nhẹ nhàng hơn hẳn, ai đến chơi nhà cũng khen gọn gàng ngăn nắp.',
+          headline: 'Ai nhìn cũng khen',
+          subheadline: 'Cuộc sống tiện nghi hơn',
+          keywords: ['tiện nghi', 'hài lòng', 'khen ngợi'],
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'clean_organized_result',
+          motionPreset: 'slow_pan',
+        },
+        {
+          id: 'scene-8',
+          type: 'benefit',
+          duration: 5,
+          voice: 'Hàng nghìn người đã mua và đánh giá 5 sao vì độ tiện dụng vượt trội so với các sản phẩm truyền thống.',
+          tts: 'Hàng nghìn người đã mua và đánh giá 5 sao vì độ tiện dụng vượt trội so với các sản phẩm truyền thống.',
+          headline: 'Đánh giá 5 sao uy tín',
+          subheadline: 'Hàng nghìn khách hàng tin chọn',
+          keywords: ['uy tín', '5 sao', 'tin cậy'],
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'clean_organized_result',
+          motionPreset: 'slow_pan',
+        },
+        {
+          id: 'scene-9',
+          type: 'cta',
+          duration: 5,
+          voice: strategy.cta,
+          tts: strategy.cta,
+          headline: 'Xem ưu đãi trong giỏ hàng',
+          subheadline: 'Bấm góc trái để săn deal và freeship',
+          keywords: ['giỏ hàng', 'ưu đãi', 'mua ngay'],
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'cta_gradient',
+          visualPrompt: 'soft neutral gradient, 9:16',
+          motionPreset: 'scale_up',
+        },
+      ]
+    } else {
+      // Default: 15 seconds = 5 scenes x 3 seconds
+      scenes = [
+        {
+          id: 'scene-1',
+          type: 'hook',
+          duration: 3,
+          voice: strategy.hook,
+          tts: strategy.hook,
+          headline: scene1Headline,
+          subheadline: 'Bực mình nhất mỗi lần tìm đồ',
+          keywords: scene1Keywords,
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'cluttered_desk_context',
+          visualPrompt: 'modern minimalist home context with clean ambient light, 9:16 vertical, no product, soft shadow',
+          motionPreset: 'slow_push_in',
+        },
+        {
+          id: 'scene-2',
+          type: 'product_hero',
+          duration: 3,
+          voice: scene2Voice,
+          tts: scene2Voice,
+          headline: product.name.slice(0, 30),
+          subheadline: 'Thiết kế thông minh, bám dính chắc chắn',
+          keywords: [product.name, 'chắc chắn', 'tiện lợi'],
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'clean_surface',
+          visualPrompt: 'bright clean surface, warm sunlight, minimal Scandinavian interior, vertical 9:16',
+          motionPreset: 'parallax_float',
+        },
+        {
+          id: 'scene-3',
+          type: 'demo',
+          duration: 3,
+          voice: scene3Voice,
+          tts: scene3Voice,
+          headline: scene3Headline,
+          subheadline: 'Không còn cảnh bừa bộn tìm đồ',
+          keywords: ['gọn gàng', 'cố định', 'tiện dụng'],
+          productAssetIds: [secondaryAssetId],
+          backgroundType: 'setup_action',
+          visualPrompt: 'aesthetic space edge, clean minimalist apartment, vertical 9:16',
+          motionPreset: 'subtle_zoom',
+        },
+        {
+          id: 'scene-4',
+          type: 'benefit',
+          duration: 3,
+          voice: scene4Voice,
+          tts: scene4Voice,
+          headline: 'Không gian gọn gàng 100%',
+          subheadline: 'Tiết kiệm thời gian, thẩm mỹ cao',
+          keywords: ['ngăn nắp', 'thẩm mỹ', 'gọn gàng'],
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'clean_organized_result',
+          visualPrompt: 'modern tidy aesthetic setup, warm daylight, vertical 9:16',
+          motionPreset: 'slow_pan',
+        },
+        {
+          id: 'scene-5',
+          type: 'cta',
+          duration: 3,
+          voice: strategy.cta,
+          tts: strategy.cta,
+          headline: 'Xem ưu đãi trong giỏ hàng',
+          subheadline: 'Bấm góc trái để nhận ưu đãi và freeship',
+          keywords: ['giỏ hàng', 'ưu đãi', 'mua ngay'],
+          productAssetIds: [primaryAssetId],
+          backgroundType: 'cta_gradient',
+          visualPrompt: 'soft neutral gradient background with warm indoor ambiance, 9:16',
+          motionPreset: 'scale_up',
+        },
+      ]
+    }
 
     const totalDuration = scenes.reduce((acc, s) => acc + s.duration, 0)
     return { scenes, totalDuration }

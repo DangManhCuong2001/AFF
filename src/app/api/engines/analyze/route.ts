@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic'
 
 interface AnalyzeRequestBody extends ProductInput {
   geminiApiKey?: string
+  targetDuration?: 15 | 30 | 45
 }
 
 export async function POST(request: NextRequest) {
@@ -19,9 +20,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { geminiApiKey, ...product } = body
+    const { geminiApiKey, targetDuration, ...product } = body
 
-    const result = await analyzeProductWithGemini(product, geminiApiKey)
+    const result = await analyzeProductWithGemini(
+      product,
+      geminiApiKey,
+      targetDuration || 15
+    )
 
     return NextResponse.json({
       success: true,

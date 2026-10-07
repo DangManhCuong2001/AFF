@@ -148,31 +148,31 @@ export async function renderProductVideo(
 
     for (let i = 0; i < params.scenes.length; i++) {
       const scene = params.scenes[i]
+      const sceneDuration = scene.duration && scene.duration > 0 ? scene.duration : 3
       const segPath = path.join(tempDir, `segment_${i}.mp4`)
       segmentFiles.push(segPath)
 
       const badgeText =
         i === 0
           ? 'HOT TIKTOK • 3S HOOK'
-          : i === 1
+          : i === params.scenes.length - 1
+          ? 'TIKTOK SHOP • MUA NGAY'
+          : scene.type === 'problem'
           ? 'VAN DE THUONG GAP'
-          : i === 2
+          : scene.type === 'demo'
           ? 'GIAI PHAP TIEN LOI'
-          : i === 3
+          : scene.type === 'benefit'
           ? 'LOI ICH SAN PHAM'
-          : 'TIKTOK SHOP • MUA NGAY'
+          : 'TIEN ICH GIA DINH'
 
       const headlineEscaped = escapeFfmpegText(scene.headline.slice(0, 45))
-      const priceText = params.price
-        ? escapeFfmpegText(`Gia: ${params.price.toLocaleString('vi-VN')}d`)
-        : ''
 
       // FFmpeg filter chain for 1080x1920:
       // Base: dark slate 1080x1920 canvas
       // Layer 1: Scaled product image centered (800x800) with slight zoom
       // Layer 2: Top Hook Pill Badge
       // Layer 3: Main Headline Box
-      // Layer 4: Price / CTA Pill
+      // Layer 4: Affiliate CTA Pill (Không hiển thị giá trực tiếp để tránh lệch giá & tăng CTR giỏ hàng)
       const filterComplex = [
         `[0:v]scale=1080:1920[bg]`,
         `[1:v]scale=840:840:force_original_aspect_ratio=decrease[fg]`,
@@ -181,18 +181,16 @@ export async function renderProductVideo(
         `[comp]drawtext=text='${badgeText}'${fontParam}:fontcolor=0xfacc15:fontsize=36:x=(w-text_w)/2:y=240:box=1:boxcolor=0x000000@0.7:boxborderw=16[b1]`,
         // Headline
         `[b1]drawtext=text='${headlineEscaped}'${fontParam}:fontcolor=white:fontsize=48:x=(w-text_w)/2:y=1340:box=1:boxcolor=0x0f172a@0.85:boxborderw=24[b2]`,
-        // Bottom CTA or Price
-        priceText
-          ? `[b2]drawtext=text='${priceText} - Bam goc trai de xem'${fontParam}:fontcolor=0x34d399:fontsize=38:x=(w-text_w)/2:y=1480:box=1:boxcolor=0x064e3b@0.8:boxborderw=18[out]`
-          : `[b2]drawtext=text='Gio hang o goc trai man hinh'${fontParam}:fontcolor=0x38bdf8:fontsize=38:x=(w-text_w)/2:y=1480:box=1:boxcolor=0x0c4a6e@0.8:boxborderw=18[out]`,
+        // Bottom CTA: Kêu gọi xem giỏ hàng, tuyệt đối không in số tiền trực tiếp
+        `[b2]drawtext=text='Xem gia uu dai tai gio hang goc trai'${fontParam}:fontcolor=0x38bdf8:fontsize=36:x=(w-text_w)/2:y=1480:box=1:boxcolor=0x0c4a6e@0.85:boxborderw=18[out]`,
       ].join(';')
 
       const sceneImgPath = availableImagePaths[i % availableImagePaths.length]
 
       const cmd = [
         `"${ffmpeg}" -y`,
-        `-f lavfi -i color=c=0x09090b:s=1080x1920:d=3:r=30`,
-        `-loop 1 -t 3 -i "${sceneImgPath}"`,
+        `-f lavfi -i color=c=0x09090b:s=1080x1920:d=${sceneDuration}:r=30`,
+        `-loop 1 -t ${sceneDuration} -i "${sceneImgPath}"`,
         `-filter_complex "${filterComplex}"`,
         `-map "[out]"`,
         `-c:v libx264 -pix_fmt yuv420p -r 30`,
@@ -251,10 +249,15 @@ export async function renderProductVideo(
 
     const stats = fs.statSync(finalOutputPath)
 
+    const totalDuration = params.scenes.reduce(
+      (acc, s) => acc + (s.duration && s.duration > 0 ? s.duration : 3),
+      0
+    )
+
     return {
       filePath: finalOutputPath,
       fileName: outputFileName,
-      duration: 15,
+      duration: Math.round(totalDuration),
       fileSizeBytes: stats.size,
     }
   } finally {

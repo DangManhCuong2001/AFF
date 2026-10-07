@@ -19,6 +19,7 @@ import {
   Download,
   Key,
   X,
+  ShoppingBag,
 } from 'lucide-react'
 import {
   ProductInput,
@@ -118,6 +119,9 @@ export default function CreateVideoPage() {
     strategy: VideoStrategy
     storyboard: VideoStoryboard
   } | null>(null)
+
+  // Video duration state (15s, 30s, 45s)
+  const [selectedDuration, setSelectedDuration] = useState<15 | 30 | 45>(15)
 
   // Step Management: 1: Input | 2: Analysis | 3: Generating | 4: Preview
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1)
@@ -306,6 +310,7 @@ export default function CreateVideoPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...product,
+          targetDuration: selectedDuration,
           geminiApiKey: geminiApiKey.trim() || undefined,
         }),
       })
@@ -387,7 +392,7 @@ export default function CreateVideoPage() {
         percent: 40,
         logs: [
           ...prev.logs,
-          'Gọi dịch vụ TTS tiếng Việt cho 5 phân cảnh Storyboard',
+          `Gọi dịch vụ TTS tiếng Việt cho ${analysisResult?.storyboard.scenes.length || 5} phân cảnh Storyboard (${analysisResult?.strategy.targetDuration || 15}s)`,
           `Lời thoại cảnh 1: "${analysisResult?.storyboard.scenes[0]?.voice || analysisResult?.strategy.hook}"`,
         ],
       }))
@@ -845,8 +850,8 @@ export default function CreateVideoPage() {
                           className="w-48 h-48 object-contain mx-auto drop-shadow-2xl rounded-2xl"
                         />
                         <h4 className="font-bold text-white text-sm mt-3">{product.name}</h4>
-                        <p className="text-rose-400 font-bold font-mono text-xs">
-                          {product.price ? `${typeof product.price === 'number' ? product.price.toLocaleString('vi-VN') : product.price}đ` : 'Giá ưu đãi'}
+                        <p className="text-emerald-400 font-bold text-xs flex items-center justify-center gap-1 mt-1">
+                          <ShoppingBag className="w-3.5 h-3.5" /> Xem giá ưu đãi trong giỏ hàng góc trái
                         </p>
                       </div>
 
@@ -1144,14 +1149,15 @@ export default function CreateVideoPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-neutral-300 block">
-                      Giá bán (VND)
+                    <label className="text-xs font-medium text-neutral-300 flex items-center justify-between">
+                      <span>Giá tham khảo (VND)</span>
+                      <span className="text-[10px] text-emerald-400 font-mono">Tự động ẩn trên video</span>
                     </label>
                     <input
                       type="text"
                       value={product.price || ''}
                       onChange={(e) => setProduct({ ...product, price: e.target.value })}
-                      placeholder="VD: 39000"
+                      placeholder="VD: 155000"
                       className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 focus:outline-none focus:border-rose-500"
                     />
                   </div>
@@ -1351,6 +1357,89 @@ export default function CreateVideoPage() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Video Duration Selector (15s, 30s, 45s) */}
+            <div className="p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-neutral-200 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-400" />
+                  Chọn độ dài video TikTok
+                </label>
+                <span className="text-[11px] text-neutral-400 font-mono">
+                  Đang chọn: <span className="text-amber-400 font-bold">{selectedDuration}s</span>
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {/* 15s Option */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedDuration(15)}
+                  className={`p-3 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer ${
+                    selectedDuration === 15
+                      ? 'border-amber-500 bg-amber-500/10 text-white ring-1 ring-amber-500/30'
+                      : 'border-neutral-800 bg-neutral-950/60 text-neutral-400 hover:border-neutral-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-bold text-sm text-white">15 Giây</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold font-mono">
+                      5 cảnh
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 leading-snug">
+                    Hook nhanh, giữ chân cao, thuật toán TikTok đề xuất mạnh nhất.
+                  </p>
+                </button>
+
+                {/* 30s Option */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedDuration(30)}
+                  className={`p-3 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer ${
+                    selectedDuration === 30
+                      ? 'border-cyan-500 bg-cyan-500/10 text-white ring-1 ring-cyan-500/30'
+                      : 'border-neutral-800 bg-neutral-950/60 text-neutral-400 hover:border-neutral-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-bold text-sm text-white">30 Giây</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-semibold font-mono">
+                      6 cảnh
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 leading-snug">
+                    Review chi tiết, đi sâu tính năng, giải quyết vấn đề trọn vẹn.
+                  </p>
+                </button>
+
+                {/* 45s Option */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedDuration(45)}
+                  className={`p-3 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer ${
+                    selectedDuration === 45
+                      ? 'border-rose-500 bg-rose-500/10 text-white ring-1 ring-rose-500/30'
+                      : 'border-neutral-800 bg-neutral-950/60 text-neutral-400 hover:border-neutral-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-bold text-sm text-white">45 Giây</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-semibold font-mono">
+                      9 cảnh
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 leading-snug">
+                    Chuyên sâu, so sánh chi tiết, dẫn chứng đánh giá thuyết phục cao.
+                  </p>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1 text-[11px] text-neutral-400">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>Video không in trực tiếp số tiền để tránh lệch giá và kích thích bấm vào giỏ hàng góc trái.</span>
+              </div>
             </div>
 
             {/* Action Trigger Button */}
