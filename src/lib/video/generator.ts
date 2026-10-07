@@ -146,7 +146,6 @@ export async function renderProductVideo(
       )
 
       const headlineEscaped = escapeFfmpegText(scene.headline.slice(0, 42))
-      const voiceSubtitle = escapeFfmpegText((scene.voice || scene.headline).slice(0, 55))
 
       // Contextual Background selection based on product name
       const pNameLower = params.productName.toLowerCase()
@@ -183,35 +182,40 @@ export async function renderProductVideo(
           : 'GIỎ HÀNG GÓC TRÁI 🛒'
       )
 
+      // Smart word-boundary truncation so words are never cut in half
+      const cleanVoice = scene.voice || scene.headline
+      const voiceSubtitle = escapeFfmpegText(
+        cleanVoice.length > 55
+          ? cleanVoice.slice(0, cleanVoice.slice(0, 55).lastIndexOf(' ') || 55) + '...'
+          : cleanVoice
+      )
+
       // Multi-layer FFmpeg filtergraph:
       // 1. Background layer with continuous cinematic parallax drift
-      // 2. Product Card: Framed inside sleek card + dynamic smooth Ken Burns scale
-      // 3. Composite scaling product card centered over background
-      // 4. Top animated TikTok Progress Line (red/rose fill progressing from left to right)
+      // 2. Product Card: Padded in soft frosted container + dynamic Ken Burns scale
+      // 3. Composite product card centered over background
+      // 4. Top animated TikTok Progress Line (rose fill progressing from left to right)
       // 5. Top Story Beat Badge (Amber/Gold pill)
-      // 6. Feature Callout Stamp (floating above product)
-      // 7. Main Headline Box (Slate/Dark with bold text)
-      // 8. Dynamic Subtitle (Clean high-contrast white)
-      // 9. Bottom High-CTR Affiliate CTA Pill (Cyan/Teal)
+      // 6. Main Headline (Bold white with heavy black stroke - CapCut style, NO black box)
+      // 7. Dynamic Voice Subtitle (High-contrast yellow with black stroke - NO black box)
+      // 8. Bottom High-CTR Affiliate CTA Pill (Vibrant Rose/Red pill)
       const filterComplex = [
         // 1. Animated background with smooth multi-threaded parallax drift
         `[0:v]scale='1080*(1+${bgScaleRate}*t)':'1920*(1+${bgScaleRate}*t)':eval=frame,crop=1080:1920[bg]`,
-        // 2. Product Card: Padded inside a modern dark card (760x760) with dynamic Ken Burns zoom
-        `[1:v]scale=720:720:force_original_aspect_ratio=decrease,pad=760:760:(ow-iw)/2:(oh-ih)/2:color=0x18181b@0.9,scale='760*(1+${prodScaleRate}*t)':'760*(1+${prodScaleRate}*t)':eval=frame[prod]`,
+        // 2. Product Card: Scaled inside a sleek frosted card (780x780) with dynamic Ken Burns zoom
+        `[1:v]scale=740:740:force_original_aspect_ratio=decrease,pad=780:780:(ow-iw)/2:(oh-ih)/2:color=0x000000@0.25,scale='780*(1+${prodScaleRate}*t)':'780*(1+${prodScaleRate}*t)':eval=frame[prod]`,
         // 3. Composite product over background keeping center position
-        `[bg][prod]overlay=(W-w)/2:430-(h-760)/2[comp]`,
+        `[bg][prod]overlay=(W-w)/2:460-(h-780)/2[comp]`,
         // 4. Animated TikTok Progress Line at top
-        `[comp]drawbox=x=0:y=0:w='iw*t/${sceneDuration}':h=10:color=0xf43f5e@0.95:t=fill[prog]`,
+        `[comp]drawbox=x=0:y=0:w='iw*t/${sceneDuration}':h=12:color=0xf43f5e@0.95:t=fill[prog]`,
         // 5. Top Story Beat Badge
-        `[prog]drawtext=text='${badgeText}'${fontParam}:fontcolor=0xfacc15:fontsize=36:x=(w-text_w)/2:y=180:box=1:boxcolor=0x000000@0.8:boxborderw=18[b1]`,
-        // 6. Floating Feature Callout Sticker Stamp
-        `[b1]drawtext=text='${calloutText}'${fontParam}:fontcolor=0x38bdf8:fontsize=28:x=(w-text_w)/2:y=255:box=1:boxcolor=0x0f172a@0.85:boxborderw=12[b2]`,
-        // 7. Main Headline Box
-        `[b2]drawtext=text='${headlineEscaped}'${fontParam}:fontcolor=white:fontsize=46:x=(w-text_w)/2:y=1270:box=1:boxcolor=0x0f172a@0.92:boxborderw=22[b3]`,
-        // 8. Subtitle line
-        `[b3]drawtext=text='${voiceSubtitle}'${fontParam}:fontcolor=0xf8fafc:fontsize=32:x=(w-text_w)/2:y=1380:box=1:boxcolor=0x000000@0.7:boxborderw=16[b4]`,
-        // 9. Bottom TikTok Shop High-CTR Pill
-        `[b4]drawtext=text='GIỎ HÀNG GÓC TRÁI • XEM NGAY 🛒'${fontParam}:fontcolor=0x09090b:fontsize=36:x=(w-text_w)/2:y=1510:box=1:boxcolor=0x38bdf8@0.95:boxborderw=20[out]`,
+        `[prog]drawtext=text='${badgeText}'${fontParam}:fontcolor=0xfacc15:fontsize=32:x=(w-text_w)/2:y=160:box=1:boxcolor=0x000000@0.75:boxborderw=14[b1]`,
+        // 6. Main Headline (Bold white with heavy black stroke, CapCut style)
+        `[b1]drawtext=text='${headlineEscaped}'${fontParam}:fontcolor=white:fontsize=50:borderw=6:bordercolor=black:shadowcolor=black@0.8:shadowx=3:shadowy=3:x=(w-text_w)/2:y=240[b2]`,
+        // 7. Dynamic Subtitle (Yellow punchy text with black stroke)
+        `[b2]drawtext=text='${voiceSubtitle}'${fontParam}:fontcolor=0xfef08a:fontsize=36:borderw=4:bordercolor=black:shadowcolor=black@0.8:shadowx=2:shadowy=2:x=(w-text_w)/2:y=1360[b3]`,
+        // 8. Bottom TikTok Shop High-CTR Pill
+        `[b3]drawtext=text='🛒 GIỎ HÀNG GÓC TRÁI • XEM NGAY'${fontParam}:fontcolor=white:fontsize=36:x=(w-text_w)/2:y=1500:box=1:boxcolor=0xe11d48@0.95:boxborderw=18[out]`,
       ].join(';')
 
       const bgInput = hasBgImage
