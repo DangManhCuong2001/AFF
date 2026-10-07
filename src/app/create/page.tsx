@@ -213,9 +213,12 @@ export default function CreateVideoPage() {
       const data = await res.json()
 
       if (data.success && data.product) {
+        const isBotName = data.product.name?.toLowerCase().includes('security check')
+        const safeName = isBotName ? '' : data.product.name
+
         setProduct((prev) => ({
           ...prev,
-          name: data.product.name || prev.name,
+          name: safeName || prev.name,
           price: data.product.price ? String(data.product.price) : prev.price,
           description: data.product.description || prev.description,
           productUrl: data.product.productUrl || prev.productUrl,
@@ -234,13 +237,15 @@ export default function CreateVideoPage() {
           message: data.message,
           requiresFallback: true,
         })
-        if (data.product?.productUrl) {
-          setProduct((prev) => ({
-            ...prev,
-            productUrl: data.product.productUrl,
-            shopProductId: data.product.shopProductId,
-          }))
-        }
+        setProduct((prev) => ({
+          ...prev,
+          name:
+            data.product?.name && !data.product.name.toLowerCase().includes('security check')
+              ? data.product.name
+              : prev.name,
+          productUrl: data.product?.productUrl || prev.productUrl,
+          shopProductId: data.product?.shopProductId || prev.shopProductId,
+        }))
       } else {
         setImportNotice({
           message: data.message || 'Không thể nhập dữ liệu từ URL này.',
