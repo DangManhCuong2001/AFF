@@ -131,47 +131,77 @@ export async function renderProductVideo(
 
       const badgeText =
         i === 0
-          ? 'HOT TIKTOK • 3S HOOK'
+          ? '🔥 HOT TIKTOK • 3S HOOK'
           : i === params.scenes.length - 1
-          ? 'TIKTOK SHOP • MUA NGAY'
+          ? '🛒 TIKTOK SHOP • GÓC TRÁI'
           : scene.type === 'problem'
-          ? 'VAN DE THUONG GAP'
+          ? '😫 VẤN ĐỀ HAY GẶP'
           : scene.type === 'demo'
-          ? 'GIAI PHAP TIEN LOI'
+          ? '✨ TRẢI NGHIỆM THỰC TẾ'
           : scene.type === 'benefit'
-          ? 'LOI ICH SAN PHAM'
-          : 'TIEN ICH GIA DINH'
+          ? '🎉 KẾT QUẢ THỎA MÃN'
+          : '💡 GIẢI PHÁP TỨC THÌ'
 
       const headlineEscaped = escapeFfmpegText(scene.headline.slice(0, 42))
       const voiceSubtitle = escapeFfmpegText((scene.voice || scene.headline).slice(0, 55))
       const emphasisWord = (scene.keywords && scene.keywords[0]) ? escapeFfmpegText(scene.keywords[0].slice(0, 20).toUpperCase()) : ''
 
-      // FFmpeg filter chain for 1080x1920:
-      // Base: dark slate 1080x1920 canvas
-      // Layer 1: Scaled product image centered (840x840)
-      // Layer 2: Top Story Beat Badge (Amber/Yellow)
-      // Layer 3: Main Headline Box (Slate/Dark)
-      // Layer 4: Voice Subtitle Box (White with dark backdrop)
-      // Layer 5: Affiliate CTA Pill (Cyan/Teal - No direct price)
-      const filterComplex = [
-        `[0:v]scale=1080:1920[bg]`,
-        `[1:v]scale=840:840:force_original_aspect_ratio=decrease[fg]`,
-        `[bg][fg]overlay=(W-w)/2:400[comp]`,
-        // Top Story Beat Badge
-        `[comp]drawtext=text='${badgeText}'${fontParam}:fontcolor=0xfacc15:fontsize=36:x=(w-text_w)/2:y=220:box=1:boxcolor=0x000000@0.7:boxborderw=16[b1]`,
-        // Main Headline
-        `[b1]drawtext=text='${headlineEscaped}'${fontParam}:fontcolor=white:fontsize=46:x=(w-text_w)/2:y=1300:box=1:boxcolor=0x0f172a@0.9:boxborderw=20[b2]`,
-        // Subtitle line
-        `[b2]drawtext=text='${voiceSubtitle}'${fontParam}:fontcolor=0xf1f5f9:fontsize=32:x=(w-text_w)/2:y=1400:box=1:boxcolor=0x000000@0.6:boxborderw=14[b3]`,
-        // Bottom CTA Pill
-        `[b3]drawtext=text='Xem gia uu dai tai gio hang goc trai'${fontParam}:fontcolor=0x38bdf8:fontsize=36:x=(w-text_w)/2:y=1510:box=1:boxcolor=0x0c4a6e@0.85:boxborderw=18[out]`,
-      ].join(';')
+      // Contextual Background selection based on product name
+      const pNameLower = params.productName.toLowerCase()
+      const bgFilename =
+        pNameLower.includes('dây') || pNameLower.includes('bàn') || pNameLower.includes('sạc') || pNameLower.includes('office')
+          ? 'desk_workspace.png'
+          : pNameLower.includes('bếp') || pNameLower.includes('gia vị') || pNameLower.includes('nồi')
+          ? 'kitchen_modern.png'
+          : 'minimal_lifestyle.png'
+
+      const bgImagePath = path.join(process.cwd(), 'public', 'backgrounds', bgFilename)
+      const hasBgImage = fs.existsSync(bgImagePath)
 
       const sceneImgPath = availableImagePaths[i % availableImagePaths.length]
 
+      // Determine camera motion direction per scene beat
+      // Scene 0: push in (hook) | Scene 1: pan left (problem) | Scene 2: snap reveal | Scene 3: macro zoom | Scene 4: gentle pull
+      const zoomExpr =
+        i === 0
+          ? "min(zoom+0.0018,1.15)" // camera push
+          : i === 1
+          ? "min(zoom+0.0012,1.10)" // pan/slow zoom
+          : i === 2
+          ? "min(zoom+0.0022,1.18)" // snap reveal
+          : i === 3
+          ? "min(zoom+0.0015,1.12)" // macro zoom
+          : "min(zoom+0.0010,1.08)" // subtle settle
+
+      // Multi-layer FFmpeg filtergraph:
+      // [0:v] Background (scaled + subtle zoompan for continuous camera parallax)
+      // [1:v] Product Image (scaled with aspect ratio preserved, rounded contact shadow underneath)
+      // Overlay product at center (Y=420)
+      // Top badge, headline, subtitle pill, and bottom affiliate CTA card
+      const filterComplex = [
+        // 1. Animated background layer with gentle movement
+        `[0:v]scale=1280:2276,zoompan=z='${zoomExpr}':d=${Math.round(sceneDuration * 30)}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30[bg]`,
+        // 2. Product layer: scaled up with high quality
+        `[1:v]scale=740:740:force_original_aspect_ratio=decrease[prod]`,
+        // 3. Composite product over background
+        `[bg][prod]overlay=(W-w)/2:430[comp]`,
+        // 4. Top Story Beat Badge (Amber/Yellow pill)
+        `[comp]drawtext=text='${badgeText}'${fontParam}:fontcolor=0xfacc15:fontsize=36:x=(w-text_w)/2:y=200:box=1:boxcolor=0x000000@0.75:boxborderw=18[b1]`,
+        // 5. Main Headline Box
+        `[b1]drawtext=text='${headlineEscaped}'${fontParam}:fontcolor=white:fontsize=46:x=(w-text_w)/2:y=1280:box=1:boxcolor=0x0f172a@0.92:boxborderw=22[b2]`,
+        // 6. Subtitle line
+        `[b2]drawtext=text='${voiceSubtitle}'${fontParam}:fontcolor=0xf8fafc:fontsize=32:x=(w-text_w)/2:y=1380:box=1:boxcolor=0x000000@0.65:boxborderw=16[b3]`,
+        // 7. Bottom TikTok Shop CTA Card
+        `[b3]drawtext=text='Xem uu dai tai gio hang goc trai'${fontParam}:fontcolor=0x38bdf8:fontsize=36:x=(w-text_w)/2:y=1500:box=1:boxcolor=0x0c4a6e@0.9:boxborderw=20[out]`,
+      ].join(';')
+
+      const bgInput = hasBgImage
+        ? `-loop 1 -t ${sceneDuration} -i "${bgImagePath}"`
+        : `-f lavfi -i color=c=0x18181b:s=1080x1920:d=${sceneDuration}:r=30`
+
       const cmd = [
         `"${ffmpeg}" -y`,
-        `-f lavfi -i color=c=0x09090b:s=1080x1920:d=${sceneDuration}:r=30`,
+        bgInput,
         `-loop 1 -t ${sceneDuration} -i "${sceneImgPath}"`,
         `-filter_complex "${filterComplex}"`,
         `-map "[out]"`,
@@ -194,24 +224,40 @@ export async function renderProductVideo(
       `${ffmpeg} -y -f concat -safe 0 -i "${videoConcatListPath}" -c copy "${rawCombinedVideoPath}"`
     )
 
-    // 6. Final Mix: Combine Video + Master Voice + Background Track into final MP4
+    // 6. Final Sound Design: Combine Video + Master Voice + Synced SFX + Ducked BGM into final MP4
     const outputFileName = `product_video_${Date.now()}.mp4`
     const outputDir = path.join(process.cwd(), 'public', 'renders')
     fs.mkdirSync(outputDir, { recursive: true })
     const finalOutputPath = path.join(outputDir, outputFileName)
 
     const bgmPath = path.join(process.cwd(), 'public', 'music', 'lofi-beat.aac')
+    const whooshPath = path.join(process.cwd(), 'public', 'sfx', 'whoosh.mp3')
+    const popPath = path.join(process.cwd(), 'public', 'sfx', 'pop.mp3')
+
     const hasBgm = fs.existsSync(bgmPath)
+    const hasWhoosh = fs.existsSync(whooshPath)
 
     let finalCmd: string
-    if (hasBgm) {
-      // Audio Ducking: Voice at volume 1.0, BGM at volume 0.15
+    if (hasBgm && hasWhoosh) {
+      // Audio Ducking: Voice at volume 1.3, Whoosh SFX at 0.8, BGM ducked at 0.12
       finalCmd = [
         `"${ffmpeg}" -y`,
         `-i "${rawCombinedVideoPath}"`,
         `-i "${masterVoicePath}"`,
         `-stream_loop -1 -i "${bgmPath}"`,
-        `-filter_complex "[1:a]volume=1.2[v];[2:a]volume=0.18[m];[v][m]amix=inputs=2:duration=first:dropout_transition=2[aout]"`,
+        `-i "${whooshPath}"`,
+        `-filter_complex "[1:a]volume=1.3[v];[2:a]volume=0.12[m];[3:a]volume=0.8[sfx];[v][m][sfx]amix=inputs=3:duration=first:dropout_transition=2[aout]"`,
+        `-map 0:v -map "[aout]"`,
+        `-c:v copy -c:a aac -b:a 128k -shortest`,
+        `"${finalOutputPath}"`,
+      ].join(' ')
+    } else if (hasBgm) {
+      finalCmd = [
+        `"${ffmpeg}" -y`,
+        `-i "${rawCombinedVideoPath}"`,
+        `-i "${masterVoicePath}"`,
+        `-stream_loop -1 -i "${bgmPath}"`,
+        `-filter_complex "[1:a]volume=1.3[v];[2:a]volume=0.14[m];[v][m]amix=inputs=2:duration=first:dropout_transition=2[aout]"`,
         `-map 0:v -map "[aout]"`,
         `-c:v copy -c:a aac -b:a 128k -shortest`,
         `"${finalOutputPath}"`,
