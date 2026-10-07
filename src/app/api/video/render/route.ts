@@ -29,30 +29,30 @@ export async function POST(request: NextRequest) {
       const isCable = nameLower.includes('dây sạc') || nameLower.includes('cable') || nameLower.includes('kẹp dây')
 
       const hookVoice = isKitchen
-        ? 'Góc bếp mà lộn xộn gia vị nấu nướng thì xem ngay giải pháp này nhé.'
+        ? 'Góc bếp ai mà lộn xộn chai lọ gia vị thì dừng lại 3 giây xem ngay mẹo này nha!'
         : isCable
-        ? 'Nhà ai dây sạc cứ rơi lung tung thì xem ngay mẹo này.'
-        : `Bạn đã biết đến ${productName} cực kỳ tiện lợi này chưa?`
+        ? 'Ai mà mỗi lần ngồi vào bàn là phát bực vì dây sạc rối tung rối mù thì xem ngay nha!'
+        : `Ai mà hay bị phiền toái vì đồ đạc bừa bộn thì xem ngay món đồ cứu tinh này nha!`
 
       const problemVoice = isKitchen
-        ? 'Mỗi lần nấu ăn tìm gia vị bừa bộn làm mất thời gian và dễ bị ẩm mốc.'
+        ? 'Mỗi lần nấu ăn vội mà tìm gia vị lỉnh kỉnh, nắp lỏng lẻo ẩm mốc phát bực luôn á!'
         : isCable
-        ? 'Bình thường dây sạc rơi xuống đất vừa bẩn vừa bất tiện.'
-        : 'Đồ đạc bừa bộn tìm mãi không thấy làm mất thời gian của bạn.'
+        ? 'Bình thường cúi xuống gầm bàn nhặt dây vừa bẩn vừa mỏi lưng, dây lại còn nhanh gãy đứt nữa chứ!'
+        : 'Bình thường đồ đạc cứ vứt lung tung mỗi lần tìm phát bực, mất bao nhiêu thời gian luôn!'
 
       const demoVoice = isKitchen
-        ? `Bộ hũ trong suốt nắp bật thông minh kèm muỗng múc cực kỳ kín khí và tiện lợi.`
+        ? `Cho đến khi mình thử bộ hũ này, nắp bật một chạm kèm muỗng kín khí siêu tiện lợi!`
         : isCable
-        ? `Chỉ cần cố định miếng kẹp này là giữ ngay ngắn mọi loại dây sạc.`
-        : `Chỉ cần dùng ${productName} này là sắp xếp gọn gàng ngay tức thì.`
+        ? `May mà mình tậu được cái miếng kẹp này, dán mép bàn một phát là giữ chắc nịch mọi loại dây luôn á!`
+        : `May mà mình tìm được ${productName} này, nhỏ xíu mà tiện dã man luôn á!`
 
       const benefitVoice = isKitchen
-        ? 'Gian bếp gọn gàng đẹp mắt hẳn lên, nấu nướng nhanh và tiện lợi hơn rất nhiều.'
+        ? 'Gian bếp gọn gàng sang xịn hẳn lên, nấu nướng tiện lợi 10 điểm không có nhưng!'
         : isCable
-        ? 'Bàn làm việc gọn gàng đẹp mắt hẳn lên, cần là với tay lấy được ngay.'
-        : 'Không gian sống gọn gàng và tiện nghi hơn rất nhiều sau khi sử dụng.'
+        ? 'Bàn làm việc gọn gàng 10 điểm luôn, cần cắm sạc máy gì với tay là lấy được ngay!'
+        : 'Dùng một cái là ưng cái bụng liền, không gian gọn gàng ngăn nắp 10 điểm luôn!'
 
-      const ctaVoice = 'Giá cực kỳ ưu đãi, bạn bấm vào giỏ hàng góc trái màn hình để xem nhé.'
+      const ctaVoice = 'Mọi người bấm ngay giỏ hàng góc trái bên dưới để săn deal ưu đãi hôm nay nhé!'
 
       scenes = [
         {

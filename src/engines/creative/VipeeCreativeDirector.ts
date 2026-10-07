@@ -91,7 +91,7 @@ export class VipeeCreativeDirector implements CreativeDirector {
     offerInfo: ReturnType<typeof OfferEngine.analyzeOffer>,
     apiKey: string
   ): Promise<CreativePlan | null> {
-    const models = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-flash-latest']
+    const models = ['gemini-flash-latest', 'gemini-flash-lite-latest']
     
     const prompt = `Phân tích và đạo diễn kịch bản video TikTok UGC cho sản phẩm:
 - Tên sản phẩm: ${product.name}
@@ -132,6 +132,13 @@ Yêu cầu xuất ra JSON chính xác theo cấu trúc:
   },
   "offerAngle": "Góc nhìn giá trị hợp lý",
   "cta": "Lời kêu gọi hành động tự nhiên (không hét giá ảo)",
+  "spokenScenes": [
+    { "beat": "hook", "headline": "Tiêu đề giật tít có icon", "voice": "Lời thoại mở đầu tự nhiên, giọng bạn bè chia sẻ (vd: Ai mà hay bị... thì xem ngay nha!)" },
+    { "beat": "problem", "headline": "Vấn đề khó chịu", "voice": "Lời thoại bộc lộ sự phiền toái thường ngày chân thật..." },
+    { "beat": "solution", "headline": "Cứu tinh xuất hiện", "voice": "Lời thoại hé lộ giải pháp (vd: May mà mình tậu được cái này, nhỏ mà tiện dã man luôn á!)..." },
+    { "beat": "demo", "headline": "Trải nghiệm thực tế", "voice": "Lời thoại mô tả tính năng cụ thể khiến người xem thích thú..." },
+    { "beat": "cta", "headline": "Bấm giỏ hàng mua ngay", "voice": "Lời thoại chốt đơn tự nhiên, kêu gọi xem giỏ hàng góc trái..." }
+  ],
   "creativeScore": {
     "hookScore": 90,
     "relatabilityScore": 92,
@@ -188,6 +195,7 @@ Yêu cầu xuất ra JSON chính xác theo cấu trúc:
           offerAngle: parsed.offerAngle || offerInfo.recommendedCta.displayText,
           cta: parsed.cta || offerInfo.recommendedCta.voiceText,
           duration,
+          spokenScenes: Array.isArray(parsed.spokenScenes) ? parsed.spokenScenes : undefined,
           creativeScore: {
             hookScore: parsed.creativeScore?.hookScore || 88,
             relatabilityScore: parsed.creativeScore?.relatabilityScore || 90,
@@ -348,6 +356,34 @@ Yêu cầu xuất ra JSON chính xác theo cấu trúc:
     const candidateHooks = this.generateDefaultHooks(product, approach)
     const selectedHook = candidateHooks[0]
 
+    const nameLower = product.name.toLowerCase()
+    const isCable = nameLower.includes('dây sạc') || nameLower.includes('cable') || nameLower.includes('kẹp dây')
+    const isKitchen = nameLower.includes('gia vị') || nameLower.includes('bếp') || nameLower.includes('hũ')
+
+    const spokenScenes = isCable
+      ? [
+          { beat: 'hook', headline: '🔥 DÂY SẠC RƠI BỪA BÃI?', voice: selectedHook.text, sticker: 'CẢNH BÁO ⚠️' },
+          { beat: 'problem', headline: '😩 CÚI NHẶT MỎI CẢ LƯNG', voice: 'Bình thường cúi xuống gầm bàn nhặt dây vừa bẩn vừa mỏi lưng, dây lại còn nhanh gãy đứt nữa chứ!', sticker: 'PHIỀN TOÁI 😩' },
+          { beat: 'solution', headline: '✨ CỨU TINH 10/10 ĐÂY RỒI', voice: `May mà mình tậu được cái miếng kẹp này, nhỏ xíu mà tiện dã man luôn á!`, sticker: 'GIẢI PHÁP ⭐' },
+          { beat: 'demo', headline: '🔒 DÁN LÀ DÍNH CHẮC NỊCH', voice: 'Chỉ cần dán mép bàn là giữ ngay ngắn mọi loại dây sạc, cần cái là rút ra dùng cực êm!', sticker: 'SIÊU DÍNH 🔒' },
+          { beat: 'cta', headline: '🛒 GIỎ HÀNG GÓC TRÁI', voice: 'Bàn làm việc gọn gàng 10 điểm luôn nha, mọi người bấm ngay giỏ hàng góc trái săn deal nhé!', sticker: 'MUA NGAY 🛍️' },
+        ]
+      : isKitchen
+      ? [
+          { beat: 'hook', headline: '🔥 GÓC BẾP LỘN XỘN GIA VỊ?', voice: selectedHook.text, sticker: 'LỘN XỘN ⚠️' },
+          { beat: 'problem', headline: '😩 TÌM MÃI KHÔNG THẤY ĐỒ', voice: 'Mỗi lần nấu ăn vội mà gia vị vương vãi lộn xộn, tìm mãi không ra phát bực luôn á!', sticker: 'ẨM MỐC 😩' },
+          { beat: 'solution', headline: '✨ NẮP BẬT MỘT CHẠM CỰC ÊM', voice: `Cho đến khi mình thử bộ hũ này, nắp bật một chạm kèm muỗng tiện dã man!`, sticker: 'GIẢI PHÁP ⭐' },
+          { beat: 'demo', headline: '🔒 KÍN KHÍ CHỐNG ẨM TUYỆT ĐỐI', voice: 'Kín khí chống ẩm mốc hoàn toàn, nấu nướng một tay mở nắp múc gia vị cực nhanh!', sticker: 'TIỆN LỢI ✨' },
+          { beat: 'cta', headline: '🛒 GIỎ HÀNG GÓC TRÁI', voice: 'Góc bếp nhìn sang xịn hẳn lên, mọi người bấm ngay giỏ hàng góc trái săn deal ưu đãi nha!', sticker: 'SĂN DEAL 🛍️' },
+        ]
+      : [
+          { beat: 'hook', headline: '🔥 AI BỊ NHƯ NÀY XEM NGAY!', voice: selectedHook.text, sticker: 'MẸO HAY 🔥' },
+          { beat: 'problem', headline: '😩 BỪA BỘN MẤT THỜI GIAN', voice: 'Đồ đạc cứ vứt lung tung mỗi lần tìm phát bực, mất bao nhiêu thời gian luôn đúng không!', sticker: 'BỰC MÌNH 😩' },
+          { beat: 'solution', headline: '✨ BẤT NGỜ TIỆN LỢI', voice: `May mà mình tìm được em ${product.name} này, nhỏ gọn mà giải quyết vấn đề cực êm!`, sticker: 'CỨU TINH ⭐' },
+          { beat: 'demo', headline: '👌 DÙNG CỰC KỲ DỄ DÀNG', voice: 'Dùng siêu đơn giản, vừa vặn chắc chắn mà không gian nhìn gọn gàng hẳn lên!', sticker: '10 ĐIỂM 💯' },
+          { beat: 'cta', headline: '🛒 BẤM GÓC TRÁI MUA NGAY', voice: 'Phòng ốc gọn gàng ưng cái bụng luôn, mọi người bấm ngay giỏ hàng góc trái săn ưu đãi nha!', sticker: 'MUA NGAY 🛍️' },
+        ]
+
     return {
       concept: `Giải pháp giải phóng không gian và phiền toái với ${product.name}`,
       viewerInsight: `Người xem thường cam chịu sự bừa bộn nhỏ nhặt mỗi ngày mà không nhận ra nó làm hao tốn thời gian và tâm trạng.`,
@@ -361,6 +397,7 @@ Yêu cầu xuất ra JSON chính xác theo cấu trúc:
       offerAngle: offerInfo.recommendedCta.displayText,
       cta: offerInfo.recommendedCta.voiceText,
       duration,
+      spokenScenes,
       creativeScore: {
         hookScore: selectedHook.scores.total,
         relatabilityScore: 92,

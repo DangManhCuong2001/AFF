@@ -15,6 +15,7 @@ import os from 'os'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
+import { generateVietnameseTTS } from '@/lib/audio/tts'
 
 const execPromise = promisify(exec)
 
@@ -132,17 +133,29 @@ export class VipeeSpeechDirector implements SpeechDirector {
   }
 
   /**
-   * Humanizes sentences into natural spoken Vietnamese phrasing
+   * Humanizes sentences into natural spoken Vietnamese phrasing with emotional particles
    */
   private humanizeSpokenVietnamese(text: string): string {
     let t = text.trim()
-    // Replace rigid written phrases with warm spoken phrases
+    // Replace rigid presentation/catalog phrases with authentic spoken phrases
     t = t.replace(/Sản phẩm sở hữu thiết kế/gi, 'Nhìn thiết kế')
-    t = t.replace(/giúp tối ưu không gian/gi, 'góc nhà gọn hơn hẳn')
+    t = t.replace(/giúp tối ưu không gian/gi, 'góc nhà gọn hơn hẳn luôn')
     t = t.replace(/được trang bị/gi, 'có sẵn')
     t = t.replace(/phù hợp với nhiều không gian/gi, 'để ở đâu cũng tiện')
-    t = t.replace(/kích thước nhỏ gọn/gi, 'nhỏ xíu mà tiện')
+    t = t.replace(/kích thước nhỏ gọn/gi, 'nhỏ xíu mà tiện cực kỳ')
     t = t.replace(/mang lại cảm giác/gi, 'thấy')
+    t = t.replace(/đây là giải pháp/gi, 'may mà mình kiếm được cái này')
+    t = t.replace(/sau khi sử dụng/gi, 'dùng xong cái là')
+    t = t.replace(/mang lại hiệu quả/gi, 'đỡ bực hẳn')
+    t = t.replace(/giúp bạn tiết kiệm thời gian/gi, 'đỡ mất công mò mẫm')
+    t = t.replace(/hãy bấm vào/gi, 'mọi người xem ở')
+    t = t.replace(/được thiết kế để/gi, 'dùng để')
+    t = t.replace(/đảm bảo chất lượng/gi, 'dùng ưng cái bụng luôn')
+
+    // Ensure ending with lively punctuation rather than flat period
+    if (t.endsWith('.')) {
+      t = t.slice(0, -1) + '!'
+    }
     return t
   }
 
@@ -157,8 +170,8 @@ export class VipeeSpeechDirector implements SpeechDirector {
       tts = tts.replace(regex, val)
     }
 
-    // Add punctuation micro-pauses for natural breath:
-    tts = tts.replace(/\.\.\./g, ', ')
+    // Add punctuation micro-pauses for natural breath and intonation:
+    tts = tts.replace(/\.\.\./g, '... ')
     tts = tts.replace(/([,;])/g, '$1 ')
     return tts.trim()
   }
@@ -204,20 +217,37 @@ export class VipeeTTSProvider implements TTSProvider {
     try {
       const ffmpeg = getFfmpegBinaryPath()
 
+      const voice =
+        plan.voicePreset === 'Warm Reviewer' || plan.voicePreset === 'Calm Explainer'
+          ? 'vi-VN-NamMinhNeural'
+          : 'vi-VN-HoaiMyNeural'
+      const rate =
+        plan.voicePreset === 'Energetic Seller'
+          ? '+15%'
+          : plan.voicePreset === 'Natural Friend'
+          ? '+12%'
+          : plan.voicePreset === 'Curious Tester'
+          ? '+10%'
+          : '+6%'
+
       for (let i = 0; i < plan.segments.length; i++) {
         const seg = plan.segments[i]
-        const rawChunkBuffer = await this.fetchSingleGoogleTTSChunk(seg.ttsScript)
+        const rawChunkBuffer = await generateVietnameseTTS(seg.ttsScript, { voice, rate })
         const rawSegPath = path.join(tempDir, `raw_seg_${i}.mp3`)
         fs.writeFileSync(rawSegPath, rawChunkBuffer)
 
-        // Add pause after (silence pad using FFmpeg) and modulate speed/tempo
+        // Studio Broadcast Vocal Processing (Warmth EQ + Presence EQ + Compand + Breath micro-pause)
         const paddedSegPath = path.join(tempDir, `padded_seg_${i}.mp3`)
-        const pauseSec = (seg.pauseAfterMs || 250) / 1000
-        const tempo = Math.max(0.85, Math.min(1.2, seg.pace || 1.0))
+        const pauseSec = (seg.pauseAfterMs || 200) / 1000
 
-        // FFmpeg filter: atempo for pace, apad to inject natural human breathing pause
-        const filterStr = `atempo=${tempo},apad=pad_dur=${pauseSec}`
-        const cmd = `"${ffmpeg}" -y -i "${rawSegPath}" -af "${filterStr}" -c:a libmp3lame -b:a 128k "${paddedSegPath}"`
+        const filterStr = [
+          `equalizer=f=250:t=q:w=1:g=2.0`,
+          `equalizer=f=3500:t=q:w=1.2:g=2.5`,
+          `compand=0.02|0.05:6:-60/-60|-24/-10|0/-2:6:0:0:0`,
+          `apad=pad_dur=${pauseSec}`,
+        ].join(',')
+
+        const cmd = `"${ffmpeg}" -y -i "${rawSegPath}" -af "${filterStr}" -c:a libmp3lame -b:a 192k "${paddedSegPath}"`
         await execPromise(cmd)
 
         // Measure actual audio segment duration

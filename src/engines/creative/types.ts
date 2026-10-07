@@ -54,6 +54,14 @@ export interface CreativeScore {
   revisionNotes?: string[]
 }
 
+export interface SpokenScene {
+  beat: string
+  headline: string
+  voice: string
+  sticker?: string
+  keywords?: string[]
+}
+
 export interface CreativePlan {
   concept: string
   viewerInsight: string
@@ -72,6 +80,7 @@ export interface CreativePlan {
     setup: string
     payoff: string
   }
+  spokenScenes?: SpokenScene[]
 }
 
 export interface CreativeDirector {

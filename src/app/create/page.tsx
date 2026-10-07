@@ -461,11 +461,20 @@ export default function CreateVideoPage() {
         setAnalysisResult((prev) => {
           if (!prev) return prev
           const newScenes = prev.storyboard.scenes.map((sc, i) => {
+            if (plan.spokenScenes && plan.spokenScenes[i]) {
+              const sp = plan.spokenScenes[i]
+              return {
+                ...sc,
+                voice: sp.voice,
+                headline: sp.headline,
+                keywords: sp.keywords || sc.keywords,
+              }
+            }
             if (i === 0) return { ...sc, voice: plan.selectedHook.text, headline: plan.selectedHook.text }
-            if (i === 1) return { ...sc, voice: plan.viewerInsight, headline: 'Vấn đề thực tế' }
-            if (i === 2) return { ...sc, voice: `Cho đến khi mình thử dùng ${product.name}.`, headline: 'Giải pháp' }
-            if (i === 3) return { ...sc, voice: plan.payoff, headline: 'Trải nghiệm thực tế' }
-            if (i === 4) return { ...sc, voice: plan.cta, headline: 'Đề xuất & Giỏ hàng' }
+            if (i === 1) return { ...sc, voice: 'Bình thường mỗi lần gặp phiền toái như này vừa mất thời gian vừa bực mình ghê!', headline: 'Vấn đề khó chịu' }
+            if (i === 2) return { ...sc, voice: `May mà mình tậu được ${product.name} này, nhỏ xíu mà tiện dã man luôn á!`, headline: 'Giải pháp cứu tinh' }
+            if (i === 3) return { ...sc, voice: 'Dùng một cái là ưng cái bụng liền, gọn gàng 10 điểm không có nhưng luôn!', headline: 'Trải nghiệm 10/10' }
+            if (i === 4) return { ...sc, voice: plan.cta || 'Bấm ngay giỏ hàng góc trái bên dưới để săn deal ưu đãi nhé!', headline: 'Giỏ hàng góc trái' }
             return sc
           })
 
@@ -510,7 +519,7 @@ export default function CreateVideoPage() {
       analysisResult?.storyboard.scenes[0]?.voice ||
       'Chào bạn, đây là bản xem trước giọng đọc thuyết minh tiếng Việt tự nhiên.'
 
-    const audioUrl = `/api/audio/tts?text=${encodeURIComponent(text)}`
+    const audioUrl = `/api/audio/tts?text=${encodeURIComponent(text)}&preset=${encodeURIComponent(selectedVoicePreset)}`
     const audio = new Audio(audioUrl)
     previewAudioRef.current = audio
     setIsVoicePlaying(true)
