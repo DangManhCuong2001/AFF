@@ -138,40 +138,43 @@ Hãy trả về kết quả JSON với cấu trúc chính xác:
   "suggestedHashtags": ["#dogiadung", "#meovat", "#tiktokmademebuyit", "#giadungthongminh", "#reviewgiadung"]
 }`
 
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey.trim()}`
+  const candidateModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite']
+  let lastError = ''
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: `${GEMINI_SYSTEM_PROMPT}\n\n${prompt}` }],
+  for (const model of candidateModels) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `${GEMINI_SYSTEM_PROMPT}\n\n${prompt}` }],
+            },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.7,
           },
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.7,
-        },
-      }),
-    })
+        }),
+      })
 
-    if (!res.ok) {
-      const errText = await res.text()
-      console.warn(`[Gemini API] Call failed with status ${res.status}:`, errText)
-      return fallbackToAlgorithmicEngine(product)
-    }
+      if (!res.ok) {
+        lastError = await res.text()
+        console.warn(`[Gemini API] Model ${model} returned ${res.status}, trying next...`)
+        continue
+      }
 
-    const data = await res.json()
-    const contentText = data.candidates?.[0]?.content?.parts?.[0]?.text
-    if (!contentText) {
-      console.warn('[Gemini API] Empty response, falling back to algorithmic engine')
-      return fallbackToAlgorithmicEngine(product)
-    }
+      const data = await res.json()
+      const contentText = data.candidates?.[0]?.content?.parts?.[0]?.text
+      if (!contentText) {
+        continue
+      }
 
-    const parsed = JSON.parse(contentText)
+      const parsed = JSON.parse(contentText)
 
     const rawScenes = parsed.storyboard?.scenes || []
     const mappedScenes = rawScenes.map((s: Record<string, unknown>, idx: number) => {
@@ -231,11 +234,14 @@ Hãy trả về kết quả JSON với cấu trúc chính xác:
       suggestedHashtags: Array.isArray(parsed.suggestedHashtags)
         ? parsed.suggestedHashtags
         : ['#dogiadung', '#meovat', '#reviewgiadung', '#tiktokmademebuyit'],
+      }
+    } catch (error) {
+      console.warn(`[Gemini API] Error with model ${model}:`, error)
     }
-  } catch (error) {
-    console.error('[Gemini API] Unexpected error:', error)
-    return fallbackToAlgorithmicEngine(product)
   }
+
+  console.warn('[Gemini API] All candidate models exhausted, falling back to algorithmic engine:', lastError)
+  return fallbackToAlgorithmicEngine(product)
 }
 
 async function fallbackToAlgorithmicEngine(product: ProductInput): Promise<GeminiAnalysisResponse> {
