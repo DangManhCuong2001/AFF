@@ -5,36 +5,9 @@ import { promisify } from 'util'
 import { generateVietnameseTTS } from '@/lib/audio/tts'
 import { StoryboardScene } from '@/engines/core/types'
 import { VipeeSpeechDirector, VipeeTTSProvider } from '@/engines/speech/VipeeSpeechDirector'
+import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
 
 const execPromise = promisify(exec)
-
-// Resolve ffmpeg binary path dynamically
-function getFfmpegPath(): string {
-  const candidates = [
-    path.join(process.cwd(), 'node_modules', 'ffmpeg-static', 'ffmpeg'),
-    path.join(process.cwd(), 'node_modules', '.pnpm', 'ffmpeg-static@5.3.0_supports-color@7.2.0', 'node_modules', 'ffmpeg-static', 'ffmpeg'),
-    '/opt/homebrew/bin/ffmpeg',
-    '/usr/local/bin/ffmpeg',
-  ]
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(/*turbopackIgnore: true*/ candidate)) {
-      return candidate
-    }
-  }
-
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const ffmpegStatic = require('ffmpeg-static')
-    if (ffmpegStatic && fs.existsSync(ffmpegStatic)) {
-      return ffmpegStatic
-    }
-  } catch (err) {
-    console.warn('[VideoGenerator] ffmpeg-static require failed:', err)
-  }
-
-  return 'ffmpeg'
-}
 
 export interface RenderVideoParams {
   productName: string
@@ -71,7 +44,7 @@ function escapeFfmpegText(text: string): string {
 export async function renderProductVideo(
   params: RenderVideoParams
 ): Promise<RenderVideoResult> {
-  const ffmpeg = getFfmpegPath()
+  const ffmpeg = getFfmpegBinaryPath()
   const tempDir = path.join('/tmp', 'aff-render-' + Date.now())
   fs.mkdirSync(tempDir, { recursive: true })
 

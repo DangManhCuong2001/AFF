@@ -14,6 +14,7 @@ import path from 'path'
 import os from 'os'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
 
 const execPromise = promisify(exec)
 
@@ -201,7 +202,7 @@ export class VipeeTTSProvider implements TTSProvider {
     let currentTimelineSec = 0
 
     try {
-      const ffmpeg = require('ffmpeg-static') as string
+      const ffmpeg = getFfmpegBinaryPath()
 
       for (let i = 0; i < plan.segments.length; i++) {
         const seg = plan.segments[i]
