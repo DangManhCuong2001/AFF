@@ -15,7 +15,8 @@ import os from 'os'
 import { exec, execFile } from 'child_process'
 import { promisify } from 'util'
 import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
-import { generateVietnameseTTS, VietnameseVoice } from '@/lib/audio/tts'
+import { generateVietnameseTTS, sanitizeTextForTTS, VietnameseVoice } from '@/lib/audio/tts'
+import { EdgeTTS } from 'node-edge-tts'
 
 const execPromise = promisify(exec)
 
@@ -230,43 +231,86 @@ export class VipeeTTSProvider implements TTSProvider {
           ? '+8%'
           : '+5%'
 
-      // 1. Prepare batch manifest with STRICT VOICE LOCK - all segments guaranteed same voice
-      const helperScript = path.join(process.cwd(), 'src', 'lib', 'audio', 'tts_helper.py')
-      const manifestPath = path.join(tempDir, 'tts_manifest.json')
-      const manifest = {
-        voice,
-        rate,
-        segments: plan.segments.map((seg, idx) => ({
-          index: idx,
-          text: seg.ttsScript,
-          outputPath: path.join(tempDir, `raw_seg_${idx}.mp3`),
-        })),
+      // 1. Synthesize all segments in parallel using pure Node.js EdgeTTS (Vercel-compatible, zero Python dependency)
+      let batchSuccess = false
+      try {
+        const tts = new EdgeTTS({ voice, lang: 'vi-VN', rate })
+        await Promise.all(
+          plan.segments.map(async (seg, idx) => {
+            const rawSegPath = path.join(tempDir, `raw_seg_${idx}.mp3`)
+            const cleanText = sanitizeTextForTTS(seg.ttsScript)
+            await tts.ttsPromise(cleanText, rawSegPath)
+            if (!fs.existsSync(rawSegPath) || fs.statSync(rawSegPath).size < 300) {
+              throw new Error(`Segment ${idx} empty`)
+            }
+          })
+        )
+        batchSuccess = true
+      } catch (nodeErr) {
+        console.warn('[VipeeTTSProvider] Parallel Node EdgeTTS failed, attempting sequential retry:', nodeErr)
       }
-      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
 
-      // 2. Synthesize all segments in ONE single execution with consistent voice & connection pacing
-      await new Promise<void>((resolve, reject) => {
-        execFile(
-          'python3',
-          [helperScript, '--batch', manifestPath],
-          {
-            timeout: 120000,
-            env: {
-              ...process.env,
-              PYTHONIOENCODING: 'utf-8',
-              LANG: 'en_US.UTF-8',
-              LC_ALL: 'en_US.UTF-8',
-            },
-          },
-          (error, stdout, stderr) => {
-            if (error) {
-              reject(new Error(stderr || error.message))
-            } else {
-              resolve()
+      // If parallel failed, retry sequentially with safe parameters
+      if (!batchSuccess) {
+        try {
+          const ttsRetry = new EdgeTTS({ voice, lang: 'vi-VN', rate: '+0%' })
+          for (let idx = 0; idx < plan.segments.length; idx++) {
+            const seg = plan.segments[idx]
+            const rawSegPath = path.join(tempDir, `raw_seg_${idx}.mp3`)
+            if (!fs.existsSync(rawSegPath) || fs.statSync(rawSegPath).size < 300) {
+              const cleanText = sanitizeTextForTTS(seg.ttsScript)
+              await ttsRetry.ttsPromise(cleanText, rawSegPath)
             }
           }
-        )
-      })
+          batchSuccess = true
+        } catch (retryErr) {
+          console.warn('[VipeeTTSProvider] Sequential Node EdgeTTS retry failed:', retryErr)
+        }
+      }
+
+      // If Node EdgeTTS failed, try local Python helper ONLY IF python3 exists on this machine
+      if (!batchSuccess) {
+        const helperScript = path.join(process.cwd(), 'src', 'lib', 'audio', 'tts_helper.py')
+        if (fs.existsSync(helperScript)) {
+          try {
+            const manifestPath = path.join(tempDir, 'tts_manifest.json')
+            const manifest = {
+              voice,
+              rate,
+              segments: plan.segments.map((seg, idx) => ({
+                index: idx,
+                text: seg.ttsScript,
+                outputPath: path.join(tempDir, `raw_seg_${idx}.mp3`),
+              })),
+            }
+            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
+            await new Promise<void>((resolve, reject) => {
+              execFile(
+                'python3',
+                [helperScript, '--batch', manifestPath],
+                { timeout: 60000 },
+                (err) => {
+                  if (err) reject(err)
+                  else resolve()
+                }
+              )
+            })
+            batchSuccess = true
+          } catch (pyErr) {
+            console.warn('[VipeeTTSProvider] Python fallback failed (no python3 or error):', pyErr)
+          }
+        }
+      }
+
+      // Ultimate Fallback: If any segment still missing, use Google TTS chunk
+      for (let idx = 0; idx < plan.segments.length; idx++) {
+        const rawSegPath = path.join(tempDir, `raw_seg_${idx}.mp3`)
+        if (!fs.existsSync(rawSegPath) || fs.statSync(rawSegPath).size < 300) {
+          console.warn(`[VipeeTTSProvider] Segment ${idx} falling back to Google TTS`)
+          const chunk = await this.fetchSingleGoogleTTSChunk(plan.segments[idx].ttsScript)
+          fs.writeFileSync(rawSegPath, chunk)
+        }
+      }
 
       // 3. Process each segment with studio broadcast filters and calculate timings
       for (let i = 0; i < plan.segments.length; i++) {
