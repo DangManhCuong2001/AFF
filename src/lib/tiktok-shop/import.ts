@@ -223,8 +223,227 @@ export function extractMetadataFromUrl(urlStr: string): ExtractedUrlMetadata {
 }
 
 /**
+ * Parse ByteDance Modern.js Router Data embedded in TikTok Shop PDP HTML
+ */
+export function parseModernRouterData(html: string): {
+  title: string
+  price: number
+  description: string
+  assets: ProductAsset[]
+  shopProductId?: string
+} | null {
+  const match = html.match(
+    /<script[^>]*id=["']__MODERN_ROUTER_DATA__["'][^>]*>([\s\S]*?)<\/script>/i
+  )
+  if (!match) return null
+
+  try {
+    const data = JSON.parse(match[1])
+    let productInfo: any = null
+    const loaderData = data.loaderData || {}
+
+    // Find component_data containing product_info
+    for (const pageVal of Object.values(loaderData) as any[]) {
+      if (pageVal && pageVal.page_config && pageVal.page_config.components_map) {
+        for (const comp of pageVal.page_config.components_map) {
+          if (comp.component_data && comp.component_data.product_info) {
+            productInfo = comp.component_data.product_info
+            break
+          }
+        }
+      }
+      if (productInfo) break
+    }
+
+    if (!productInfo) return null
+
+    const title = (productInfo.title || '').trim()
+    if (!title || isInvalidOrGenericTitle(title)) return null
+
+    // Extract Price (VND integer)
+    let price = 0
+    if (productInfo.price) {
+      const pStr =
+        productInfo.price.real_price ||
+        productInfo.price.min_sku_price ||
+        productInfo.price.sale_price_format ||
+        productInfo.price.original_price ||
+        ''
+      const digits = String(pStr).replace(/[^\d]/g, '')
+      if (digits) price = parseInt(digits, 10)
+    }
+    if (!price && Array.isArray(productInfo.skus) && productInfo.skus[0]?.price) {
+      const skuP = productInfo.skus[0].price
+      const pStr =
+        skuP.sale_price_decimal ||
+        skuP.sale_price_format ||
+        skuP.origin_price_format ||
+        ''
+      const digits = String(pStr).replace(/[^\d]/g, '')
+      if (digits) price = parseInt(digits, 10)
+    }
+
+    // Extract Gallery Images (all high-res 800x800)
+    const assets: ProductAsset[] = []
+    const seenUrls = new Set<string>()
+
+    if (Array.isArray(productInfo.images)) {
+      for (const img of productInfo.images) {
+        let u = (img.url_list && img.url_list[0]) || ''
+        if (!u && img.uri) {
+          u = `https://p16-oec-va.ibyteimg.com/${img.uri}~tplv-o3syd03w52-resize-jpeg:800:800.jpeg`
+        }
+        if (u && !seenUrls.has(u)) {
+          seenUrls.add(u)
+          assets.push({
+            id: `asset-imported-${Date.now()}-${assets.length}`,
+            name: `${title} (Ảnh ${assets.length + 1}).jpg`,
+            type: assets.length === 0 ? 'PRODUCT_IMAGE' : 'DETAIL_IMAGE',
+            url: u,
+            size: 0,
+            isPrimary: assets.length === 0,
+          })
+        }
+      }
+    }
+
+    // Extract Variant Images (sale_props color/specification photos)
+    if (Array.isArray(productInfo.sale_props)) {
+      for (const prop of productInfo.sale_props) {
+        if (Array.isArray(prop.sale_prop_values)) {
+          for (const val of prop.sale_prop_values) {
+            if (val.image && (val.image.uri || val.image.url_list?.[0])) {
+              const u =
+                val.image.url_list?.[0] ||
+                `https://p16-oec-va.ibyteimg.com/${val.image.uri}~tplv-o3syd03w52-resize-jpeg:800:800.jpeg`
+              if (u && !seenUrls.has(u)) {
+                seenUrls.add(u)
+                assets.push({
+                  id: `asset-imported-${Date.now()}-${assets.length}`,
+                  name: `${val.prop_value || title} (Phân loại).jpg`,
+                  type: 'DETAIL_IMAGE',
+                  url: u,
+                  size: 0,
+                  isPrimary: false,
+                })
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Extract Description blocks
+    const descParts: string[] = []
+    if (Array.isArray(productInfo.desc_blocks)) {
+      for (const block of productInfo.desc_blocks) {
+        if (block.type === 'text' && block.text) {
+          descParts.push(block.text.trim())
+        } else if (block.type === 'ul' && Array.isArray(block.content)) {
+          descParts.push(block.content.map((c: string) => `• ${c}`).join('\n'))
+        }
+      }
+    }
+    const description =
+      descParts.join('\n\n') || `Sản phẩm ${title} trên TikTok Shop`
+
+    return {
+      title,
+      price,
+      description,
+      assets,
+      shopProductId: productInfo.product_id ? String(productInfo.product_id) : undefined,
+    }
+  } catch (err) {
+    console.warn('[TikTokShopImport] parseModernRouterData error:', err)
+    return null
+  }
+}
+
+/**
+ * Helper to fetch TikTok PDP with cookie session warmup
+ */
+async function fetchTikTokPage(
+  targetUrl: string,
+  cleanPdpUrl?: string
+): Promise<{ html: string; finalUrl: string }> {
+  const browserHeaders: Record<string, string> = {
+    'User-Agent':
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    Accept:
+      'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Sec-Ch-Ua': '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"macOS"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1',
+  }
+
+  let cookieHeader = ''
+  try {
+    // Warm up session cookies on tiktok.com (ttwid, tt_csrf_token, tt_chain_token)
+    const warmupRes = await fetch('https://www.tiktok.com', {
+      headers: {
+        'User-Agent': browserHeaders['User-Agent'],
+        'Accept-Language': 'vi-VN,vi;q=0.9',
+      },
+    })
+    const getCookies = warmupRes.headers.getSetCookie
+      ? warmupRes.headers.getSetCookie()
+      : [warmupRes.headers.get('set-cookie') || '']
+    cookieHeader = getCookies
+      .filter(Boolean)
+      .map((c) => c.split(';')[0])
+      .join('; ')
+  } catch {
+    // Warmup silent fallback
+  }
+
+  if (cookieHeader) {
+    browserHeaders['Cookie'] = cookieHeader
+    browserHeaders['Referer'] = 'https://www.tiktok.com/'
+    browserHeaders['Sec-Fetch-Site'] = 'same-site'
+  }
+
+  // 1. Try targetUrl
+  let res = await fetch(targetUrl, {
+    headers: browserHeaders,
+    redirect: 'follow',
+  })
+  let html = await res.text()
+  let finalUrl = res.url || targetUrl
+
+  // 2. If blocked by Security Check or modern router data is missing, try clean canonical PDP url
+  if (
+    cleanPdpUrl &&
+    cleanPdpUrl !== targetUrl &&
+    (isAntiBotHtml(html) || isInvalidOrGenericTitle(html))
+  ) {
+    try {
+      const cleanRes = await fetch(cleanPdpUrl, {
+        headers: browserHeaders,
+        redirect: 'follow',
+      })
+      const cleanHtml = await cleanRes.text()
+      if (!isAntiBotHtml(cleanHtml)) {
+        html = cleanHtml
+        finalUrl = cleanRes.url || cleanPdpUrl
+      }
+    } catch {
+      // Keep previous html
+    }
+  }
+
+  return { html, finalUrl }
+}
+
+/**
  * Imports Product Information directly from TikTok Shop link
- * by reading public OpenGraph metadata, URL embedded metadata (og_info), JSON-LD, and SSR product details,
+ * by reading Modern.js Router Data, OpenGraph metadata, URL embedded metadata (og_info), JSON-LD,
  * with anti-bot challenge protection.
  */
 export async function importTikTokShopProduct(rawInput: string): Promise<TikTokShopImportResult> {
@@ -241,39 +460,43 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
   // Pre-parse metadata directly from input URL (e.g. og_info, slug, title params)
   const targetMeta = extractMetadataFromUrl(targetUrl)
   let productId = targetMeta.productId || extractTikTokShopProductId(targetUrl)
+  const cleanPdpUrl = productId ? `https://shop.tiktok.com/vn/pdp/${productId}` : undefined
 
   try {
-    // Strategy 1: Desktop Browser headers
-    const browserHeaders = {
-      'User-Agent':
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-      'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Sec-Ch-Ua': '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
-      'Sec-Ch-Ua-Mobile': '?0',
-      'Sec-Ch-Ua-Platform': '"macOS"',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'none',
-      'Sec-Fetch-User': '?1',
-      'Upgrade-Insecure-Requests': '1',
-    }
-
-    let res = await fetch(targetUrl, {
-      headers: browserHeaders,
-      redirect: 'follow',
-    })
-
-    let finalUrl = res.url || targetUrl
+    const { html, finalUrl } = await fetchTikTokPage(targetUrl, cleanPdpUrl)
     const finalMeta = extractMetadataFromUrl(finalUrl)
 
     if (!productId) {
       productId = finalMeta.productId || extractTikTokShopProductId(finalUrl)
     }
 
-    let html = await res.text()
+    // ============================================================
+    // Strategy 1: ByteDance Modern.js Router Data (__MODERN_ROUTER_DATA__)
+    // This contains the full, authoritative product data with all gallery images and price!
+    // ============================================================
+    const modernData = parseModernRouterData(html)
+    if (modernData) {
+      return {
+        success: true,
+        message: `Đã trích xuất thành công: ${modernData.title} (${modernData.assets.length} ảnh, giá: ${
+          modernData.price > 0 ? modernData.price.toLocaleString('vi-VN') + '₫' : 'Liên hệ'
+        })`,
+        requiresManualFallback: false,
+        extractedId: modernData.shopProductId || productId || undefined,
+        product: {
+          name: modernData.title,
+          price: modernData.price > 0 ? modernData.price : '',
+          description: modernData.description,
+          productUrl: finalUrl || targetUrl,
+          shopProductId: modernData.shopProductId || productId || undefined,
+          assets: modernData.assets,
+        },
+      }
+    }
 
-    // 1. Check title from HTML
+    // ============================================================
+    // Strategy 2: Standard HTML Metadata & JSON-LD
+    // ============================================================
     const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']*)["']/i)
     const titleTagMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
     let title = (ogTitleMatch?.[1] || titleTagMatch?.[1] || '').trim()
@@ -283,32 +506,7 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
       .replace(/\s*\|\s*TikTok Shop.*$/i, '')
       .trim()
 
-    // If Strategy 1 hits Anti-bot "Security Check" or generic page, try Strategy 2 (Social Media Crawler)
-    if (isAntiBotOrGeneric(title, html)) {
-      try {
-        const crawlerRes = await fetch(targetUrl, {
-          headers: {
-            'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
-            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          },
-          redirect: 'follow',
-        })
-        if (crawlerRes.ok) {
-          const crawlerHtml = await crawlerRes.text()
-          const crawlerTitleMatch = crawlerHtml.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']*)["']/i)
-          const altTitle = (crawlerTitleMatch?.[1] || '').replace(/\s*-\s*TikTok Shop.*$/i, '').trim()
-          if (altTitle && !isAntiBotOrGeneric(altTitle, crawlerHtml)) {
-            title = altTitle
-            html = crawlerHtml
-            finalUrl = crawlerRes.url || finalUrl
-          }
-        }
-      } catch {
-        // Fallback silently if crawler request fails
-      }
-    }
-
-    // 2. Try JSON-LD extraction
+    // Try JSON-LD extraction
     const jsonLdMatches = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)
     let jsonLdTitle = ''
     let jsonLdPrice: number | undefined
@@ -338,18 +536,17 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
       title = jsonLdTitle
     }
 
-    // 3. Resolve best metadata from URL params (og_info, slug, share hint)
+    // Resolve best metadata from URL params (og_info, slug, share hint)
     const bestUrlTitle = finalMeta.title || targetMeta.title || titleHint
     const bestUrlImage = finalMeta.imageUrl || targetMeta.imageUrl
 
-    // If HTML was blocked by Security Check / Captcha or title is invalid, check if URL contains og_info or valid title:
-    if (isInvalidOrGenericTitle(title) || isAntiBotHtml(html)) {
-      if (bestUrlTitle && !isInvalidOrGenericTitle(bestUrlTitle)) {
-        title = bestUrlTitle
-      }
+    // If HTML was blocked by Security Check / Captcha or title is generic, use og_info
+    const isChallenged = isInvalidOrGenericTitle(title) || isAntiBotHtml(html)
+    if (isChallenged && bestUrlTitle && !isInvalidOrGenericTitle(bestUrlTitle)) {
+      title = bestUrlTitle
     }
 
-    // If title is STILL Security Check, Captcha, or generic TikTok Shop, reject as automated bot challenge
+    // If title is STILL Security Check or invalid, reject
     if (isInvalidOrGenericTitle(title)) {
       return {
         success: false,
@@ -366,7 +563,7 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
       }
     }
 
-    // 4. Extract Gallery Images
+    // Extract Gallery Images from HTML regex
     const assets: ProductAsset[] = []
     const seenHashes = new Set<string>()
 
@@ -389,35 +586,37 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
     }
 
     // Extract secondary gallery images from page HTML
-    const imgRegex = /https:\/\/[^"'<>\s]+\/tos-maliva-[^"'<>\s]+(?:800:800|\.jpeg|\.webp)[^"'<>\s]*/gi
-    const rawMatches = html.match(imgRegex) || []
+    if (!isChallenged) {
+      const imgRegex = /https:\/\/[^"'<>\s]+\/tos-maliva-[^"'<>\s]+(?:800:800|\.jpeg|\.webp)[^"'<>\s]*/gi
+      const rawMatches = html.match(imgRegex) || []
 
-    for (const m of rawMatches) {
-      const hashMatch = m.match(/tos-maliva[a-zA-Z0-9_\-]+\/([a-f0-9]{32})/)
-      if (hashMatch) {
-        const hash = hashMatch[1]
-        if (!seenHashes.has(hash) && assets.length < 8) {
-          seenHashes.add(hash)
-          const highResUrl = `https://p16-oec-va.ibyteimg.com/tos-maliva-i-o3syd03w52-us/${hash}~tplv-o3syd03w52-resize-jpeg:800:800.jpeg`
-          assets.push({
-            id: 'asset-imported-' + Date.now() + '-' + assets.length,
-            name: `${title || 'Sản phẩm'} (Góc ${assets.length + 1}).jpg`,
-            type: 'DETAIL_IMAGE',
-            url: highResUrl,
-            size: 0,
-            isPrimary: assets.length === 0,
-          })
+      for (const m of rawMatches) {
+        const hashMatch = m.match(/tos-maliva[a-zA-Z0-9_\-]+\/([a-f0-9]{32})/)
+        if (hashMatch) {
+          const hash = hashMatch[1]
+          if (!seenHashes.has(hash) && assets.length < 8) {
+            seenHashes.add(hash)
+            const highResUrl = `https://p16-oec-va.ibyteimg.com/tos-maliva-i-o3syd03w52-us/${hash}~tplv-o3syd03w52-resize-jpeg:800:800.jpeg`
+            assets.push({
+              id: 'asset-imported-' + Date.now() + '-' + assets.length,
+              name: `${title || 'Sản phẩm'} (Góc ${assets.length + 1}).jpg`,
+              type: 'DETAIL_IMAGE',
+              url: highResUrl,
+              size: 0,
+              isPrimary: assets.length === 0,
+            })
+          }
         }
       }
     }
 
-    // 5. Extract Description
+    // Extract Description
     const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']*)["']/i)
     const description = ogDescMatch?.[1] || ''
 
-    // 6. Extract Price
+    // Extract Price
     let price: number | undefined = jsonLdPrice
-    if (!price) {
+    if (!price && !isChallenged) {
       const realPriceMatch = html.match(/"real_price":"([^"]+)"/)
       const formatPriceMatch = html.match(/"(?:format_price|sale_price|price)":"?([^",}]+)"?/)
 
@@ -430,9 +629,13 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
       }
     }
 
+    const message = isChallenged
+      ? `Đã trích xuất thông tin: ${title} (Lưu ý: TikTok đang bật bảo mật chống bot, bạn có thể kiểm tra lại giá và bổ sung thêm ảnh bên dưới nhé!)`
+      : `Đã trích xuất thành công: ${title}`
+
     return {
       success: true,
-      message: `Đã trích xuất thành công: ${title}`,
+      message,
       requiresManualFallback: false,
       extractedId: productId || undefined,
       product: {
@@ -467,7 +670,7 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
 
       return {
         success: true,
-        message: `Đã trích xuất thành công: ${fallbackTitle}`,
+        message: `Đã trích xuất thông tin cơ bản: ${fallbackTitle}`,
         requiresManualFallback: false,
         extractedId: productId || undefined,
         product: {
@@ -495,3 +698,4 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
     }
   }
 }
+
