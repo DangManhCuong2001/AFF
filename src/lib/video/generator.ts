@@ -4,6 +4,7 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { generateVietnameseTTS } from '@/lib/audio/tts'
 import { StoryboardScene } from '@/engines/core/types'
+import { VipeeSpeechDirector, VipeeTTSProvider } from '@/engines/speech/VipeeSpeechDirector'
 
 const execPromise = promisify(exec)
 
@@ -43,6 +44,7 @@ export interface RenderVideoParams {
   imageBuffers?: Buffer[]
   imageUrls?: string[]
   imageMimeType?: string
+  voicePreset?: 'Natural Friend' | 'Warm Reviewer' | 'Curious Tester' | 'Energetic Seller' | 'Calm Explainer'
 }
 
 export interface RenderVideoResult {
@@ -115,26 +117,27 @@ export async function renderProductVideo(
       availableImagePaths.push(fallbackPath)
     }
 
-    // 2. Generate Voiceover MP3 for each scene and track audio files
-    const audioFiles: string[] = []
-    for (let i = 0; i < params.scenes.length; i++) {
-      const scene = params.scenes[i]
-      const voiceText = scene.voice || scene.headline
-      const audioBuffer = await generateVietnameseTTS(voiceText)
-      const audioPath = path.join(tempDir, `voice_scene_${i}.mp3`)
-      fs.writeFileSync(audioPath, audioBuffer)
-      audioFiles.push(audioPath)
-    }
+    // 2. Audio-First Timeline: Generate Voiceover with VipeeSpeechDirector and VipeeTTSProvider
+    const speechDirector = new VipeeSpeechDirector()
+    const speechPlan = speechDirector.createSpeechPlan(
+      {
+        scenes: params.scenes.map((s) => ({
+          id: s.id,
+          voice: s.voice || s.headline,
+          storyBeat: s.type || 'demo',
+          emphasisWords: s.keywords,
+        })),
+      },
+      {
+        voicePreset: params.voicePreset || 'Natural Friend',
+      }
+    )
 
-    // 3. Concatenate all scene voiceovers into a single master voiceover track
-    const concatListPath = path.join(tempDir, 'audio_concat.txt')
-    const concatContent = audioFiles.map((p) => `file '${p}'`).join('\n')
-    fs.writeFileSync(concatListPath, concatContent)
+    const ttsProvider = new VipeeTTSProvider()
+    const speechAudioResult = await ttsProvider.generateSpeech(speechPlan)
 
     const masterVoicePath = path.join(tempDir, 'master_voice.mp3')
-    await execPromise(
-      `${ffmpeg} -y -f concat -safe 0 -i "${concatListPath}" -c copy "${masterVoicePath}"`
-    )
+    fs.writeFileSync(masterVoicePath, speechAudioResult.audioBuffer)
 
     // 4. Build 5 Video Segments (3 seconds each)
     const segmentFiles: string[] = []
@@ -148,7 +151,8 @@ export async function renderProductVideo(
 
     for (let i = 0; i < params.scenes.length; i++) {
       const scene = params.scenes[i]
-      const sceneDuration = scene.duration && scene.duration > 0 ? scene.duration : 3
+      const timing = speechAudioResult.segmentTimings.find((t) => t.segmentId === scene.id)
+      const sceneDuration = timing ? timing.durationSec : (scene.duration && scene.duration > 0 ? scene.duration : 3)
       const segPath = path.join(tempDir, `segment_${i}.mp4`)
       segmentFiles.push(segPath)
 
@@ -165,24 +169,29 @@ export async function renderProductVideo(
           ? 'LOI ICH SAN PHAM'
           : 'TIEN ICH GIA DINH'
 
-      const headlineEscaped = escapeFfmpegText(scene.headline.slice(0, 45))
+      const headlineEscaped = escapeFfmpegText(scene.headline.slice(0, 42))
+      const voiceSubtitle = escapeFfmpegText((scene.voice || scene.headline).slice(0, 55))
+      const emphasisWord = (scene.keywords && scene.keywords[0]) ? escapeFfmpegText(scene.keywords[0].slice(0, 20).toUpperCase()) : ''
 
       // FFmpeg filter chain for 1080x1920:
       // Base: dark slate 1080x1920 canvas
-      // Layer 1: Scaled product image centered (800x800) with slight zoom
-      // Layer 2: Top Hook Pill Badge
-      // Layer 3: Main Headline Box
-      // Layer 4: Affiliate CTA Pill (Không hiển thị giá trực tiếp để tránh lệch giá & tăng CTR giỏ hàng)
+      // Layer 1: Scaled product image centered (840x840)
+      // Layer 2: Top Story Beat Badge (Amber/Yellow)
+      // Layer 3: Main Headline Box (Slate/Dark)
+      // Layer 4: Voice Subtitle Box (White with dark backdrop)
+      // Layer 5: Affiliate CTA Pill (Cyan/Teal - No direct price)
       const filterComplex = [
         `[0:v]scale=1080:1920[bg]`,
         `[1:v]scale=840:840:force_original_aspect_ratio=decrease[fg]`,
-        `[bg][fg]overlay=(W-w)/2:420[comp]`,
-        // Top Badge
-        `[comp]drawtext=text='${badgeText}'${fontParam}:fontcolor=0xfacc15:fontsize=36:x=(w-text_w)/2:y=240:box=1:boxcolor=0x000000@0.7:boxborderw=16[b1]`,
-        // Headline
-        `[b1]drawtext=text='${headlineEscaped}'${fontParam}:fontcolor=white:fontsize=48:x=(w-text_w)/2:y=1340:box=1:boxcolor=0x0f172a@0.85:boxborderw=24[b2]`,
-        // Bottom CTA: Kêu gọi xem giỏ hàng, tuyệt đối không in số tiền trực tiếp
-        `[b2]drawtext=text='Xem gia uu dai tai gio hang goc trai'${fontParam}:fontcolor=0x38bdf8:fontsize=36:x=(w-text_w)/2:y=1480:box=1:boxcolor=0x0c4a6e@0.85:boxborderw=18[out]`,
+        `[bg][fg]overlay=(W-w)/2:400[comp]`,
+        // Top Story Beat Badge
+        `[comp]drawtext=text='${badgeText}'${fontParam}:fontcolor=0xfacc15:fontsize=36:x=(w-text_w)/2:y=220:box=1:boxcolor=0x000000@0.7:boxborderw=16[b1]`,
+        // Main Headline
+        `[b1]drawtext=text='${headlineEscaped}'${fontParam}:fontcolor=white:fontsize=46:x=(w-text_w)/2:y=1300:box=1:boxcolor=0x0f172a@0.9:boxborderw=20[b2]`,
+        // Subtitle line
+        `[b2]drawtext=text='${voiceSubtitle}'${fontParam}:fontcolor=0xf1f5f9:fontsize=32:x=(w-text_w)/2:y=1400:box=1:boxcolor=0x000000@0.6:boxborderw=14[b3]`,
+        // Bottom CTA Pill
+        `[b3]drawtext=text='Xem gia uu dai tai gio hang goc trai'${fontParam}:fontcolor=0x38bdf8:fontsize=36:x=(w-text_w)/2:y=1510:box=1:boxcolor=0x0c4a6e@0.85:boxborderw=18[out]`,
       ].join(';')
 
       const sceneImgPath = availableImagePaths[i % availableImagePaths.length]
@@ -249,7 +258,7 @@ export async function renderProductVideo(
 
     const stats = fs.statSync(finalOutputPath)
 
-    const totalDuration = params.scenes.reduce(
+    const totalDuration = speechAudioResult.durationSec || params.scenes.reduce(
       (acc, s) => acc + (s.duration && s.duration > 0 ? s.duration : 3),
       0
     )

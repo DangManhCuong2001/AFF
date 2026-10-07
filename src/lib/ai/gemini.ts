@@ -6,6 +6,8 @@ import {
   StoryboardSceneType,
 } from '@/engines/core/types'
 import { HomeUtilityEngine } from '@/engines/home/HomeUtilityEngine'
+import { CreativePlan } from '@/engines/creative/types'
+import { VipeeCreativeDirector } from '@/engines/creative/VipeeCreativeDirector'
 
 export interface GeminiAnalysisResponse {
   analysis: ProductAnalysis
@@ -13,6 +15,7 @@ export interface GeminiAnalysisResponse {
   storyboard: VideoStoryboard
   suggestedCaption: string
   suggestedHashtags: string[]
+  creativePlan?: CreativePlan
 }
 
 const GEMINI_SYSTEM_PROMPT = `Bạn là Đạo diễn Video & Chuyên gia Tăng trưởng TikTok UGC hàng đầu cho TikTok Shop Affiliate tại Việt Nam.
@@ -206,6 +209,23 @@ Hãy trả về kết quả JSON với cấu trúc chính xác:
       suggestedHashtags: Array.isArray(parsed.suggestedHashtags)
         ? parsed.suggestedHashtags
         : ['#dogiadung', '#meovat', '#reviewgiadung', '#tiktokmademebuyit'],
+      creativePlan: await new VipeeCreativeDirector().createCreativePlan(
+        product,
+        {
+          productType: product.name,
+          mainProblem: parsed.analysis?.mainProblem || 'Bừa bộn, mất thời gian dọn dẹp',
+          mainBenefit: parsed.analysis?.mainBenefit || 'Không gian gọn gàng và tiện lợi',
+          secondaryBenefits: Array.isArray(parsed.analysis?.secondaryBenefits) ? parsed.analysis.secondaryBenefits : [],
+          targetAudience: parsed.analysis?.targetAudience || 'Gia đình, người đi làm',
+          sellingMechanism: parsed.analysis?.sellingMechanism || 'Thiết kế thông minh, giải quyết tức thì',
+          visualDemoPotential: 'high',
+          recommendedFormat: parsed.strategy?.format || 'problem-solution',
+          reasoningSummary: '',
+          claimsAllowed: [],
+          claimsToAvoid: [],
+        },
+        { targetDuration, geminiApiKey: apiKey }
+      ),
       }
     } catch (error) {
       console.warn(`[Gemini API] Error with model ${model}:`, error)
@@ -224,11 +244,13 @@ async function fallbackToAlgorithmicEngine(
   const analysis = await engine.analyzeProduct(product)
   const strategy = await engine.generateStrategy(product, analysis, targetDuration)
   const storyboard = await engine.generateStoryboard(product, strategy, targetDuration)
+  const creativePlan = await new VipeeCreativeDirector().createCreativePlan(product, analysis, { targetDuration })
 
   return {
     analysis,
     strategy,
     storyboard,
+    creativePlan,
     suggestedCaption: `${strategy.hook} 😅 ${analysis.mainBenefit}. Nhỏ mà tiện hơn mình nghĩ nhiều!`,
     suggestedHashtags: [
       '#dogiadung',

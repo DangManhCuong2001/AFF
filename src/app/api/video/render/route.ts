@@ -10,6 +10,7 @@ export async function POST(request: NextRequest) {
     const productName = (formData.get('productName') as string) || 'Sản phẩm gia dụng thông minh'
     const priceStr = formData.get('price') as string
     const price = priceStr ? Number(priceStr) : undefined
+    const voicePreset = (formData.get('voicePreset') as any) || undefined
     const storyboardRaw = formData.get('storyboard') as string
 
     let scenes: StoryboardScene[] = []
@@ -143,6 +144,7 @@ export async function POST(request: NextRequest) {
       scenes,
       imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+      voicePreset,
     })
 
     return NextResponse.json({

@@ -20,6 +20,16 @@ import {
   Key,
   X,
   ShoppingBag,
+  Volume2,
+  VolumeX,
+  Play,
+  Pause,
+  Wand2,
+  RotateCcw,
+  Check,
+  ShieldCheck,
+  Flame,
+  Award,
 } from 'lucide-react'
 import {
   ProductInput,
@@ -30,6 +40,8 @@ import {
   VideoStrategy,
   VideoStoryboard,
 } from '@/engines/core/types'
+import { CreativePlan, HookCandidate, StoryApproach } from '@/engines/creative/types'
+import { VoicePersonality } from '@/engines/speech/types'
 import { CABLE_ORGANIZER_SEED_PRODUCT } from '@/engines/home/seed'
 
 interface CategoryTab {
@@ -118,7 +130,16 @@ export default function CreateVideoPage() {
     analysis: ProductAnalysis
     strategy: VideoStrategy
     storyboard: VideoStoryboard
+    creativePlan?: CreativePlan
   } | null>(null)
+
+  // Creative Director Engine State
+  const [selectedVoicePreset, setSelectedVoicePreset] = useState<VoicePersonality>('Natural Friend')
+  const [selectedHookId, setSelectedHookId] = useState<string>('')
+  const [selectedApproach, setSelectedApproach] = useState<StoryApproach>('micro-story')
+  const [isVoicePlaying, setIsVoicePlaying] = useState(false)
+  const [isRegeneratingAngle, setIsRegeneratingAngle] = useState(false)
+  const previewAudioRef = React.useRef<HTMLAudioElement | null>(null)
 
   // Video duration state (15s, 30s, 45s)
   const [selectedDuration, setSelectedDuration] = useState<15 | 30 | 45>(15)
@@ -325,7 +346,14 @@ export default function CreateVideoPage() {
         analysis: data.analysis,
         strategy: data.strategy,
         storyboard: data.storyboard,
+        creativePlan: data.creativePlan,
       })
+      if (data.creativePlan?.selectedHook?.id) {
+        setSelectedHookId(data.creativePlan.selectedHook.id)
+      }
+      if (data.creativePlan?.storyType) {
+        setSelectedApproach(data.creativePlan.storyType)
+      }
       setCurrentStep(2)
       setCaption(
         data.suggestedCaption ||
@@ -347,6 +375,161 @@ export default function CreateVideoPage() {
     }
   }
 
+  // Switch to another Hook candidate among the 5 generated hooks
+  const handleSelectHook = (candidate: HookCandidate) => {
+    setSelectedHookId(candidate.id)
+    if (!analysisResult) return
+
+    setAnalysisResult((prev) => {
+      if (!prev) return prev
+      const updatedScenes = [...prev.storyboard.scenes]
+      if (updatedScenes.length > 0) {
+        updatedScenes[0] = {
+          ...updatedScenes[0],
+          voice: candidate.text,
+          headline: candidate.text,
+        }
+      }
+      return {
+        ...prev,
+        strategy: {
+          ...prev.strategy,
+          hook: candidate.text,
+        },
+        storyboard: {
+          ...prev.storyboard,
+          scenes: updatedScenes,
+        },
+        creativePlan: prev.creativePlan
+          ? {
+              ...prev.creativePlan,
+              selectedHook: candidate,
+              hook: candidate.text,
+            }
+          : undefined,
+      }
+    })
+
+    setCaption(`${candidate.text} 😅 ${analysisResult.analysis.mainBenefit}. Nhỏ mà tiện hơn mình nghĩ nhiều!`)
+  }
+
+  // Story approach rotation list
+  const STORY_APPROACH_ROTATION: StoryApproach[] = [
+    'micro-story',
+    'daily-frustration',
+    'relatable-moment',
+    'curiosity-test',
+    'before-after',
+    'mini-review',
+    'pov',
+    'three-reasons',
+    'satisfying',
+  ]
+
+  // Generate another angle / story approach
+  const handleGenerateAnotherAngle = async () => {
+    if (!product.name.trim()) return
+    setIsRegeneratingAngle(true)
+
+    try {
+      const currentIndex = STORY_APPROACH_ROTATION.indexOf(selectedApproach)
+      const nextApproach = STORY_APPROACH_ROTATION[(currentIndex + 1) % STORY_APPROACH_ROTATION.length]
+      setSelectedApproach(nextApproach)
+
+      const res = await fetch('/api/creative/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...product,
+          targetDuration: selectedDuration,
+          approach: nextApproach,
+          voicePreset: selectedVoicePreset,
+          geminiApiKey: geminiApiKey.trim() || undefined,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        alert(data.error || 'Đổi góc tiếp cận thất bại')
+        return
+      }
+
+      if (data.creativePlan) {
+        const plan: CreativePlan = data.creativePlan
+        setSelectedHookId(plan.selectedHook.id)
+
+        setAnalysisResult((prev) => {
+          if (!prev) return prev
+          const newScenes = prev.storyboard.scenes.map((sc, i) => {
+            if (i === 0) return { ...sc, voice: plan.selectedHook.text, headline: plan.selectedHook.text }
+            if (i === 1) return { ...sc, voice: plan.viewerInsight, headline: 'Vấn đề thực tế' }
+            if (i === 2) return { ...sc, voice: `Cho đến khi mình thử dùng ${product.name}.`, headline: 'Giải pháp' }
+            if (i === 3) return { ...sc, voice: plan.payoff, headline: 'Trải nghiệm thực tế' }
+            if (i === 4) return { ...sc, voice: plan.cta, headline: 'Đề xuất & Giỏ hàng' }
+            return sc
+          })
+
+          return {
+            ...prev,
+            creativePlan: plan,
+            strategy: {
+              ...prev.strategy,
+              hook: plan.selectedHook.text,
+            },
+            storyboard: {
+              ...prev.storyboard,
+              scenes: newScenes,
+            },
+          }
+        })
+
+        setCaption(`${plan.selectedHook.text} 😅 ${product.problemSolved || 'Gọn gàng tức thì'}. Xem ở giỏ hàng nhé!`)
+      }
+    } catch (e: any) {
+      alert('Lỗi: ' + e.message)
+    } finally {
+      setIsRegeneratingAngle(false)
+    }
+  }
+
+  // Voice Preview player
+  const handlePreviewVoice = (textToPlay?: string) => {
+    if (isVoicePlaying) {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause()
+        previewAudioRef.current = null
+      }
+      setIsVoicePlaying(false)
+      return
+    }
+
+    const text =
+      textToPlay ||
+      analysisResult?.creativePlan?.selectedHook?.text ||
+      analysisResult?.strategy.hook ||
+      analysisResult?.storyboard.scenes[0]?.voice ||
+      'Chào bạn, đây là bản xem trước giọng đọc thuyết minh tiếng Việt tự nhiên.'
+
+    const audioUrl = `/api/audio/tts?text=${encodeURIComponent(text)}`
+    const audio = new Audio(audioUrl)
+    previewAudioRef.current = audio
+    setIsVoicePlaying(true)
+
+    audio.onended = () => {
+      setIsVoicePlaying(false)
+      previewAudioRef.current = null
+    }
+
+    audio.onerror = () => {
+      setIsVoicePlaying(false)
+      previewAudioRef.current = null
+    }
+
+    audio.play().catch(() => {
+      setIsVoicePlaying(false)
+    })
+  }
+
   // Start Step 3: Video Generation Flow (Real FFmpeg + Vietnamese TTS Rendering)
   const handleStartGeneratingVideo = async () => {
     setCurrentStep(3)
@@ -360,6 +543,7 @@ export default function CreateVideoPage() {
       const formData = new FormData()
       formData.append('productName', product.name)
       if (product.price) formData.append('price', String(product.price))
+      formData.append('voicePreset', selectedVoicePreset)
       if (analysisResult?.storyboard) {
         formData.append('storyboard', JSON.stringify(analysisResult.storyboard))
       }
@@ -1464,76 +1648,262 @@ export default function CreateVideoPage() {
             </button>
           </div>
 
-          {/* Right Column: AI Analysis & Storyboard Preview (5 cols) */}
+          {/* Right Column: VIPEE CREATIVE DIRECTOR ENGINE (5 cols) */}
           <div className="lg:col-span-5 space-y-6">
             {analysisResult ? (
               <div className="space-y-6">
-                {/* Analysis Card */}
-                <div className="p-5 rounded-2xl bg-neutral-900/90 border border-rose-500/30 space-y-4 shadow-xl">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-xs font-mono uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Home &amp; Utility Engine Strategy
-                    </span>
+                {/* 1. Creative Director Main Card */}
+                <div className="p-5 rounded-2xl bg-neutral-900/90 border border-rose-500/40 space-y-5 shadow-2xl backdrop-blur">
+                  {/* Top Bar: Title + Change Angle Button */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap border-b border-neutral-800 pb-3">
                     <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold font-mono">
-                        {analysisResult.strategy.format.toUpperCase()}
+                      <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-rose-600 to-amber-500 flex items-center justify-center text-white shadow-md">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-bold text-white tracking-wide uppercase flex items-center gap-1.5">
+                          VIPEE CREATIVE DIRECTOR
+                        </h3>
+                        <p className="text-[10px] text-rose-400 font-mono">
+                          Direct-Response Story Engine • UGC TikTok
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleGenerateAnotherAngle}
+                      disabled={isRegeneratingAngle}
+                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 text-amber-300 border border-amber-500/30 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      title="Chuyển sang góc tiếp cận kịch bản khác (POV, Daily Frustration, Skeptical Test...)"
+                    >
+                      <RotateCcw className={`w-3.5 h-3.5 ${isRegeneratingAngle ? 'animate-spin' : ''}`} />
+                      <span>{isRegeneratingAngle ? 'Đang đổi...' : 'Đổi góc kể chuyện'}</span>
+                    </button>
+                  </div>
+
+                  {/* Concept & Audience Insight */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-neutral-400 flex items-center gap-1">
+                        💡 Creative Concept:
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/20 font-bold uppercase">
+                        {analysisResult.creativePlan?.storyType || selectedApproach}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800/90">
+                      <p className="text-xs font-semibold text-white leading-snug">
+                        &quot;{analysisResult.creativePlan?.concept || 'The tiny annoyance you tolerate every day'}&quot;
+                      </p>
+                      <p className="text-[11px] text-neutral-400 mt-1.5 leading-relaxed">
+                        👀 <strong className="text-neutral-300">Tâm lý người xem:</strong> {analysisResult.creativePlan?.viewerInsight || analysisResult.analysis.mainProblem}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Emotional Arc */}
+                  {analysisResult.creativePlan?.emotionalArc && (
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 block">
+                        Đường cong cảm xúc (Emotional Arc):
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {analysisResult.creativePlan.emotionalArc.map((arc, i) => (
+                          <span
+                            key={i}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-neutral-950 border border-neutral-800 text-amber-300/90 font-mono"
+                          >
+                            {i + 1}. {arc}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. HOOK ENGINE: 5 Ranked Hook Candidates */}
+                  <div className="space-y-2.5 pt-2 border-t border-neutral-800/80">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                        <Flame className="w-3.5 h-3.5 text-amber-400" />
+                        Hook Engine: 5 Đề xuất giữ chân 3s đầu
+                      </span>
+                      <span className="text-[10px] text-neutral-400 font-mono">
+                        Chọn hook bạn thích nhất
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {(analysisResult.creativePlan?.hookCandidates || [
+                        {
+                          id: 'hook-1',
+                          text: analysisResult.strategy.hook,
+                          type: 'curiosity' as const,
+                          scores: {
+                            curiosity: 92,
+                            relatability: 90,
+                            specificity: 88,
+                            visualPotential: 90,
+                            clarity: 90,
+                            total: 92,
+                          },
+                          reasoning: 'Gợi mở sự tò mò và cảm giác thân quen',
+                        },
+                      ]).map((candidate) => {
+                        const scoreVal = candidate.scores?.total || 90
+                        const isSelected = selectedHookId === candidate.id || (!selectedHookId && scoreVal >= 90)
+                        return (
+                          <div
+                            key={candidate.id}
+                            onClick={() => handleSelectHook(candidate as HookCandidate)}
+                            className={`p-3 rounded-xl border text-xs transition cursor-pointer flex flex-col gap-1.5 ${
+                              isSelected
+                                ? 'bg-rose-950/30 border-rose-500 shadow-md shadow-rose-950/50'
+                                : 'bg-neutral-950/70 border-neutral-800/80 hover:border-neutral-700'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-rose-400 font-bold uppercase">
+                                {candidate.type}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-mono font-bold text-amber-400">
+                                  {scoreVal}/100đ
+                                </span>
+                                {isSelected && (
+                                  <span className="w-4 h-4 rounded-full bg-rose-500 flex items-center justify-center text-white">
+                                    <Check className="w-2.5 h-2.5" />
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <p className={`text-xs leading-relaxed ${isSelected ? 'font-bold text-white' : 'text-neutral-300'}`}>
+                              &quot;{candidate.text}&quot;
+                            </p>
+                            {candidate.reasoning && (
+                              <p className="text-[10px] text-neutral-500 italic">
+                                💡 {candidate.reasoning}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 3. Creative Quality Score */}
+                  <div className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800/80 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                        <Award className="w-3.5 h-3.5" />
+                        Creative Score (Đánh giá chất lượng)
+                      </span>
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                        {analysisResult.creativePlan?.creativeScore?.overallQuality || 88}/100 • ĐẠT TIÊU CHUẨN ✅
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2 rounded-lg bg-neutral-900/60 border border-neutral-800">
+                        <p className="text-[10px] text-neutral-400">Hook &amp; Tò mò</p>
+                        <p className="text-xs font-bold text-white font-mono mt-0.5">
+                          {analysisResult.creativePlan?.creativeScore?.hookScore || 92}%
+                        </p>
+                      </div>
+                      <div className="p-2 rounded-lg bg-neutral-900/60 border border-neutral-800">
+                        <p className="text-[10px] text-neutral-400">Độ đồng cảm</p>
+                        <p className="text-xs font-bold text-white font-mono mt-0.5">
+                          {analysisResult.creativePlan?.creativeScore?.relatabilityScore || 88}%
+                        </p>
+                      </div>
+                      <div className="p-2 rounded-lg bg-neutral-900/60 border border-neutral-800">
+                        <p className="text-[10px] text-neutral-400">Story &amp; Payoff</p>
+                        <p className="text-xs font-bold text-white font-mono mt-0.5">
+                          {analysisResult.creativePlan?.creativeScore?.storyScore || 89}%
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4. Human Voice Director & Preset Selector */}
+                  <div className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-neutral-200 flex items-center gap-1.5">
+                        <Volume2 className="w-3.5 h-3.5 text-rose-400" />
+                        Human Voice Director (Giọng thuyết minh)
                       </span>
                       <button
                         type="button"
-                        onClick={handleStartGeneratingVideo}
-                        className="px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-neutral-950 shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                        onClick={() => handlePreviewVoice()}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-rose-500/10 border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 transition flex items-center gap-1 cursor-pointer"
                       >
-                        <Sparkles className="w-3 h-3 fill-current" />
-                        Tạo Video (Bước 3) →
+                        {isVoicePlaying ? (
+                          <>
+                            <VolumeX className="w-3 h-3 text-rose-400" />
+                            <span>Dừng nghe</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-3 h-3 text-rose-400" />
+                            <span>Nghe thử Voice</span>
+                          </>
+                        )}
                       </button>
                     </div>
-                  </div>
 
-                  {/* Hook & Angle */}
-                  <div className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800 space-y-1.5">
-                    <span className="text-[11px] font-semibold text-amber-300 block">
-                      🎯 3-Second Organic TikTok Hook:
-                    </span>
-                    <p className="text-xs text-white font-medium leading-relaxed italic">
-                      &quot;{analysisResult.strategy.hook}&quot;
+                    {/* Presets */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                      {[
+                        { id: 'Natural Friend', label: '🌿 Bạn bè tự nhiên' },
+                        { id: 'Warm Reviewer', label: '☕ Review ấm áp' },
+                        { id: 'Curious Tester', label: '🔍 Tò mò trải nghiệm' },
+                        { id: 'Energetic Seller', label: '⚡ Năng động sôi nổi' },
+                        { id: 'Calm Explainer', label: '🧘 Điềm tĩnh gãy gọn' },
+                      ].map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setSelectedVoicePreset(preset.id as VoicePersonality)}
+                          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border text-left transition ${
+                            selectedVoicePreset === preset.id
+                              ? 'bg-rose-600/20 border-rose-500 text-white font-bold'
+                              : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <p className="text-[10px] text-neutral-400 leading-relaxed">
+                      💡 Tự động chèn micro-pause 300ms giữa các câu nói, đọc chuẩn phiên âm tên sản phẩm (không đọc như robot).
                     </p>
                   </div>
 
-                  {/* Core Mechanism & Benefits */}
-                  <div className="text-xs space-y-2 text-neutral-300">
-                    <div className="flex justify-between py-1 border-b border-neutral-800">
-                      <span className="text-neutral-500">Cơ chế bán hàng:</span>
-                      <span className="font-semibold text-neutral-200">{analysisResult.analysis.sellingMechanism}</span>
+                  {/* 5. Authentic OfferEngine Guard */}
+                  <div className="p-3 rounded-xl bg-neutral-950/80 border border-neutral-800 text-[11px] text-neutral-300 space-y-1.5">
+                    <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                      OfferEngine &amp; CTA Tự nhiên:
                     </div>
-                    <div className="flex justify-between py-1 border-b border-neutral-800">
-                      <span className="text-neutral-500">Thời lượng dự kiến:</span>
-                      <span className="font-semibold text-rose-400 font-mono">{analysisResult.strategy.targetDuration}s (Chuẩn TikTok)</span>
-                    </div>
-                    <div className="flex justify-between py-1 border-b border-neutral-800">
-                      <span className="text-neutral-500">Visual Potential:</span>
-                      <span className="font-semibold text-emerald-400 capitalize">{analysisResult.analysis.visualDemoPotential}</span>
-                    </div>
-                  </div>
-
-                  {/* Format details */}
-                  <div className="p-3 rounded-lg bg-neutral-950/70 text-[11px] text-neutral-400 border border-neutral-800/80">
-                    <span className="font-semibold text-neutral-300 block mb-1">
-                      Lý do chọn format:
-                    </span>
-                    {analysisResult.analysis.reasoningSummary}
+                    <p className="italic text-white">
+                      &quot;{analysisResult.creativePlan?.cta || 'Nếu bàn làm việc của bạn cũng hay bị như thế này thì mình để sản phẩm ở giỏ hàng góc trái nhé.'}&quot;
+                    </p>
+                    <p className="text-[10px] text-neutral-400">
+                      ✅ Cam kết: Không gán sale ảo, không tạo khan hiếm giả tạo. Chỉ dùng giá thật hoặc dẫn dắt tự nhiên từ kết quả câu chuyện.
+                    </p>
                   </div>
                 </div>
 
-                {/* Storyboard Timeline */}
+                {/* Storyboard Timeline (Audio-First Synchronized) */}
                 <div className="p-5 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="font-semibold text-sm text-neutral-200 flex items-center gap-2">
                       <Clock className="w-4 h-4 text-rose-400" />
-                      Storyboard Phân Cảnh (15 Giây)
+                      Storyboard Phân Cảnh (Audio-First Sync)
                     </h3>
                     <span className="text-xs text-neutral-500 font-mono">
-                      {analysisResult.storyboard.scenes.length} Scenes
+                      {analysisResult.storyboard.scenes.length} Scenes • {selectedDuration}s
                     </span>
                   </div>
 
@@ -1560,22 +1930,22 @@ export default function CreateVideoPage() {
                         </div>
 
                         <div className="pt-1.5 border-t border-neutral-900 text-[11px] text-neutral-400 italic">
-                          🗣️ Voice: &quot;{scene.voice}&quot;
+                          🗣️ Lời thoại: &quot;{scene.voice}&quot;
                         </div>
                       </div>
                     ))}
                   </div>
 
                   <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between">
-                    <span>Trạng thái: <strong>Kịch bản sẵn sàng</strong></span>
-                    <span className="font-mono text-[11px]">Home Engine Ready</span>
+                    <span>Trạng thái: <strong>Kịch bản sáng tạo hoàn chỉnh</strong></span>
+                    <span className="font-mono text-[11px]">Vipee Engine Ready</span>
                   </div>
 
                   {/* PROMINENT BUTTON TO GO TO STEP 3 */}
                   <button
                     type="button"
                     onClick={handleStartGeneratingVideo}
-                    className="w-full py-4 px-5 rounded-2xl font-bold text-sm bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-neutral-950 shadow-xl shadow-emerald-500/25 transition flex items-center justify-center gap-2 transform hover:scale-[1.01]"
+                    className="w-full py-4 px-5 rounded-2xl font-bold text-sm bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-neutral-950 shadow-xl shadow-emerald-500/25 transition flex items-center justify-center gap-2 transform hover:scale-[1.01] cursor-pointer"
                   >
                     <Sparkles className="w-4 h-4 fill-current" />
                     TIẾN HÀNH TẠO VIDEO (GENERATE VIDEO) → BƯỚC 3

@@ -33,11 +33,12 @@ export async function POST(request: NextRequest) {
       analysis: result.analysis,
       strategy: result.strategy,
       storyboard: result.storyboard,
+      creativePlan: result.creativePlan,
       suggestedCaption: result.suggestedCaption,
       suggestedHashtags: result.suggestedHashtags,
       engine: {
         id: 'home-utility-engine',
-        name: 'Home & Utility Engine (Gemini AI Powered)',
+        name: 'Home & Utility Engine (Vipee Creative Director Powered)',
         category: 'home',
       },
     })
