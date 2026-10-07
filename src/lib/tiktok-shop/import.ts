@@ -8,13 +8,18 @@ export interface TikTokShopImportResult {
   extractedId?: string
 }
 
+export interface ExtractedUrlMetadata {
+  title?: string
+  imageUrl?: string
+  productId?: string
+}
+
 /**
- * Checks if a title or HTML content is an anti-bot challenge or generic non-product response
+ * Checks if a title is invalid, empty, or generic non-product response
  */
-export function isAntiBotOrGeneric(title: string, html: string = ''): boolean {
+export function isInvalidOrGenericTitle(title: string): boolean {
   if (!title) return true
   const lower = title.toLowerCase().trim()
-  const lowerHtml = (html || '').toLowerCase()
 
   if (
     lower.includes('security check') ||
@@ -38,16 +43,29 @@ export function isAntiBotOrGeneric(title: string, html: string = ''): boolean {
     return true
   }
 
-  if (
+  return false
+}
+
+/**
+ * Checks if HTML is a bot challenge
+ */
+export function isAntiBotHtml(html: string = ''): boolean {
+  if (!html) return false
+  const lowerHtml = html.toLowerCase()
+
+  return (
     lowerHtml.includes('captcha/index.js') ||
     lowerHtml.includes('oec-ttweb-captcha') ||
     lowerHtml.includes('bric-captcha') ||
     lowerHtml.includes('middle_page_loading')
-  ) {
-    return true
-  }
+  )
+}
 
-  return false
+/**
+ * Legacy compatibility helper
+ */
+export function isAntiBotOrGeneric(title: string, html: string = ''): boolean {
+  return isInvalidOrGenericTitle(title) || isAntiBotHtml(html)
 }
 
 /**
@@ -135,35 +153,78 @@ export function extractTikTokShopProductId(rawUrl: string): string | null {
 }
 
 /**
- * Try to extract candidate product title from URL slug or query parameters
+ * Extract rich metadata embedded in URL parameters (e.g. TikTok og_info JSON, query params, slug)
  */
-export function extractTitleFromUrl(urlStr: string): string | null {
+export function extractMetadataFromUrl(urlStr: string): ExtractedUrlMetadata {
   try {
     const parsed = new URL(urlStr)
-    for (const key of ['title', 'product_title', 'name', 'product_name']) {
-      if (parsed.searchParams.has(key)) {
-        const val = parsed.searchParams.get(key)
-        if (val && val.length > 3 && !isAntiBotOrGeneric(val)) {
-          return val.trim()
+    let title: string | undefined
+    let imageUrl: string | undefined
+
+    // 1. Check og_info param (TikTok Shop standard share payload containing {title, image})
+    if (parsed.searchParams.has('og_info')) {
+      try {
+        const rawOg = parsed.searchParams.get('og_info')
+        if (rawOg) {
+          const parsedOg = JSON.parse(rawOg)
+          if (parsedOg.title && typeof parsedOg.title === 'string' && !isAntiBotOrGeneric(parsedOg.title)) {
+            title = parsedOg.title.trim()
+          }
+          if (parsedOg.image && typeof parsedOg.image === 'string' && parsedOg.image.startsWith('http')) {
+            imageUrl = parsedOg.image.trim()
+          }
+        }
+      } catch {}
+    }
+
+    // 2. Check title / name params
+    if (!title) {
+      for (const key of ['title', 'product_title', 'name', 'product_name']) {
+        if (parsed.searchParams.has(key)) {
+          const val = parsed.searchParams.get(key)
+          if (val && val.length > 3 && !isAntiBotOrGeneric(val)) {
+            title = val.trim()
+            break
+          }
         }
       }
     }
 
-    // Slug: /vn/pdp/sac-nhanh-20w-baseus-1729424888888 or /product/tai-nghe-123
-    const slugMatch = parsed.pathname.match(/\/(?:pdp|product)\/([a-zA-Z0-9_\-]+?)(?:-(\d{8,}))?$/)
-    if (slugMatch && slugMatch[1] && !/^\d+$/.test(slugMatch[1])) {
-      const words = slugMatch[1].replace(/[-_]+/g, ' ').trim()
-      if (words.length > 3 && !isAntiBotOrGeneric(words)) {
-        return words.charAt(0).toUpperCase() + words.slice(1)
+    // 3. Check image params
+    if (!imageUrl) {
+      for (const key of ['image', 'cover', 'product_image', 'img']) {
+        if (parsed.searchParams.has(key)) {
+          const val = parsed.searchParams.get(key)
+          if (val && val.startsWith('http')) {
+            imageUrl = val.trim()
+            break
+          }
+        }
       }
     }
-  } catch {}
-  return null
+
+    // 4. Slug in path: /vn/pdp/sac-nhanh-20w-1729424888888 or /product/tai-nghe-123
+    if (!title) {
+      const slugMatch = parsed.pathname.match(/\/(?:pdp|product)\/([a-zA-Z0-9_\-]+?)(?:-(\d{8,}))?$/)
+      if (slugMatch && slugMatch[1] && !/^\d+$/.test(slugMatch[1])) {
+        const words = slugMatch[1].replace(/[-_]+/g, ' ').trim()
+        if (words.length > 3 && !isAntiBotOrGeneric(words)) {
+          title = words.charAt(0).toUpperCase() + words.slice(1)
+        }
+      }
+    }
+
+    const productId = extractTikTokShopProductId(urlStr)
+
+    return { title, imageUrl, productId: productId || undefined }
+  } catch {
+    return {}
+  }
 }
 
 /**
  * Imports Product Information directly from TikTok Shop link
- * by reading public OpenGraph metadata, JSON-LD, and SSR product details,
+ * by reading public OpenGraph metadata, URL embedded metadata (og_info), JSON-LD, and SSR product details,
  * with anti-bot challenge protection.
  */
 export async function importTikTokShopProduct(rawInput: string): Promise<TikTokShopImportResult> {
@@ -177,9 +238,9 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
     }
   }
 
-  const slugTitle = extractTitleFromUrl(targetUrl)
-  const candidateFallbackTitle = titleHint || slugTitle || ''
-  let productId = extractTikTokShopProductId(targetUrl)
+  // Pre-parse metadata directly from input URL (e.g. og_info, slug, title params)
+  const targetMeta = extractMetadataFromUrl(targetUrl)
+  let productId = targetMeta.productId || extractTikTokShopProductId(targetUrl)
 
   try {
     // Strategy 1: Desktop Browser headers
@@ -204,13 +265,15 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
     })
 
     let finalUrl = res.url || targetUrl
+    const finalMeta = extractMetadataFromUrl(finalUrl)
+
     if (!productId) {
-      productId = extractTikTokShopProductId(finalUrl)
+      productId = finalMeta.productId || extractTikTokShopProductId(finalUrl)
     }
 
     let html = await res.text()
 
-    // 1. Check title from Strategy 1
+    // 1. Check title from HTML
     const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']*)["']/i)
     const titleTagMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
     let title = (ogTitleMatch?.[1] || titleTagMatch?.[1] || '').trim()
@@ -275,8 +338,19 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
       title = jsonLdTitle
     }
 
-    // If title is STILL Security Check, Captcha, or generic TikTok Shop, reject as automated bot challenge!
-    if (isAntiBotOrGeneric(title, html)) {
+    // 3. Resolve best metadata from URL params (og_info, slug, share hint)
+    const bestUrlTitle = finalMeta.title || targetMeta.title || titleHint
+    const bestUrlImage = finalMeta.imageUrl || targetMeta.imageUrl
+
+    // If HTML was blocked by Security Check / Captcha or title is invalid, check if URL contains og_info or valid title:
+    if (isInvalidOrGenericTitle(title) || isAntiBotHtml(html)) {
+      if (bestUrlTitle && !isInvalidOrGenericTitle(bestUrlTitle)) {
+        title = bestUrlTitle
+      }
+    }
+
+    // If title is STILL Security Check, Captcha, or generic TikTok Shop, reject as automated bot challenge
+    if (isInvalidOrGenericTitle(title)) {
       return {
         success: false,
         message:
@@ -284,7 +358,7 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
         requiresManualFallback: true,
         extractedId: productId || undefined,
         product: {
-          name: candidateFallbackTitle || undefined,
+          name: bestUrlTitle && !isInvalidOrGenericTitle(bestUrlTitle) ? bestUrlTitle : undefined,
           productUrl: finalUrl || targetUrl,
           shopProductId: productId || undefined,
           assets: [],
@@ -292,12 +366,12 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
       }
     }
 
-    // 3. Extract Gallery Images
+    // 4. Extract Gallery Images
     const assets: ProductAsset[] = []
     const seenHashes = new Set<string>()
 
     const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*)["']/i)
-    let primaryImageUrl = jsonLdImage || ogImageMatch?.[1] || ''
+    let primaryImageUrl = bestUrlImage || jsonLdImage || ogImageMatch?.[1] || ''
 
     if (primaryImageUrl) {
       primaryImageUrl = primaryImageUrl.replace(/&amp;/g, '&')
@@ -337,11 +411,11 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
       }
     }
 
-    // 4. Extract Description
+    // 5. Extract Description
     const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']*)["']/i)
     const description = ogDescMatch?.[1] || ''
 
-    // 5. Extract Price
+    // 6. Extract Price
     let price: number | undefined = jsonLdPrice
     if (!price) {
       const realPriceMatch = html.match(/"real_price":"([^"]+)"/)
@@ -373,6 +447,40 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
   } catch (err: unknown) {
     console.warn('[TikTokShopImport] Public HTML extract failed:', (err as Error).message)
 
+    // Fallback: Check if metadata can be recovered directly from URL params
+    const fallbackMeta = extractMetadataFromUrl(targetUrl)
+    const fallbackTitle = fallbackMeta.title || titleHint
+    const fallbackImage = fallbackMeta.imageUrl
+
+    if (fallbackTitle) {
+      const assets: ProductAsset[] = []
+      if (fallbackImage) {
+        assets.push({
+          id: 'asset-imported-' + Date.now() + '-0',
+          name: `${fallbackTitle} (Ảnh chính).jpg`,
+          type: 'PRODUCT_IMAGE',
+          url: fallbackImage,
+          size: 0,
+          isPrimary: true,
+        })
+      }
+
+      return {
+        success: true,
+        message: `Đã trích xuất thành công: ${fallbackTitle}`,
+        requiresManualFallback: false,
+        extractedId: productId || undefined,
+        product: {
+          name: fallbackTitle,
+          price: '',
+          description: `Sản phẩm ${fallbackTitle} trên TikTok Shop`,
+          productUrl: targetUrl,
+          shopProductId: productId || undefined,
+          assets,
+        },
+      }
+    }
+
     return {
       success: false,
       message:
@@ -380,7 +488,7 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
       requiresManualFallback: true,
       extractedId: productId || undefined,
       product: {
-        name: candidateFallbackTitle || undefined,
+        name: fallbackTitle || undefined,
         productUrl: targetUrl,
         shopProductId: productId || undefined,
       },
