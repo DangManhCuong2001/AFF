@@ -87,7 +87,7 @@ export async function importTikTokShopProduct(rawUrl: string): Promise<TikTokSho
     return {
       success: false,
       message:
-        'Automatic TikTok Shop product import is unavailable with the current API permissions (Tài khoản Developer hiện tại chưa cấp quyền TikTok Shop Product Catalog API).',
+        'Tính năng tự động đọc link cần quyền TikTok Shop Partner API (dành cho đối tác doanh nghiệp). Với Creator Affiliate cá nhân, bạn chỉ cần nhập Tên sản phẩm, Giá và tải 1-2 tấm ảnh ở form bên dưới để AI tự động dựng video nhé!',
       requiresManualFallback: true,
       extractedId: productId || undefined,
       product: {
@@ -99,11 +99,10 @@ export async function importTikTokShopProduct(rawUrl: string): Promise<TikTokSho
 
   // If credentials existed, we would query the official TikTok Shop Open API endpoint:
   // e.g. /product/202309/products/{product_id}
-  // For now, official Shop Catalog permission is not active:
   return {
     success: false,
     message:
-      'Automatic TikTok Shop product import is unavailable with the current API permissions. Vui lòng nhập thông tin sản phẩm và tải ảnh bên dưới.',
+      'Quyền TikTok Shop Product Catalog API chưa được kích hoạt trên ứng dụng TikTok Shop Partner. Vui lòng nhập thông tin sản phẩm và tải ảnh bên dưới.',
     requiresManualFallback: true,
     extractedId: productId || undefined,
     product: {

@@ -992,13 +992,16 @@ export default function CreateVideoPage() {
                   <button
                     type="button"
                     onClick={() => setInputMode('manual')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
                       inputMode === 'manual'
                         ? 'bg-rose-600 text-white shadow-sm'
                         : 'bg-neutral-800 text-neutral-400 hover:text-white'
                     }`}
                   >
-                    Nhập tay thông tin (Mode B)
+                    <span>✍️ Nhập thông tin (Affiliate cá nhân)</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/20 text-white font-mono font-normal">
+                      Khuyên dùng
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -1010,7 +1013,7 @@ export default function CreateVideoPage() {
                     }`}
                   >
                     <LinkIcon className="w-3.5 h-3.5" />
-                    Dán link TikTok Shop (Mode A)
+                    <span>Dán link Shop (Cần Partner API)</span>
                   </button>
                 </div>
 
@@ -1027,9 +1030,14 @@ export default function CreateVideoPage() {
               {/* Mode A: TikTok Shop URL Import Form */}
               {inputMode === 'url' && (
                 <div className="p-4 rounded-xl bg-neutral-950/60 border border-neutral-800/80 space-y-3">
-                  <label className="text-xs font-medium text-neutral-300 block">
-                    Đường dẫn sản phẩm TikTok Shop (Product URL):
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-neutral-300 block">
+                      Đường dẫn sản phẩm TikTok Shop (Product URL):
+                    </label>
+                    <span className="text-[11px] text-amber-400/90 font-mono">
+                      Yêu cầu tài khoản TikTok Shop Partner
+                    </span>
+                  </div>
                   <div className="flex gap-2">
                     <input
                       type="url"
@@ -1042,17 +1050,39 @@ export default function CreateVideoPage() {
                       type="button"
                       onClick={handleImportUrl}
                       disabled={importingUrl}
-                      className="px-4 py-2 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-50 transition shrink-0 flex items-center gap-1.5"
+                      className="px-4 py-2 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-50 transition shrink-0 flex items-center gap-1.5 cursor-pointer"
                     >
                       {importingUrl ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
                       IMPORT PRODUCT
                     </button>
                   </div>
 
+                  <p className="text-[11px] text-neutral-400">
+                    💡 <em>Lưu ý:</em> TikTok bảo vệ dữ liệu sản phẩm và chỉ cấp quyền đọc link cho công ty đăng ký TikTok Shop Partner Center. Nếu bạn là Creator Affiliate cá nhân, hãy bấm <strong>Nhập thông tin</strong> ở trên để tự điền tên &amp; ảnh trong 15 giây.
+                  </p>
+
                   {importNotice && (
-                    <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-600/30 text-amber-200 text-xs flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                      <p className="leading-relaxed">{importNotice.message}</p>
+                    <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-xs space-y-2.5">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <p className="leading-relaxed">{importNotice.message}</p>
+                      </div>
+                      <div className="pt-2 border-t border-amber-500/20 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setInputMode('manual')}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500 text-neutral-950 font-bold text-xs hover:bg-amber-400 transition"
+                        >
+                          Chuyển sang Nhập thông tin &amp; Tải ảnh →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleLoadSeed}
+                          className="px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-700 text-neutral-300 hover:text-white text-xs transition"
+                        >
+                          Nạp mẫu Demo nhanh
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
