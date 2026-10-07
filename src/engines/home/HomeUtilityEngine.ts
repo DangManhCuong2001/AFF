@@ -23,7 +23,8 @@ export class HomeUtilityEngine implements ProductVideoEngine {
    * (Ground logic for Phase 2, hooked to Gemini in Phase 3)
    */
   async analyzeProduct(product: ProductInput): Promise<ProductAnalysis> {
-    const hasVideoAsset = product.assets.some(
+    const assets = product.assets || []
+    const hasVideoAsset = assets.some(
       (a) => a.type === 'PRODUCT_VIDEO' || a.type === 'DEMO_VIDEO'
     )
 
@@ -44,7 +45,7 @@ export class HomeUtilityEngine implements ProductVideoEngine {
       mainProblem: product.problemSolved || 'Không gian gia đình bừa bộn và bất tiện khi sử dụng hàng ngày.',
       mainBenefit: product.benefits?.[0] || 'Giúp sắp xếp gọn gàng, tiết kiệm không gian và tiện lợi tức thì.',
       secondaryBenefits: product.benefits?.slice(1) || [
-        'Dễ dàng lắp đặt không cần khoan đục',
+        'Dễ dàng sử dụng và sắp xếp gọn gàng',
         'Chất liệu bền đẹp, phù hợp mọi không gian',
       ],
       targetAudience: product.targetAudience || 'Người nội trợ, dân văn phòng, người ở trọ và gia đình hiện đại',
@@ -55,11 +56,11 @@ export class HomeUtilityEngine implements ProductVideoEngine {
       claimsAllowed: [
         'Giữ vật dụng cố định và gọn gàng',
         'Thiết kế thông minh, kích thước nhỏ gọn',
-        product.price ? `Giá chỉ từ ${typeof product.price === 'number' ? product.price.toLocaleString('vi-VN') : product.price}đ` : 'Giá hạt dẻ',
+        product.price ? `Giá chỉ từ ${typeof product.price === 'number' ? product.price.toLocaleString('vi-VN') : product.price}đ` : 'Giá ưu đãi',
       ],
       claimsToAvoid: [
         'Cam kết hiệu quả 100% khi chưa có video chứng minh',
-        'Quảng cáo sai lệch tính năng chống nước/chịu lực khi mô tả không đề cập',
+        'Quảng cáo sai lệch tính năng khi mô tả không đề cập',
         'Dùng từ ngữ cấm như "siêu phẩm số 1", "cam kết trị dứt điểm"',
       ],
     }
@@ -73,16 +74,25 @@ export class HomeUtilityEngine implements ProductVideoEngine {
     analysis: ProductAnalysis
   ): Promise<VideoStrategy> {
     const format = analysis.recommendedFormat || 'problem-solution'
+    const nameLower = (product.name || '').toLowerCase()
+    const isCable = nameLower.includes('dây sạc') || nameLower.includes('cable') || nameLower.includes('kẹp dây')
+    const isKitchen = nameLower.includes('gia vị') || nameLower.includes('bếp') || nameLower.includes('hũ') || nameLower.includes('nồi') || nameLower.includes('dao')
     
     // Natural TikTok organic hook tailored for Home & Utility
-    let hook = `Nhà ai dây sạc hay đồ đạc lúc nào cũng rơi lung tung thì xem cái này.`
-    if (product.name.toLowerCase().includes('dây sạc') || product.name.toLowerCase().includes('cable')) {
+    let hook = `Ai thích nhà cửa gọn gàng, tiện lợi thì xem ngay món này nhé.`
+    if (isCable) {
       hook = `Nhà ai dây sạc cứ rơi xuống gầm bàn như này thì thử miếng kẹp này xem.`
-    } else if (product.name.toLowerCase().includes('ngăn kéo') || product.name.toLowerCase().includes('chia')) {
-      hook = `Ngăn kéo mở ra bừa bộn thế này thì sắp xếp lại chỉ mất 1 phút.`
+    } else if (isKitchen) {
+      hook = `Góc bếp mà lộn xộn gia vị nấu nướng thì xem ngay giải pháp này nhé.`
     } else if (product.problemSolved) {
-      hook = `${product.problemSolved} thì giải pháp đơn giản hơn bạn nghĩ nhiều.`
+      hook = `${product.problemSolved} thì xem ngay cách giải quyết này nhé.`
+    } else if (product.name) {
+      hook = `Bạn đã biết đến ${product.name} cực kỳ tiện lợi này chưa?`
     }
+
+    const ctaText = isKitchen
+      ? 'Muốn góc bếp gọn gàng hơn thì mình để sản phẩm ở giỏ hàng góc trái nhé.'
+      : 'Mình để thông tin và giá ưu đãi ở giỏ hàng góc trái màn hình nhé.'
 
     return {
       concept: `Giải quyết vấn đề bất tiện thực tế tại nhà với ${product.name}`,
@@ -91,12 +101,12 @@ export class HomeUtilityEngine implements ProductVideoEngine {
       angle: 'Góc nhìn chân thật người dùng trải nghiệm thực tế tại nhà (Organic TikTok UGC)',
       tone: 'Gần gũi, thực tế, trò chuyện tự nhiên, không quảng cáo nói quá',
       targetDuration: 15,
-      cta: 'Muốn bàn gọn gàng hơn thì mình để sản phẩm ở giỏ hàng góc trái nhé.',
+      cta: ctaText,
       visualDirection: {
         mood: 'Sáng sủa, hiện đại, sạch sẽ và ngăn nắp',
         lighting: 'Ánh sáng ban ngày tự nhiên mềm mại',
         palette: ['#FFFFFF', '#F3F4F6', '#E5E7EB', '#111827'],
-        environment: 'Bàn làm việc hoặc góc bếp hiện đại tối giản',
+        environment: isKitchen ? 'Góc bếp hiện đại, sạch sẽ và ngăn nắp' : 'Không gian gia đình hiện đại tối giản',
       },
     }
   }
@@ -108,8 +118,49 @@ export class HomeUtilityEngine implements ProductVideoEngine {
     product: ProductInput,
     strategy: VideoStrategy
   ): Promise<VideoStoryboard> {
-    const primaryAssetId = product.assets.find((a) => a.isPrimary)?.id || product.assets[0]?.id || 'asset-1'
-    const secondaryAssetId = product.assets[1]?.id || primaryAssetId
+    const assets = product.assets || []
+    const primaryAssetId = assets.find((a) => a.isPrimary)?.id || assets[0]?.id || 'asset-1'
+    const secondaryAssetId = assets[1]?.id || primaryAssetId
+
+    const nameLower = (product.name || '').toLowerCase()
+    const isCable = nameLower.includes('dây sạc') || nameLower.includes('cable') || nameLower.includes('kẹp dây')
+    const isKitchen = nameLower.includes('gia vị') || nameLower.includes('bếp') || nameLower.includes('hũ')
+
+    const scene1Headline = isKitchen
+      ? 'Góc bếp lộn xộn gia vị?'
+      : isCable
+      ? 'Dây sạc cứ rơi xuống sàn?'
+      : 'Nhà bừa bộn tìm đồ khó?'
+
+    const scene1Keywords = isKitchen
+      ? ['bếp bừa bộn', 'gia vị', 'bất tiện']
+      : isCable
+      ? ['bừa bộn', 'dây sạc', 'bất tiện']
+      : ['bừa bộn', 'bất tiện', 'tìm đồ']
+
+    const scene2Voice = isKitchen
+      ? `Đây là ${product.name}, thiết kế trong suốt cực kỳ thông minh và tiện dụng.`
+      : isCable
+      ? `Đây là miếng kẹp giữ dây ${product.name}, nhỏ mà cực kỳ hữu ích.`
+      : `Đây là ${product.name}, món đồ nhỏ mà cực kỳ hữu ích cho gia đình.`
+
+    const scene3Voice = isKitchen
+      ? `Nắp bật thông minh mở một chạm, kèm muỗng múc tiện lợi chống ẩm mốc hoàn toàn.`
+      : isCable
+      ? `Chỉ cần dán mép bàn là giữ cùng lúc các loại dây cáp cố định luôn tại chỗ.`
+      : `Thiết kế thông minh, giải quyết ngay vấn đề bừa bộn chỉ trong một nốt nhạc.`
+
+    const scene3Headline = isKitchen
+      ? 'Nắp bật một chạm tiện lợi'
+      : isCable
+      ? 'Cố định mọi loại dây cáp'
+      : 'Sắp xếp nhanh chóng tiện lợi'
+
+    const scene4Voice = isKitchen
+      ? `Gian bếp nhìn gọn gàng sang xịn hẳn lên, nấu nướng cần gia vị gì lấy ngay tức thì.`
+      : isCable
+      ? `Bàn làm việc nhìn gọn hơn hẳn, dây sạc cần là với tay lấy được ngay.`
+      : `Không gian nhà gọn gàng, đẹp mắt hơn hẳn, cần dùng là thấy ngay.`
 
     const scenes: StoryboardScene[] = [
       {
@@ -118,54 +169,54 @@ export class HomeUtilityEngine implements ProductVideoEngine {
         duration: 2.5,
         voice: strategy.hook,
         tts: strategy.hook,
-        headline: 'Dây sạc cứ rơi xuống sàn?',
-        subheadline: 'Bực mình nhất mỗi lần cắm sạc',
-        keywords: ['bừa bộn', 'dây sạc', 'bất tiện'],
+        headline: scene1Headline,
+        subheadline: 'Bực mình nhất mỗi lần tìm đồ',
+        keywords: scene1Keywords,
         productAssetIds: [primaryAssetId],
         backgroundType: 'cluttered_desk_context',
-        visualPrompt: 'modern minimalist home office desk with clean ambient light, 9:16 vertical, no product, soft shadow',
+        visualPrompt: 'modern minimalist home context with clean ambient light, 9:16 vertical, no product, soft shadow',
         motionPreset: 'slow_push_in',
       },
       {
         id: 'scene-2',
         type: 'product_hero',
         duration: 3.5,
-        voice: `Đây là miếng kẹp giữ dây ${product.name}, nhỏ mà cực kỳ hữu ích.`,
-        tts: `Đây là miếng kẹp giữ dây ${product.name}, nhỏ mà cực kỳ hữu ích.`,
-        headline: product.name,
+        voice: scene2Voice,
+        tts: scene2Voice,
+        headline: product.name.slice(0, 30),
         subheadline: 'Thiết kế thông minh, bám dính chắc chắn',
         keywords: [product.name, 'chắc chắn', 'tiện lợi'],
         productAssetIds: [primaryAssetId],
         backgroundType: 'clean_surface',
-        visualPrompt: 'bright clean wooden desk surface, warm sunlight, minimal Scandinavian interior, vertical 9:16',
+        visualPrompt: 'bright clean surface, warm sunlight, minimal Scandinavian interior, vertical 9:16',
         motionPreset: 'parallax_float',
       },
       {
         id: 'scene-3',
         type: 'demo',
         duration: 4.5,
-        voice: `Chỉ cần dán mép bàn là giữ cùng lúc được cả dây điện thoại, laptop cố định luôn tại chỗ.`,
-        tts: `Chỉ cần dán mép bàn là giữ cùng lúc được cả dây điện thoại, laptop cố định luôn tại chỗ.`,
-        headline: 'Cố định mọi loại dây cáp',
-        subheadline: 'Không còn cảnh cúi xuống nhặt dây',
+        voice: scene3Voice,
+        tts: scene3Voice,
+        headline: scene3Headline,
+        subheadline: 'Không còn cảnh bừa bộn tìm đồ',
         keywords: ['gọn gàng', 'cố định', 'tiện dụng'],
         productAssetIds: [secondaryAssetId],
         backgroundType: 'setup_action',
-        visualPrompt: 'aesthetic workspace edge, clean minimalist apartment, vertical 9:16',
+        visualPrompt: 'aesthetic space edge, clean minimalist apartment, vertical 9:16',
         motionPreset: 'subtle_zoom',
       },
       {
         id: 'scene-4',
         type: 'result',
         duration: 2.5,
-        voice: `Bàn làm việc nhìn gọn hơn hẳn, dây sạc cần là với tay lấy được ngay.`,
-        tts: `Bàn làm việc nhìn gọn hơn hẳn, dây sạc cần là với tay lấy được ngay.`,
+        voice: scene4Voice,
+        tts: scene4Voice,
         headline: 'Không gian gọn gàng 100%',
         subheadline: 'Tiết kiệm thời gian, thẩm mỹ cao',
         keywords: ['ngăn nắp', 'thẩm mỹ', 'gọn gàng'],
         productAssetIds: [primaryAssetId],
         backgroundType: 'clean_organized_result',
-        visualPrompt: 'modern tidy aesthetic study desk setup with laptop, warm daylight, vertical 9:16',
+        visualPrompt: 'modern tidy aesthetic setup, warm daylight, vertical 9:16',
         motionPreset: 'slow_pan',
       },
       {

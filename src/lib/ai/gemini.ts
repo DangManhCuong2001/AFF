@@ -138,7 +138,12 @@ Hãy trả về kết quả JSON với cấu trúc chính xác:
   "suggestedHashtags": ["#dogiadung", "#meovat", "#tiktokmademebuyit", "#giadungthongminh", "#reviewgiadung"]
 }`
 
-  const candidateModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite']
+  const candidateModels = [
+    'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-flash-latest',
+  ]
   let lastError = ''
 
   for (const model of candidateModels) {
@@ -212,10 +217,10 @@ Hãy trả về kết quả JSON với cấu trúc chính xác:
         claimsToAvoid: Array.isArray(parsed.analysis?.claimsToAvoid) ? parsed.analysis.claimsToAvoid : [],
       },
       strategy: {
-        concept: parsed.strategy?.concept || 'Giải pháp gọn gàng bàn làm việc',
+        concept: parsed.strategy?.concept || `Giải pháp tiện lợi với ${product.name}`,
         format: parsed.strategy?.format || 'problem-solution',
-        hook: parsed.strategy?.hook || 'Đừng bỏ qua món đồ này nếu bạn thích sự gọn gàng!',
-        angle: parsed.strategy?.angle || 'Giải pháp tiện lợi',
+        hook: parsed.strategy?.hook || `Đừng bỏ qua ${product.name} nếu bạn thích sự gọn gàng, tiện lợi!`,
+        angle: parsed.strategy?.angle || 'Giải pháp tiện lợi cho gia đình',
         tone: parsed.strategy?.tone || 'hữu ích, tự nhiên',
         targetDuration: parsed.strategy?.targetDuration || 15,
         cta: parsed.strategy?.cta || 'Bấm vào góc trái màn hình nhé',
@@ -223,7 +228,7 @@ Hãy trả về kết quả JSON với cấu trúc chính xác:
           mood: 'gọn gàng, sáng sủa',
           lighting: 'tự nhiên',
           palette: ['#0f172a', '#f8fafc'],
-          environment: 'bàn làm việc hiện đại',
+          environment: 'không gian nhà hiện đại, ngăn nắp',
         },
       },
       storyboard: {

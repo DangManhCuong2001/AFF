@@ -23,14 +23,44 @@ export async function POST(request: NextRequest) {
     }
 
     if (scenes.length === 0) {
+      const nameLower = productName.toLowerCase()
+      const isKitchen = nameLower.includes('gia vị') || nameLower.includes('bếp') || nameLower.includes('hũ') || nameLower.includes('nồi')
+      const isCable = nameLower.includes('dây sạc') || nameLower.includes('cable') || nameLower.includes('kẹp dây')
+
+      const hookVoice = isKitchen
+        ? 'Góc bếp mà lộn xộn gia vị nấu nướng thì xem ngay giải pháp này nhé.'
+        : isCable
+        ? 'Nhà ai dây sạc cứ rơi lung tung thì xem ngay mẹo này.'
+        : `Bạn đã biết đến ${productName} cực kỳ tiện lợi này chưa?`
+
+      const problemVoice = isKitchen
+        ? 'Mỗi lần nấu ăn tìm gia vị bừa bộn làm mất thời gian và dễ bị ẩm mốc.'
+        : isCable
+        ? 'Bình thường dây sạc rơi xuống đất vừa bẩn vừa bất tiện.'
+        : 'Đồ đạc bừa bộn tìm mãi không thấy làm mất thời gian của bạn.'
+
+      const demoVoice = isKitchen
+        ? `Bộ hũ trong suốt nắp bật thông minh kèm muỗng múc cực kỳ kín khí và tiện lợi.`
+        : isCable
+        ? `Chỉ cần cố định miếng kẹp này là giữ ngay ngắn mọi loại dây sạc.`
+        : `Chỉ cần dùng ${productName} này là sắp xếp gọn gàng ngay tức thì.`
+
+      const benefitVoice = isKitchen
+        ? 'Gian bếp gọn gàng đẹp mắt hẳn lên, nấu nướng nhanh và tiện lợi hơn rất nhiều.'
+        : isCable
+        ? 'Bàn làm việc gọn gàng đẹp mắt hẳn lên, cần là với tay lấy được ngay.'
+        : 'Không gian sống gọn gàng và tiện nghi hơn rất nhiều sau khi sử dụng.'
+
+      const ctaVoice = 'Giá cực kỳ ưu đãi, bạn bấm vào giỏ hàng góc trái màn hình để xem nhé.'
+
       scenes = [
         {
           id: 's1',
           type: 'hook',
           duration: 3,
-          headline: 'Ban da biet meo nay chua?',
-          voice: 'Bạn đã biết mẹo này chưa? Nhìn đơn giản nhưng cực kỳ tiện lợi nhé.',
-          tts: 'Bạn đã biết mẹo này chưa? Nhìn đơn giản nhưng cực kỳ tiện lợi nhé.',
+          headline: isKitchen ? 'Góc bếp lộn xộn gia vị?' : 'Bạn đã biết mẹo này chưa?',
+          voice: hookVoice,
+          tts: hookVoice,
           productAssetIds: [],
           backgroundType: 'color',
         },
@@ -38,9 +68,9 @@ export async function POST(request: NextRequest) {
           id: 's2',
           type: 'problem',
           duration: 3,
-          headline: 'Van de ban hay gap phai',
-          voice: 'Bình thường dây cáp lộn xộn bừa bộn tìm mãi không thấy.',
-          tts: 'Bình thường dây cáp lộn xộn bừa bộn tìm mãi không thấy.',
+          headline: 'Vấn đề hay gặp phải',
+          voice: problemVoice,
+          tts: problemVoice,
           productAssetIds: [],
           backgroundType: 'color',
         },
@@ -48,9 +78,9 @@ export async function POST(request: NextRequest) {
           id: 's3',
           type: 'demo',
           duration: 3,
-          headline: 'Giai phap don gian thong minh',
-          voice: 'Chỉ cần gắn miếng kẹp silicon này lên mép bàn là xong ngay.',
-          tts: 'Chỉ cần gắn miếng kẹp silicon này lên mép bàn là xong ngay.',
+          headline: 'Giải pháp thông minh',
+          voice: demoVoice,
+          tts: demoVoice,
           productAssetIds: [],
           backgroundType: 'color',
         },
@@ -58,9 +88,9 @@ export async function POST(request: NextRequest) {
           id: 's4',
           type: 'benefit',
           duration: 3,
-          headline: 'Gon gang va tien loi tuc thi',
-          voice: 'Bàn làm việc gọn gàng đẹp mắt hẳn lên, sạc lúc nào cũng tiện.',
-          tts: 'Bàn làm việc gọn gàng đẹp mắt hẳn lên, sạc lúc nào cũng tiện.',
+          headline: 'Gọn gàng và tiện lợi',
+          voice: benefitVoice,
+          tts: benefitVoice,
           productAssetIds: [],
           backgroundType: 'color',
         },
@@ -68,9 +98,9 @@ export async function POST(request: NextRequest) {
           id: 's5',
           type: 'cta',
           duration: 3,
-          headline: 'Bam goc trai mua ngay',
-          voice: 'Giá cực kỳ rẻ, bạn bấm vào giỏ hàng góc trái màn hình để xem nhé.',
-          tts: 'Giá cực kỳ rẻ, bạn bấm vào giỏ hàng góc trái màn hình để xem nhé.',
+          headline: 'Bấm góc trái mua ngay',
+          voice: ctaVoice,
+          tts: ctaVoice,
           productAssetIds: [],
           backgroundType: 'color',
         },

@@ -833,7 +833,7 @@ export default function CreateVideoPage() {
                     <div className="w-full h-full relative flex flex-col justify-between p-4 bg-gradient-to-b from-neutral-900 via-neutral-950 to-black">
                       <div className="pt-8">
                         <span className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 text-neutral-950 font-black text-xs uppercase tracking-wide shadow-lg">
-                          {analysisResult?.strategy.hook || 'Dây sạc cứ rơi xuống sàn?'}
+                          {analysisResult?.strategy.hook || `Khám phá ngay: ${product.name || 'Sản phẩm tiện ích'}`}
                         </span>
                       </div>
 
@@ -852,7 +852,7 @@ export default function CreateVideoPage() {
 
                       <div className="pb-6 text-center">
                         <p className="text-[11px] bg-black/70 backdrop-blur px-3 py-1.5 rounded-full text-white inline-block border border-white/10">
-                          {analysisResult?.storyboard.scenes[0]?.voice || 'Nhà ai dây sạc cứ rơi xuống gầm bàn thì thử miếng này...'}
+                          {analysisResult?.storyboard.scenes[0]?.voice || `Món đồ cực kỳ tiện ích cho gia đình bạn...`}
                         </p>
                       </div>
                     </div>
