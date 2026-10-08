@@ -307,54 +307,70 @@ export class VipeeTTSProvider implements TTSProvider {
           ? '+8%'
           : '+5%'
 
-      // ── Step 1: Synthesize raw segments ─────────────────────────────────
-      // FIX: Each segment gets its OWN EdgeTTS instance.
-      // node-edge-tts keeps internal state per call; sharing one instance
-      // across concurrent promises causes file-write conflicts → corrupt/empty segments.
-      await Promise.all(
-        plan.segments.map(async (seg, idx) => {
-          const rawSegPath = path.join(tempDir, `raw_seg_${idx}.mp3`)
-          const cleanText = sanitizeTextForTTS(seg.ttsScript || seg.text)
-          let success = false
+      // ── Step 1: Synthesize raw segments sequentially with STRICT UNIFIED VOICE ──
+      // Parallel Promise.all causes WebSocket connection collisions & timeouts on Microsoft Edge TTS,
+      // which previously forced individual segments to fall back to Google Robot TTS, mixing voices!
+      // Sequential processing with gentle pacing ensures 100% of segments use the EXACT SAME CHOSEN VOICE.
+      for (let idx = 0; idx < plan.segments.length; idx++) {
+        const seg = plan.segments[idx]
+        const rawSegPath = path.join(tempDir, `raw_seg_${idx}.mp3`)
+        const cleanText = sanitizeTextForTTS(seg.ttsScript || seg.text)
+        let success = false
 
-          // Attempt 1: fresh EdgeTTS instance per segment
+        // Attempt 1-3: Sequential EdgeTTS with identical voice and rate
+        for (let attempt = 1; attempt <= 3; attempt++) {
           try {
-            const tts = new EdgeTTS({ voice, lang: 'vi-VN', rate })
+            const tts = new EdgeTTS({ voice, lang: 'vi-VN', rate, timeout: 25000 })
             await tts.ttsPromise(cleanText, rawSegPath)
             if (fs.existsSync(rawSegPath) && fs.statSync(rawSegPath).size > 300) {
               success = true
+              break
             }
           } catch (e) {
-            console.warn(`[VipeeTTSProvider] Segment ${idx} EdgeTTS primary failed:`, e)
+            console.warn(`[VipeeTTSProvider] Segment ${idx} EdgeTTS attempt ${attempt} failed:`, e)
+            await new Promise((r) => setTimeout(r, 600 * attempt))
           }
+        }
 
-          // Attempt 2: retry with neutral rate
-          if (!success) {
+        // Tier 2: Python helper fallback with STRICT SAME VOICE (no robot voices!)
+        if (!success) {
+          const helperScript = path.join(process.cwd(), 'src', 'lib', 'audio', 'tts_helper.py')
+          if (fs.existsSync(helperScript)) {
             try {
-              const ttsRetry = new EdgeTTS({ voice, lang: 'vi-VN', rate: '+0%' })
-              await ttsRetry.ttsPromise(cleanText, rawSegPath)
+              console.warn(`[VipeeTTSProvider] Segment ${idx} trying local python edge-tts with voice ${voice}`)
+              await new Promise<void>((resolve, reject) => {
+                execFile(
+                  'python3',
+                  [helperScript, cleanText, voice, rawSegPath, rate],
+                  { timeout: 25000 },
+                  (err) => {
+                    if (err) reject(err)
+                    else resolve()
+                  }
+                )
+              })
               if (fs.existsSync(rawSegPath) && fs.statSync(rawSegPath).size > 300) {
                 success = true
               }
-            } catch (e) {
-              console.warn(`[VipeeTTSProvider] Segment ${idx} EdgeTTS retry failed:`, e)
+            } catch (pyErr) {
+              console.warn(`[VipeeTTSProvider] Segment ${idx} python edge_tts failed:`, pyErr)
             }
           }
+        }
 
-          // Attempt 3: Google TTS emergency fallback
-          if (!success) {
-            console.warn(`[VipeeTTSProvider] Segment ${idx} falling back to Google TTS`)
-            try {
-              const chunk = await this.fetchGoogleTTSChunk(seg.ttsScript || seg.text)
-              fs.writeFileSync(rawSegPath, chunk)
-            } catch (e) {
-              console.error(`[VipeeTTSProvider] Segment ${idx} ALL TTS attempts failed:`, e)
-              // Write silence so concat never crashes on a missing file
-              await this.writeSilenceFile(ffmpeg, rawSegPath, seg.estimatedDurationSec || 2.0)
-            }
-          }
-        })
-      )
+        // Tier 3: Never inject Google robot TTS. If synthesis somehow fails, write clean silence for this beat.
+        if (!success) {
+          console.error(
+            `[VipeeTTSProvider] Segment ${idx} failed all attempts for voice ${voice}. Writing silence to preserve unified voice timbre.`
+          )
+          await this.writeSilenceFile(ffmpeg, rawSegPath, seg.estimatedDurationSec || 2.5)
+        }
+
+        // Pacing delay between segments to prevent socket rate limits
+        if (idx < plan.segments.length - 1) {
+          await new Promise((r) => setTimeout(r, 350))
+        }
+      }
 
       // ── Step 2: Apply vocal filters + measure actual durations ──────────
       for (let i = 0; i < plan.segments.length; i++) {
@@ -447,27 +463,5 @@ export class VipeeTTSProvider implements TTSProvider {
     } catch (e) {
       console.error('[VipeeTTSProvider] Could not write silence file:', e)
     }
-  }
-
-  /**
-   * Fetches audio chunk from Google Translate TTS as last-resort fallback.
-   */
-  private async fetchGoogleTTSChunk(cleanText: string): Promise<Buffer> {
-    const encoded = encodeURIComponent(cleanText.slice(0, 180))
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=vi&client=tw-ob`
-
-    return new Promise<Buffer>((resolve, reject) => {
-      https
-        .get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
-          if (res.statusCode !== 200) {
-            reject(new Error(`Google TTS returned HTTP ${res.statusCode}`))
-            return
-          }
-          const chunks: Buffer[] = []
-          res.on('data', (c) => chunks.push(Buffer.from(c)))
-          res.on('end', () => resolve(Buffer.concat(chunks)))
-        })
-        .on('error', (e) => reject(e))
-    })
   }
 }

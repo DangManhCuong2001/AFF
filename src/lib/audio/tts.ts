@@ -94,7 +94,7 @@ export async function generateVietnameseTTS(
       os.tmpdir(),
       `edge_tts_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`
     )
-    const tts = new EdgeTTS({ voice, lang: 'vi-VN', rate })
+    const tts = new EdgeTTS({ voice, lang: 'vi-VN', rate, timeout: 25000 })
     await tts.ttsPromise(cleanText, tempFile)
 
     if (fs.existsSync(tempFile)) {
@@ -116,7 +116,7 @@ export async function generateVietnameseTTS(
       os.tmpdir(),
       `edge_tts_retry_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`
     )
-    const ttsRetry = new EdgeTTS({ voice, lang: 'vi-VN', rate: '+0%' })
+    const ttsRetry = new EdgeTTS({ voice, lang: 'vi-VN', rate: '+0%', timeout: 25000 })
     await ttsRetry.ttsPromise(cleanText, tempFile)
 
     if (fs.existsSync(tempFile)) {
