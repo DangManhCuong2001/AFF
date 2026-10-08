@@ -59,19 +59,29 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
         )
       })}
 
-      {/* 2. Master Voiceover Audio */}
+      {/* 2. Master Voiceover Audio – fade in over first 4 frames to mask encoder-delay pop */}
       {resolvedMasterAudio && (
-        <Audio src={resolvedMasterAudio} volume={1.2} />
+        <Audio
+          src={resolvedMasterAudio}
+          volume={(f) => {
+            // Smooth ramp 0→1.2 over first 4 frames (≈133ms @ 30fps)
+            const ramp = Math.min(1, f / 4)
+            return ramp * 1.2
+          }}
+        />
       )}
 
-      {/* 3. Ducked Background Music Track */}
+      {/* 3. Ducked Background Music Track – fade in over first 15 frames */}
       {resolvedBgmAudio && (
         <Audio
           src={resolvedBgmAudio}
           volume={(f) => {
             const totalFrames = beats.reduce((sum, b) => sum + Math.round(b.durationSec * fps), 0)
             const isNearEnd = f > totalFrames - fps * 1.5
-            return isNearEnd ? Math.min(0.25, bgmVolume * 1.8) : bgmVolume
+            const target = isNearEnd ? Math.min(0.25, bgmVolume * 1.8) : bgmVolume
+            // Fade in BGM over first 15 frames to prevent hard-start pop
+            const fadeIn = Math.min(1, f / 15)
+            return fadeIn * target
           }}
           loop
         />

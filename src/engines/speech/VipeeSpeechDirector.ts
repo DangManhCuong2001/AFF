@@ -403,8 +403,10 @@ export class VipeeTTSProvider implements TTSProvider {
       fs.writeFileSync(concatListPath, segmentAudioFiles.map((f) => `file '${f}'`).join('\n'))
 
       const masterVoicePath = path.join(tempDir, 'master_speech.mp3')
+      // afade=in 40ms: eliminates the MP3 encoder-delay pop that appears at the
+      // very first frame when Chromium/Remotion begins decoding the audio stream.
       await execPromise(
-        `"${ffmpeg}" -y -f concat -safe 0 -i "${concatListPath}" -c:a libmp3lame -b:a 192k -ar 44100 -ac 2 "${masterVoicePath}"`
+        `"${ffmpeg}" -y -f concat -safe 0 -i "${concatListPath}" -af "afade=t=in:st=0:d=0.04" -c:a libmp3lame -b:a 192k -ar 44100 -ac 2 "${masterVoicePath}"`
       )
 
       if (!fs.existsSync(masterVoicePath) || fs.statSync(masterVoicePath).size < 500) {
