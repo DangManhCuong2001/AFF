@@ -68,6 +68,18 @@ export interface VisualBeat {
   }
   sfxCue: SfxCueType
   sfxDelaySec: number
+  // Modern Commerce Layout Extensions
+  sceneTemplate?: 'problem' | 'reveal' | 'benefits' | 'result' | 'offer' | 'cta'
+  productDisplayMode?: 'card' | 'cutout' | 'closeup' | 'split' | 'none'
+  label?: string
+  headline?: string
+  supportText?: string
+  benefitChips?: string[]
+  offer?: {
+    price?: string
+    voucher?: string
+    ctaText?: string
+  }
 }
 
 export interface VisualStoryplan {

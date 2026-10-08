@@ -188,63 +188,110 @@ export async function renderProductVideo(
 
       // Dynamic Ken Burns Zoom on both background and product card (creating 3D depth parallax)
       const bgScaleRate = i === 0 ? 0.02 : i === 2 ? 0.025 : 0.015
-      const prodScaleRate = i === 0 ? 0.045 : i === 2 ? 0.05 : i === 3 ? 0.03 : 0.02
+      const prodScaleRate = i === 0 ? 0.04 : i === 2 ? 0.045 : i === 3 ? 0.03 : 0.02
 
-      // Feature callout stamp for demo/reveal scenes in proper Vietnamese
-      const calloutText = escapeFfmpegText(
-        i === 0
-          ? 'CẢNH BÁO • BỪA BỘN ⚠️'
-          : i === 1
-          ? 'BẤT TIỆN HÀNG NGÀY 😩'
-          : i === 2
-          ? 'GIẢI PHÁP 10/10 ⭐ CỨU TINH'
-          : i === 3
-          ? (scene.keywords && scene.keywords[0])
-            ? `${scene.keywords[0].slice(0, 16).toUpperCase()} ✨ TIỆN LỢI`
-            : 'GỌN GÀNG 100% ✨ THÔNG MINH'
-          : i === 4
-          ? 'SĂN DEAL HỜI • MUA NGAY 🛍️'
-          : 'GIỎ HÀNG GÓC TRÁI 🛒'
+      const isFirstScene = i === 0
+      const isLastScene = i === params.scenes.length - 1
+      const isRevealScene = i === 1
+      const isBenefitScene = i === 2
+
+      const pLower = params.productName.toLowerCase()
+      const isSpice = pLower.includes('gia vị') || pLower.includes('hũ') || pLower.includes('bếp')
+      const benefitChipsText = escapeFfmpegText(
+        isSpice
+          ? '✓ Chống ẩm    ✓ Gọn hơn    ✓ Dễ lấy'
+          : '✓ Tiện lợi    ✓ Gọn gàng    ✓ Bền đẹp'
+      )
+
+      // Context-aware scene label
+      const sceneLabel = escapeFfmpegText(
+        isFirstScene
+          ? 'VẤN ĐỀ HAY GẶP'
+          : isLastScene
+          ? 'TIKTOK SHOP ƯU ĐÃI'
+          : isRevealScene
+          ? 'GIẢI PHÁP MỚI'
+          : isBenefitScene
+          ? 'CHI TIẾT TIỆN LỢI'
+          : 'KẾT QUẢ THỎA MÃN'
       )
 
       // Smart word-boundary truncation so words are never cut in half
       const cleanVoice = scene.voice || scene.headline
       const voiceSubtitle = escapeFfmpegText(
-        cleanVoice.length > 55
-          ? cleanVoice.slice(0, cleanVoice.slice(0, 55).lastIndexOf(' ') || 55) + '...'
+        cleanVoice.length > 50
+          ? cleanVoice.slice(0, cleanVoice.slice(0, 50).lastIndexOf(' ') || 50) + '...'
           : cleanVoice
       )
 
       // Multi-layer FFmpeg filtergraph:
-      // 1. Background layer with continuous cinematic parallax drift
-      // 2. Product Card: Padded in soft frosted container + dynamic Ken Burns scale
+      // 1. Background layer with continuous cinematic parallax drift & vignette
+      // 2. Product Card: Rounded frosted container + dynamic Ken Burns scale (hidden in scene 1)
       // 3. Composite product card centered over background
-      // 4. Top animated TikTok Progress Line (rose fill progressing from left to right)
-      // 5. Top Story Beat Badge (Amber/Gold pill)
-      // 6. Main Headline (Bold white with heavy black stroke - CapCut style, NO black box)
-      // 7. Dynamic Voice Subtitle (High-contrast yellow with black stroke - NO black box)
-      // 8. Bottom High-CTR Affiliate CTA Pill (Vibrant Rose/Red pill)
-      // Multi-layer FFmpeg filtergraph (720x1280 9:16 vertical CapCut UGC format):
-      const filterComplex = [
-        // 1. Animated background with smooth multi-threaded parallax drift & vignette
+      // 4. Top animated TikTok Progress Line
+      // 5. Top Context Label (small, uppercase, low emphasis)
+      // 6. Main Headline (Bold white with soft shadow, high emphasis)
+      // 7. Middle / Bottom: Benefit Chips or Clean Offer CTA
+      const filterComplexParts: string[] = [
+        // 1. Animated background
         `[0:v]scale='720*(1+${bgScaleRate}*t)':'1280*(1+${bgScaleRate}*t)':eval=frame,crop=720:1280,vignette=PI/5[bg]`,
-        // 2. Product Card: Energetic Pop Punch Zoom in first 0.35s + frosted container
-        `[1:v]scale=500:500:force_original_aspect_ratio=decrease,pad=520:520:(ow-iw)/2:(oh-ih)/2:color=0x000000@0.3,scale='520*(1+0.07*max(0,1-t/0.35)+${prodScaleRate}*t)':'520*(1+0.07*max(0,1-t/0.35)+${prodScaleRate}*t)':eval=frame[prod]`,
-        // 3. Composite product over background keeping center position
-        `[bg][prod]overlay=(W-w)/2:310-(h-520)/2[comp]`,
-        // 4. Animated TikTok Progress Line at top
-        `[comp]drawbox=x=0:y=0:w='iw*t/${sceneDuration}':h=8:color=0xf43f5e@0.95:t=fill[prog]`,
-        // 5. Top Story Beat Badge
-        `[prog]drawtext=text='${badgeText}'${fontParam}:fontcolor=0xfacc15:fontsize=22:x=(w-text_w)/2:y=105:box=1:boxcolor=0x000000@0.75:boxborderw=10[b1]`,
-        // 6. Main Headline (Bold white with heavy black stroke, CapCut style)
-        `[b1]drawtext=text='${headlineEscaped}'${fontParam}:fontcolor=white:fontsize=34:borderw=4:bordercolor=black:shadowcolor=black@0.8:shadowx=2:shadowy=2:x=(w-text_w)/2:y=160[b2]`,
-        // 7. Dynamic Subtitle (Yellow punchy text with black stroke)
-        `[b2]drawtext=text='${voiceSubtitle}'${fontParam}:fontcolor=0xfef08a:fontsize=24:borderw=3:bordercolor=black:shadowcolor=black@0.8:shadowx=2:shadowy=2:x=(w-text_w)/2:y=910[b3]`,
-        // 8. Bottom TikTok Shop High-CTR Pill with subtle floating bounce
-        `[b3]drawtext=text='🛒 GIỎ HÀNG GÓC TRÁI • XEM NGAY'${fontParam}:fontcolor=white:fontsize=24:x=(w-text_w)/2:y='1000+4*sin(4*PI*t)':box=1:boxcolor=0xe11d48@0.95:boxborderw=12[flash]`,
-        // 9. CapCut-style White Flash Beat Transition on entrance
-        `[flash]fade=t=in:st=0:d=0.12:color=white[out]`,
-      ].join(';')
+      ]
+
+      if (isFirstScene) {
+        // Scene 1: Problem focus - NO giant product card yet! Gives breathing room.
+        filterComplexParts.push(
+          `[bg]drawtext=text='⚠️ Dễ ẩm mốc • Khó lấy thìa • Bừa bộn gian bếp':fontcolor=0xfda4af:fontsize=20:x=(w-text_w)/2:y=560:box=1:boxcolor=0x09090b@0.75:boxborderw=16[comp]`
+        )
+      } else {
+        // Scenes 2+: Product card in soft frosted container
+        const cardSize = isLastScene ? 400 : 460
+        filterComplexParts.push(
+          `[1:v]scale=${cardSize}:${cardSize}:force_original_aspect_ratio=decrease,pad=${cardSize + 20}:${cardSize + 20}:(ow-iw)/2:(oh-ih)/2:color=0xffffff@0.08,scale='${cardSize + 20}*(1+0.04*max(0,1-t/0.3)+${prodScaleRate}*t)':'${cardSize + 20}*(1+0.04*max(0,1-t/0.3)+${prodScaleRate}*t)':eval=frame[prod]`,
+          `[bg][prod]overlay=(W-w)/2:300-(h-${cardSize + 20})/2[comp]`
+        )
+      }
+
+      // Top progress line
+      filterComplexParts.push(
+        `[comp]drawbox=x=0:y=0:w='iw*t/${sceneDuration}':h=6:color=0xf43f5e@0.95:t=fill[prog]`
+      )
+
+      // Top Context Label
+      filterComplexParts.push(
+        `[prog]drawtext=text='${sceneLabel}'${fontParam}:fontcolor=0xfbbf24:fontsize=18:x=(w-text_w)/2:y=110:box=1:boxcolor=0x09090b@0.65:boxborderw=8[t_label]`
+      )
+
+      // Main Headline
+      filterComplexParts.push(
+        `[t_label]drawtext=text='${headlineEscaped}'${fontParam}:fontcolor=white:fontsize=32:borderw=3:bordercolor=black:shadowcolor=black@0.7:shadowx=2:shadowy=2:x=(w-text_w)/2:y=165[t_head]`
+      )
+
+      // Contextual bottom layout
+      if (isLastScene) {
+        // Offer + Clean CTA
+        const priceDisplay = params.price && params.price > 0
+          ? `${params.price.toLocaleString('vi-VN')}₫`
+          : '39K / bộ'
+        filterComplexParts.push(
+          `[t_head]drawtext=text='${escapeFfmpegText(priceDisplay)} • Voucher giảm 10K'${fontParam}:fontcolor=0xfbbf24:fontsize=22:x=(w-text_w)/2:y=800:box=1:boxcolor=0x09090b@0.8:boxborderw=10[t_offer]`,
+          `[t_offer]drawtext=text='🛒 XEM Ở GIỎ HÀNG GÓC TRÁI'${fontParam}:fontcolor=white:fontsize=22:x=(w-text_w)/2:y='880+3*sin(3*PI*t)':box=1:boxcolor=0xe11d48@0.95:boxborderw=14[flash]`
+        )
+      } else if (!isFirstScene) {
+        // Benefit chips row below product card
+        filterComplexParts.push(
+          `[t_head]drawtext=text='${benefitChipsText}'${fontParam}:fontcolor=0x34d399:fontsize=20:x=(w-text_w)/2:y=830:box=1:boxcolor=0x09090b@0.7:boxborderw=10[flash]`
+        )
+      } else {
+        // Problem scene subtitle
+        filterComplexParts.push(
+          `[t_head]drawtext=text='${voiceSubtitle}'${fontParam}:fontcolor=0xe4e4e7:fontsize=20:borderw=2:bordercolor=black:x=(w-text_w)/2:y=830[flash]`
+        )
+      }
+
+      // Smooth white flash entrance transition
+      filterComplexParts.push(`[flash]fade=t=in:st=0:d=0.10:color=white[out]`)
+
+      const filterComplex = filterComplexParts.join(';')
 
       const bgInput = hasBgImage
         ? `-loop 1 -t ${sceneDuration} -i "${bgImagePath}"`

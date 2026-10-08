@@ -119,19 +119,54 @@ export class VipeeVisualDirector implements VisualDirector {
         ? '/backgrounds/minimal_lifestyle.png'
         : '/backgrounds/kitchen_modern.png'
 
-      // 5. Typography setup
-      const badgeText = isHook
-        ? '🔥 TIKTOK UGC • 3S HOOK'
-        : isProblem
-        ? '😫 VẤN ĐỀ HAY GẶP'
-        : isReveal
-        ? '💡 GIẢI PHÁP TỨC THÌ'
-        : isDemo
-        ? '✨ TRẢI NGHIỆM THỰC TẾ'
-        : isPayoff
-        ? '🎉 KẾT QUẢ THỎA MÃN'
-        : '🛒 TIKTOK SHOP GÓC TRÁI'
+      // 5. Layout and Scene Template Classification
+      let sceneTemplate: 'problem' | 'reveal' | 'benefits' | 'result' | 'cta' = 'reveal'
+      let productDisplayMode: 'card' | 'cutout' | 'closeup' | 'split' | 'none' = 'card'
+      let label = 'GIẢI PHÁP MỚI'
+      let benefitChips: string[] | undefined = undefined
+      let supportText: string | undefined = undefined
 
+      const pLower = productName.toLowerCase()
+      const isSpiceOrKitchen = pLower.includes('gia vị') || pLower.includes('hũ') || pLower.includes('bếp') || pLower.includes('nồi')
+
+      if (isHook || isProblem) {
+        sceneTemplate = 'problem'
+        productDisplayMode = 'none'
+        productVisible = false
+        label = 'VẤN ĐỀ HAY GẶP'
+        supportText = isSpiceOrKitchen
+          ? 'Gia vị để ngoài rất dễ ẩm & lộn xộn gian bếp'
+          : 'Bừa bộn và bất tiện mỗi khi sử dụng hàng ngày'
+      } else if (isReveal) {
+        sceneTemplate = 'reveal'
+        productDisplayMode = 'card'
+        label = 'GIẢI PHÁP MỚI'
+        benefitChips = isSpiceOrKitchen
+          ? ['Chống ẩm', 'Gọn hơn', 'Dễ lấy']
+          : ['Tiện lợi', 'Gọn gàng', 'Bền đẹp']
+      } else if (isDemo) {
+        sceneTemplate = 'benefits'
+        productDisplayMode = 'closeup'
+        label = 'CHI TIẾT TIỆN LỢI'
+        benefitChips = isSpiceOrKitchen
+          ? ['Đựng gọn', 'Dễ vệ sinh', 'Nhìn bếp đẹp']
+          : ['Thiết kế thông minh', 'Dễ sử dụng', 'Chất liệu tốt']
+      } else if (isPayoff) {
+        sceneTemplate = 'result'
+        productDisplayMode = 'card'
+        label = 'KẾT QUẢ THỎA MÃN'
+        supportText = isSpiceOrKitchen
+          ? 'Bếp nhìn gọn hơn hẳn và lấy gia vị cũng nhanh hơn'
+          : 'Không gian ngăn nắp, cuộc sống tiện nghi hơn'
+        benefitChips = ['Gọn gàng 100%', 'Bếp đẹp hơn']
+      } else {
+        sceneTemplate = 'cta'
+        productDisplayMode = 'card'
+        label = 'TIKTOK SHOP ƯU ĐÃI'
+      }
+
+      // 6. Typography setup
+      const badgeText = label
       const emphasisWord = seg.emphasis && seg.emphasis[0] ? seg.emphasis[0].toUpperCase() : undefined
 
       return {
@@ -144,6 +179,17 @@ export class VipeeVisualDirector implements VisualDirector {
         cameraMotion,
         productVisible,
         productRevealDelaySec,
+        sceneTemplate,
+        productDisplayMode,
+        label,
+        headline: seg.text,
+        supportText,
+        benefitChips,
+        offer: isCTA ? {
+          price: isSpiceOrKitchen ? '39K / bộ' : 'Deal hời hôm nay',
+          voucher: 'Voucher giảm 10K',
+          ctaText: 'Xem ở giỏ hàng góc trái',
+        } : undefined,
         layers: {
           background: {
             type: 'contextual_environment',

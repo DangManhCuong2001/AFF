@@ -1,9 +1,10 @@
 import React from 'react'
-import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig } from 'remotion'
 import { VisualBeat } from '@/engines/visual/types'
-import { ProductCutout } from './ProductCutout'
-import { AnimatedCaption } from './AnimatedCaption'
-import { CTAEndCard } from './CTAEndCard'
+import { ProblemScene } from './scenes/ProblemScene'
+import { ProductRevealScene } from './scenes/ProductRevealScene'
+import { BenefitsScene } from './scenes/BenefitsScene'
+import { ResultScene } from './scenes/ResultScene'
+import { CTAScene } from './scenes/CTAScene'
 
 interface DynamicSceneProps {
   beat: VisualBeat
@@ -18,114 +19,105 @@ export const DynamicScene: React.FC<DynamicSceneProps> = ({
   priceText,
   isLastScene,
 }) => {
-  const frame = useCurrentFrame()
-  const { fps, durationInFrames } = useVideoConfig()
+  const {
+    shotType,
+    sceneTemplate,
+    layers,
+    label,
+    headline,
+    supportText,
+    benefitChips,
+    offer,
+  } = beat
 
-  const { layers, cameraMotion, productVisible, productRevealDelaySec } = beat
+  const bgUrl = layers.background.url
+  const productImgUrl = layers.product.url
 
-  // 1. Camera Motion for Background Parallax
-  const bgScale = interpolate(
-    frame,
-    [0, durationInFrames],
-    [layers.background.transform.scaleStart, layers.background.transform.scaleEnd]
-  )
-  const bgTranslateX = interpolate(
-    frame,
-    [0, durationInFrames],
-    [layers.background.transform.translateXStart, layers.background.transform.translateXEnd]
-  )
-  const bgTranslateY = interpolate(
-    frame,
-    [0, durationInFrames],
-    [layers.background.transform.translateYStart, layers.background.transform.translateYEnd]
-  )
+  // Resolve Headline: Prefer beat.headline, then typography subtitleText, then fallback
+  const resolvedHeadline =
+    headline ||
+    layers.typography.subtitleText ||
+    `Khám phá ${productName}`
 
-  const revealDelayFrames = Math.round((productRevealDelaySec || 0) * fps)
-  const shouldShowProduct = productVisible && (revealDelayFrames === 0 || frame >= revealDelayFrames)
+  // Determine Effective Scene Template
+  const effectiveTemplate =
+    sceneTemplate ||
+    (isLastScene || shotType === 'CTAShot' || shotType === 'OfferShot'
+      ? 'cta'
+      : shotType === 'ProblemCloseup' || (shotType === 'EstablishingShot' && !beat.productVisible)
+      ? 'problem'
+      : shotType === 'ProductRevealShot' || shotType === 'EstablishingShot'
+      ? 'reveal'
+      : shotType === 'DemoShot' || shotType === 'DetailShot' || shotType === 'MacroProductShot'
+      ? 'benefits'
+      : shotType === 'ResultShot' || shotType === 'BeforeAfterShot'
+      ? 'result'
+      : 'reveal')
 
-  return (
-    <AbsoluteFill style={{ backgroundColor: '#09090b', overflow: 'hidden' }}>
-      {/* Layer 1: Contextual Environment Background with Parallax */}
-      <AbsoluteFill
-        style={{
-          transform: `scale(${bgScale}) translate(${bgTranslateX}px, ${bgTranslateY}px)`,
-        }}
-      >
-        {layers.background.url ? (
-          <Img
-            src={layers.background.url}
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              filter: 'brightness(0.65) saturate(1.1)',
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              width: '100%',
-              height: '100%',
-              background: 'radial-gradient(circle at center, #1e293b 0%, #09090b 100%)',
-            }}
-          />
-        )}
-      </AbsoluteFill>
-
-      {/* Layer 2: Subtle Ambient Vignette & Gradient */}
-      <AbsoluteFill
-        style={{
-          background:
-            'linear-gradient(180deg, rgba(9,9,11,0.6) 0%, transparent 25%, transparent 75%, rgba(9,9,11,0.85) 100%)',
-          pointerEvents: 'none',
-        }}
+  // 1. Problem Scene
+  if (effectiveTemplate === 'problem') {
+    return (
+      <ProblemScene
+        label={label || layers.typography.badgeText || 'VẤN ĐỀ HAY GẶP'}
+        headline={resolvedHeadline}
+        supportText={supportText}
+        backgroundUrl={bgUrl}
       />
+    )
+  }
 
-      {/* Layer 3: Product Asset / Cutout with Realistic Shadow */}
-      <AbsoluteFill
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          paddingBottom: 160,
-        }}
-      >
-        {shouldShowProduct && (
-          <ProductCutout
-            imageUrl={layers.product.url}
-            motion={layers.product.motion}
-            hasContactShadow={layers.product.hasContactShadow}
-            revealDelayFrames={revealDelayFrames}
-          />
-        )}
-      </AbsoluteFill>
+  // 2. Product Reveal Scene
+  if (effectiveTemplate === 'reveal') {
+    return (
+      <ProductRevealScene
+        label={label || layers.typography.badgeText || 'GIẢI PHÁP MỚI'}
+        headline={resolvedHeadline}
+        productImageUrl={productImgUrl}
+        benefitChips={benefitChips || ['Chống ẩm', 'Gọn hơn', 'Dễ lấy']}
+        backgroundUrl={bgUrl}
+      />
+    )
+  }
 
-      {/* Layer 4: Top & Middle Subtitles / Kinetic Typography */}
-      <AbsoluteFill
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'flex-start',
-          paddingTop: 180,
-          pointerEvents: 'none',
-        }}
-      >
-        <AnimatedCaption
-          badgeText={layers.typography.badgeText}
-          subtitleText={layers.typography.subtitleText}
-          emphasisWord={layers.typography.emphasisWord}
-          emphasisRevealDelayFrames={
-            layers.typography.emphasisRevealDelaySec
-              ? Math.round(layers.typography.emphasisRevealDelaySec * fps)
-              : 15
-          }
-        />
-      </AbsoluteFill>
+  // 3. Benefits / Demo Scene
+  if (effectiveTemplate === 'benefits') {
+    return (
+      <BenefitsScene
+        label={label || layers.typography.badgeText || 'CHI TIẾT TIỆN LỢI'}
+        headline={resolvedHeadline}
+        productImageUrl={productImgUrl}
+        supportText={supportText}
+        benefitChips={benefitChips || ['Đựng gọn', 'Dễ vệ sinh', 'Bếp đẹp hơn']}
+        displayMode={beat.productDisplayMode === 'closeup' ? 'closeup' : 'card'}
+        backgroundUrl={bgUrl}
+      />
+    )
+  }
 
-      {/* Layer 5: TikTok Shop CTA End Card (Shown on last scenes or continuous) */}
-      {(isLastScene || beat.shotType === 'CTAShot') && (
-        <CTAEndCard productName={productName} priceText={priceText} />
-      )}
-    </AbsoluteFill>
+  // 4. Result Scene
+  if (effectiveTemplate === 'result') {
+    return (
+      <ResultScene
+        label={label || layers.typography.badgeText || 'KẾT QUẢ THỎA MÃN'}
+        headline={resolvedHeadline}
+        productImageUrl={productImgUrl}
+        supportText={supportText}
+        resultChips={benefitChips || ['Gọn gàng 100%', 'Bếp thẩm mỹ hơn']}
+        backgroundUrl={bgUrl}
+      />
+    )
+  }
+
+  // 5. Offer / CTA Scene (Last Scene or explicit CTA)
+  return (
+    <CTAScene
+      label={label || layers.typography.badgeText || 'TIKTOK SHOP ƯU ĐÃI'}
+      headline={resolvedHeadline}
+      productImageUrl={productImgUrl}
+      priceText={offer?.price || priceText}
+      voucherText={offer?.voucher}
+      ctaLabel={offer?.ctaText || 'Xem ở giỏ hàng góc trái'}
+      backgroundUrl={bgUrl}
+    />
   )
 }
