@@ -109,6 +109,7 @@ Hãy trả về kết quả JSON với cấu trúc chính xác:
 }`
 
   const candidateModels = [
+    'gemini-3.8-flash',
     'gemini-flash-latest',
     'gemini-flash-lite-latest',
   ]

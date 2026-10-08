@@ -91,7 +91,7 @@ export class VipeeCreativeDirector implements CreativeDirector {
     offerInfo: ReturnType<typeof OfferEngine.analyzeOffer>,
     apiKey: string
   ): Promise<CreativePlan | null> {
-    const models = ['gemini-flash-latest', 'gemini-flash-lite-latest']
+    const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest']
     
     const prompt = `Phân tích và đạo diễn kịch bản video TikTok UGC cho sản phẩm:
 - Tên sản phẩm: ${product.name}
