@@ -15,7 +15,7 @@ import os from 'os'
 import { exec, execFile } from 'child_process'
 import { promisify } from 'util'
 import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
-import { generateVietnameseTTS, sanitizeTextForTTS, VietnameseVoice } from '@/lib/audio/tts'
+import { sanitizeTextForTTS } from '@/lib/audio/tts'
 import { EdgeTTS } from 'node-edge-tts'
 
 const execPromise = promisify(exec)
@@ -215,8 +215,62 @@ export class VipeeSpeechDirector implements SpeechDirector {
   }
 }
 
+// ─── Audio Measurement Utility ───────────────────────────────────────────────
+
+/**
+ * Measures the actual duration of an audio file.
+ * Tries ffprobe first (reliable JSON output), then falls back to FFmpeg stderr.
+ *
+ * IMPORTANT: FFmpeg always exits with code 1 when given -i without an output
+ * file. We MUST use execFile so we can capture stderr independently of the
+ * exit code – execPromise with `2>&1` shell redirect causes Node to throw
+ * before we can read the stderr content.
+ */
+async function measureAudioDurationSec(filePath: string, ffmpegBin: string): Promise<number> {
+  // Try ffprobe first (most reliable – native JSON, no regex parsing needed)
+  const ffprobeBin = ffmpegBin.replace(/ffmpeg(\.exe)?$/, 'ffprobe$1')
+  try {
+    const { stdout } = await execPromise(
+      `"${ffprobeBin}" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`
+    )
+    const val = parseFloat(stdout.trim())
+    if (isFinite(val) && val > 0) return val
+  } catch {
+    // ffprobe not available, fall through
+  }
+
+  // FFmpeg stderr fallback
+  return new Promise<number>((resolve) => {
+    execFile(
+      ffmpegBin,
+      ['-i', filePath],
+      { timeout: 10000 },
+      (_err, _stdout, stderr) => {
+        // Duration is always in stderr regardless of exit code
+        const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/)
+        if (m) {
+          const secs = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])
+          if (isFinite(secs) && secs > 0) {
+            resolve(secs)
+            return
+          }
+        }
+        resolve(0) // unknown – caller uses estimated value
+      }
+    )
+  })
+}
+
 /**
  * Segmented, Humanized Audio Engine with Micro-Pauses and Concatenation
+ *
+ * Key fixes:
+ *   1. Each segment gets its OWN EdgeTTS instance – node-edge-tts is not
+ *      re-entrant; sharing one instance across parallel calls causes
+ *      file-write conflicts and produces corrupt/empty segments.
+ *   2. Duration is measured via execFile+stderr (not execPromise+2>&1).
+ *   3. Concat re-encodes to uniform 44100 Hz stereo 192k MP3 instead
+ *      of -c copy to eliminate pops/silence at segment boundaries.
  */
 export class VipeeTTSProvider implements TTSProvider {
   readonly capabilities: TTSProviderCapabilities = {
@@ -253,96 +307,63 @@ export class VipeeTTSProvider implements TTSProvider {
           ? '+8%'
           : '+5%'
 
-      // 1. Synthesize all segments in parallel using pure Node.js EdgeTTS (Vercel-compatible, zero Python dependency)
-      let batchSuccess = false
-      try {
-        const tts = new EdgeTTS({ voice, lang: 'vi-VN', rate })
-        await Promise.all(
-          plan.segments.map(async (seg, idx) => {
-            const rawSegPath = path.join(tempDir, `raw_seg_${idx}.mp3`)
-            const cleanText = sanitizeTextForTTS(seg.ttsScript || seg.text)
-            await tts.ttsPromise(cleanText, rawSegPath)
-            if (!fs.existsSync(rawSegPath) || fs.statSync(rawSegPath).size < 300) {
-              throw new Error(`Segment ${idx} empty`)
-            }
-          })
-        )
-        batchSuccess = true
-      } catch (nodeErr) {
-        console.warn('[VipeeTTSProvider] Parallel Node EdgeTTS failed, attempting sequential retry:', nodeErr)
-      }
+      // ── Step 1: Synthesize raw segments ─────────────────────────────────
+      // FIX: Each segment gets its OWN EdgeTTS instance.
+      // node-edge-tts keeps internal state per call; sharing one instance
+      // across concurrent promises causes file-write conflicts → corrupt/empty segments.
+      await Promise.all(
+        plan.segments.map(async (seg, idx) => {
+          const rawSegPath = path.join(tempDir, `raw_seg_${idx}.mp3`)
+          const cleanText = sanitizeTextForTTS(seg.ttsScript || seg.text)
+          let success = false
 
-      // If parallel failed, retry sequentially with safe parameters
-      if (!batchSuccess) {
-        try {
-          const ttsRetry = new EdgeTTS({ voice, lang: 'vi-VN', rate: '+0%' })
-          for (let idx = 0; idx < plan.segments.length; idx++) {
-            const seg = plan.segments[idx]
-            const rawSegPath = path.join(tempDir, `raw_seg_${idx}.mp3`)
-            if (!fs.existsSync(rawSegPath) || fs.statSync(rawSegPath).size < 300) {
-              const cleanText = sanitizeTextForTTS(seg.ttsScript || seg.text)
-              await ttsRetry.ttsPromise(cleanText, rawSegPath)
-            }
-          }
-          batchSuccess = true
-        } catch (retryErr) {
-          console.warn('[VipeeTTSProvider] Sequential Node EdgeTTS retry failed:', retryErr)
-        }
-      }
-
-      // If Node EdgeTTS failed, try local Python helper ONLY IF python3 exists on this machine
-      if (!batchSuccess) {
-        const helperScript = path.join(process.cwd(), 'src', 'lib', 'audio', 'tts_helper.py')
-        if (fs.existsSync(helperScript)) {
+          // Attempt 1: fresh EdgeTTS instance per segment
           try {
-            const manifestPath = path.join(tempDir, 'tts_manifest.json')
-            const manifest = {
-              voice,
-              rate,
-              segments: plan.segments.map((seg, idx) => ({
-                index: idx,
-                text: seg.ttsScript,
-                outputPath: path.join(tempDir, `raw_seg_${idx}.mp3`),
-              })),
+            const tts = new EdgeTTS({ voice, lang: 'vi-VN', rate })
+            await tts.ttsPromise(cleanText, rawSegPath)
+            if (fs.existsSync(rawSegPath) && fs.statSync(rawSegPath).size > 300) {
+              success = true
             }
-            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
-            await new Promise<void>((resolve, reject) => {
-              execFile(
-                'python3',
-                [helperScript, '--batch', manifestPath],
-                { timeout: 60000 },
-                (err) => {
-                  if (err) reject(err)
-                  else resolve()
-                }
-              )
-            })
-            batchSuccess = true
-          } catch (pyErr) {
-            console.warn('[VipeeTTSProvider] Python fallback failed (no python3 or error):', pyErr)
+          } catch (e) {
+            console.warn(`[VipeeTTSProvider] Segment ${idx} EdgeTTS primary failed:`, e)
           }
-        }
-      }
 
-      // Ultimate Fallback: If any segment still missing, use Google TTS chunk
-      for (let idx = 0; idx < plan.segments.length; idx++) {
-        const rawSegPath = path.join(tempDir, `raw_seg_${idx}.mp3`)
-        if (!fs.existsSync(rawSegPath) || fs.statSync(rawSegPath).size < 300) {
-          console.warn(`[VipeeTTSProvider] Segment ${idx} falling back to Google TTS`)
-          const chunk = await this.fetchSingleGoogleTTSChunk(plan.segments[idx].ttsScript || plan.segments[idx].text)
-          fs.writeFileSync(rawSegPath, chunk)
-        }
-      }
+          // Attempt 2: retry with neutral rate
+          if (!success) {
+            try {
+              const ttsRetry = new EdgeTTS({ voice, lang: 'vi-VN', rate: '+0%' })
+              await ttsRetry.ttsPromise(cleanText, rawSegPath)
+              if (fs.existsSync(rawSegPath) && fs.statSync(rawSegPath).size > 300) {
+                success = true
+              }
+            } catch (e) {
+              console.warn(`[VipeeTTSProvider] Segment ${idx} EdgeTTS retry failed:`, e)
+            }
+          }
 
-      // 3. Process each segment with studio broadcast filters and calculate timings
+          // Attempt 3: Google TTS emergency fallback
+          if (!success) {
+            console.warn(`[VipeeTTSProvider] Segment ${idx} falling back to Google TTS`)
+            try {
+              const chunk = await this.fetchGoogleTTSChunk(seg.ttsScript || seg.text)
+              fs.writeFileSync(rawSegPath, chunk)
+            } catch (e) {
+              console.error(`[VipeeTTSProvider] Segment ${idx} ALL TTS attempts failed:`, e)
+              // Write silence so concat never crashes on a missing file
+              await this.writeSilenceFile(ffmpeg, rawSegPath, seg.estimatedDurationSec || 2.0)
+            }
+          }
+        })
+      )
+
+      // ── Step 2: Apply vocal filters + measure actual durations ──────────
       for (let i = 0; i < plan.segments.length; i++) {
         const seg = plan.segments[i]
         const rawSegPath = path.join(tempDir, `raw_seg_${i}.mp3`)
-
-        // Studio Broadcast Vocal Processing (Warmth EQ + Presence EQ + Compand + Breath micro-pause)
         const paddedSegPath = path.join(tempDir, `padded_seg_${i}.mp3`)
         const pauseSec = (seg.pauseAfterMs || 200) / 1000
 
+        // Studio Broadcast Vocal Processing (Warmth EQ + Presence EQ + Compand + Breath micro-pause)
         const filterStr = [
           `equalizer=f=250:t=q:w=1:g=2.0`,
           `equalizer=f=3500:t=q:w=1.2:g=2.5`,
@@ -350,49 +371,57 @@ export class VipeeTTSProvider implements TTSProvider {
           `apad=pad_dur=${pauseSec}`,
         ].join(',')
 
-        const cmd = `"${ffmpeg}" -y -i "${rawSegPath}" -af "${filterStr}" -c:a libmp3lame -b:a 192k "${paddedSegPath}"`
-        await execPromise(cmd)
+        // FIX: Force 44100 Hz stereo 192k so all segments are identical before concat
+        await execPromise(
+          `"${ffmpeg}" -y -i "${rawSegPath}" -af "${filterStr}" -c:a libmp3lame -b:a 192k -ar 44100 -ac 2 "${paddedSegPath}"`
+        )
 
-        // Measure actual audio segment duration
-        const durationCmd = `"${ffmpeg}" -i "${paddedSegPath}" 2>&1`
-        let segDurationSec: number = seg.estimatedDurationSec || 2.5
-        try {
-          const { stderr } = await execPromise(durationCmd)
-          const durationMatch = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/)
-          if (durationMatch) {
-            const hours = Number(durationMatch[1])
-            const mins = Number(durationMatch[2])
-            const secs = Number(durationMatch[3])
-            segDurationSec = hours * 3600 + mins * 60 + secs
-          }
-        } catch {
-          // ffmpeg exits with code 1 when no output file is provided, stderr contains duration
+        // FIX: measure duration via execFile so we always get stderr content
+        let segDurationSec = seg.estimatedDurationSec || 2.5
+        const measured = await measureAudioDurationSec(paddedSegPath, ffmpeg)
+        if (measured > 0) {
+          segDurationSec = measured
+        } else {
+          console.warn(`[VipeeTTSProvider] Segment ${i} duration unknown, using estimate ${segDurationSec}s`)
         }
 
         segmentAudioFiles.push(paddedSegPath)
         segmentTimings.push({
           segmentId: seg.id,
-          startSec: Number(currentTimelineSec.toFixed(2)),
-          endSec: Number((currentTimelineSec + segDurationSec).toFixed(2)),
-          durationSec: Number(segDurationSec.toFixed(2)),
+          startSec: Number(currentTimelineSec.toFixed(3)),
+          endSec: Number((currentTimelineSec + segDurationSec).toFixed(3)),
+          durationSec: Number(segDurationSec.toFixed(3)),
         })
         currentTimelineSec += segDurationSec
       }
 
-      // Concat all padded segments into final Master Voice track
+      // ── Step 3: Concatenate into master voice track ──────────────────────
+      // FIX: Re-encode during concat (NOT -c copy).
+      // -c copy with MP3 causes pops/silence at boundaries due to encoder
+      // delay and padding headers in each segment's bitstream.
       const concatListPath = path.join(tempDir, 'voice_concat.txt')
       fs.writeFileSync(concatListPath, segmentAudioFiles.map((f) => `file '${f}'`).join('\n'))
 
       const masterVoicePath = path.join(tempDir, 'master_speech.mp3')
-      await execPromise(`"${ffmpeg}" -y -f concat -safe 0 -i "${concatListPath}" -c copy "${masterVoicePath}"`)
+      await execPromise(
+        `"${ffmpeg}" -y -f concat -safe 0 -i "${concatListPath}" -c:a libmp3lame -b:a 192k -ar 44100 -ac 2 "${masterVoicePath}"`
+      )
+
+      if (!fs.existsSync(masterVoicePath) || fs.statSync(masterVoicePath).size < 500) {
+        throw new Error('[VipeeTTSProvider] Master voice file is empty after concat')
+      }
 
       const masterBuffer = fs.readFileSync(masterVoicePath)
+      console.log(
+        `[VipeeTTSProvider] Audio OK: ${plan.segments.length} segments, ` +
+        `${currentTimelineSec.toFixed(2)}s, ${(masterBuffer.length / 1024).toFixed(1)} KB`
+      )
 
       return {
         audioBuffer: masterBuffer,
         durationSec: Number(currentTimelineSec.toFixed(2)),
         format: 'mp3',
-        sampleRate: 24000,
+        sampleRate: 44100,
         segmentTimings,
       }
     } finally {
@@ -405,17 +434,31 @@ export class VipeeTTSProvider implements TTSProvider {
   }
 
   /**
-   * Fetches clean audio chunk from reliable TTS endpoint
+   * Writes a silent MP3 file as emergency fallback so the pipeline never
+   * crashes on a missing segment file.
    */
-  private async fetchSingleGoogleTTSChunk(cleanText: string): Promise<Buffer> {
+  private async writeSilenceFile(ffmpegBin: string, outputPath: string, durationSec: number): Promise<void> {
+    try {
+      await execPromise(
+        `"${ffmpegBin}" -y -f lavfi -i anullsrc=r=44100:cl=stereo -t ${durationSec} -c:a libmp3lame -b:a 192k "${outputPath}"`
+      )
+    } catch (e) {
+      console.error('[VipeeTTSProvider] Could not write silence file:', e)
+    }
+  }
+
+  /**
+   * Fetches audio chunk from Google Translate TTS as last-resort fallback.
+   */
+  private async fetchGoogleTTSChunk(cleanText: string): Promise<Buffer> {
     const encoded = encodeURIComponent(cleanText.slice(0, 180))
     const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=vi&client=tw-ob`
 
     return new Promise<Buffer>((resolve, reject) => {
       https
-        .get(url, (res) => {
+        .get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
           if (res.statusCode !== 200) {
-            reject(new Error(`TTS returned HTTP ${res.statusCode}`))
+            reject(new Error(`Google TTS returned HTTP ${res.statusCode}`))
             return
           }
           const chunks: Buffer[] = []
