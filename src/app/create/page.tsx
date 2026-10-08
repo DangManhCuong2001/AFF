@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import {
   Sparkles,
@@ -335,6 +335,42 @@ export default function CreateVideoPage() {
       assets: prev.assets.map((a) => (a.id === assetId ? { ...a, type } : a)),
     }))
   }
+
+  // Support pasting images from clipboard (Ctrl+V / Cmd+V) directly into product assets
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement
+      const isInput = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA'
+
+      if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+        const imageFiles = Array.from(e.clipboardData.files).filter((f) =>
+          f.type.startsWith('image/')
+        )
+        if (imageFiles.length > 0) {
+          if (!isInput) {
+            e.preventDefault()
+          }
+          const newAssets: ProductAsset[] = imageFiles.map((file, idx) => ({
+            id: 'asset-paste-' + Date.now() + '-' + idx,
+            name: `Ảnh dán clipboard (${file.name || 'Pasted'}).png`,
+            size: file.size,
+            type: 'DETAIL_IMAGE',
+            url: URL.createObjectURL(file),
+            file,
+            isPrimary: false,
+          }))
+
+          setProduct((prev) => ({
+            ...prev,
+            assets: [...prev.assets, ...newAssets],
+          }))
+        }
+      }
+    }
+
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [])
 
   // Execute AI Product Analysis (Gemini API with Algorithmic Fallback)
   const handleAnalyzeProduct = async () => {
@@ -1531,7 +1567,10 @@ export default function CreateVideoPage() {
                     Kho Media Sản Phẩm Thật ({product.assets.length} file)
                   </h3>
                   <p className="text-xs text-neutral-400">
-                    Nguyên tắc Real Product First: AI luôn sử dụng hình ảnh thật của bạn để giữ nguyên vẹn sản phẩm.
+                    Nguyên tắc Real Product First: AI sử dụng hình ảnh thật của sản phẩm để dựng video chân thực.
+                    <span className="block sm:inline sm:ml-1.5 text-rose-400 font-medium">
+                      💡 Mẹo: Nhấn Ctrl+V / Cmd+V bất kỳ lúc nào để dán nhanh ảnh chụp màn hình từ clipboard!
+                    </span>
                   </p>
                 </div>
 
