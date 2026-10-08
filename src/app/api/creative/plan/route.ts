@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
           {
             id: 'scene-1',
             storyBeat: 'hook',
-            voice: creativePlan.selectedHook.text,
+            voice: creativePlan.selectedHook?.text || creativePlan.hook,
           },
           {
             id: 'scene-2',
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
           {
             id: 'scene-5',
             storyBeat: 'cta',
-            voice: creativePlan.cta,
+            voice: creativePlan.cta || 'Bấm ngay giỏ hàng góc trái bên dưới để săn deal ưu đãi nhé!',
           },
         ],
       },

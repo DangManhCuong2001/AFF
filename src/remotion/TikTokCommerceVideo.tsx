@@ -66,7 +66,15 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
 
       {/* 3. Ducked Background Music Track */}
       {resolvedBgmAudio && (
-        <Audio src={resolvedBgmAudio} volume={bgmVolume} loop />
+        <Audio
+          src={resolvedBgmAudio}
+          volume={(f) => {
+            const totalFrames = beats.reduce((sum, b) => sum + Math.round(b.durationSec * fps), 0)
+            const isNearEnd = f > totalFrames - fps * 1.5
+            return isNearEnd ? Math.min(0.25, bgmVolume * 1.8) : bgmVolume
+          }}
+          loop
+        />
       )}
 
       {/* 4. Synced Sound Effects Cues */}

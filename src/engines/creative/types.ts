@@ -1,19 +1,5 @@
-import { ProductAnalysis, ProductInput } from '@/engines/core/types'
-
-export type StoryApproach =
-  | 'micro-story'
-  | 'problem-solution'
-  | 'curiosity-test'
-  | 'before-after'
-  | 'relatable-moment'
-  | 'unexpected-use'
-  | 'mini-review'
-  | 'pov'
-  | 'three-reasons'
-  | 'satisfying'
-  | 'challenge'
-  | 'comparison'
-  | 'daily-frustration'
+import { ProductAnalysis, ProductInput, CreativePlan, StoryApproach } from '@/engines/core/contracts'
+export type { CreativePlan, StoryApproach }
 
 export interface HookCandidate {
   id: string
@@ -62,26 +48,7 @@ export interface SpokenScene {
   keywords?: string[]
 }
 
-export interface CreativePlan {
-  concept: string
-  viewerInsight: string
-  sellingMechanism: string
-  emotionalArc: EmotionalTone[]
-  storyType: StoryApproach
-  hookCandidates: HookCandidate[]
-  selectedHook: HookCandidate
-  story: string
-  payoff: string
-  offerAngle: string
-  cta: string
-  duration: 15 | 30 | 45
-  creativeScore: CreativeScore
-  openLoop?: {
-    setup: string
-    payoff: string
-  }
-  spokenScenes?: SpokenScene[]
-}
+
 
 export interface CreativeDirector {
   createCreativePlan(

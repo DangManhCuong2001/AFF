@@ -1,10 +1,8 @@
 import React from 'react'
 import { VisualBeat } from '@/engines/visual/types'
-import { ProblemScene } from './scenes/ProblemScene'
-import { ProductRevealScene } from './scenes/ProductRevealScene'
-import { BenefitsScene } from './scenes/BenefitsScene'
-import { ResultScene } from './scenes/ResultScene'
-import { CTAScene } from './scenes/CTAScene'
+import { DynamicCommerceScene } from './DynamicCommerceScene'
+import { LayoutVariant, ProductPresentation } from '@/engines/core/contracts'
+import { VisualBeat as ContractVisualBeat } from '@/engines/core/contracts'
 
 interface DynamicSceneProps {
   beat: VisualBeat
@@ -26,98 +24,91 @@ export const DynamicScene: React.FC<DynamicSceneProps> = ({
     label,
     headline,
     supportText,
-    benefitChips,
+    benefitChips = [],
     offer,
   } = beat
 
-  const bgUrl = layers.background.url
-  const productImgUrl = layers.product.url
+  const productImgUrl = layers?.product?.url || '/placeholders/product-hero.png'
 
-  // Resolve Headline: Prefer beat.headline, then typography subtitleText, then fallback
+  // Resolve Headline
   const resolvedHeadline =
     headline ||
-    layers.typography.subtitleText ||
+    layers?.typography?.subtitleText ||
     `Khám phá ${productName}`
 
-  // Determine Effective Scene Template
-  const effectiveTemplate =
-    sceneTemplate ||
-    (isLastScene || shotType === 'CTAShot' || shotType === 'OfferShot'
-      ? 'cta'
-      : shotType === 'ProblemCloseup' || (shotType === 'EstablishingShot' && !beat.productVisible)
-      ? 'problem'
-      : shotType === 'ProductRevealShot' || shotType === 'EstablishingShot'
-      ? 'reveal'
-      : shotType === 'DemoShot' || shotType === 'DetailShot' || shotType === 'MacroProductShot'
-      ? 'benefits'
-      : shotType === 'ResultShot' || shotType === 'BeforeAfterShot'
-      ? 'result'
-      : 'reveal')
+  // Map to LayoutVariant (Decoupling SceneType from LayoutVariant)
+  let layoutVariant: LayoutVariant = 'hero-center'
 
-  // 1. Problem Scene
-  if (effectiveTemplate === 'problem') {
-    return (
-      <ProblemScene
-        label={label || layers.typography.badgeText || 'VẤN ĐỀ HAY GẶP'}
-        headline={resolvedHeadline}
-        supportText={supportText}
-        backgroundUrl={bgUrl}
-      />
-    )
+  if (isLastScene || shotType === 'CTAShot' || shotType === 'OfferShot' || sceneTemplate === 'cta') {
+    layoutVariant = 'commerce-offer'
+  } else if (sceneTemplate === 'problem' || shotType === 'ProblemCloseup') {
+    // Alternate between editorial-left and editorial-top
+    layoutVariant = 'editorial-left'
+  } else if (sceneTemplate === 'benefits' || shotType === 'DetailShot' || shotType === 'MacroProductShot') {
+    layoutVariant = 'detail-focus'
+  } else if (sceneTemplate === 'result' || shotType === 'ResultShot') {
+    layoutVariant = 'hero-offset'
+  } else if (shotType === 'BeforeAfterShot') {
+    layoutVariant = 'split-horizontal'
+  } else {
+    layoutVariant = 'hero-center'
   }
 
-  // 2. Product Reveal Scene
-  if (effectiveTemplate === 'reveal') {
-    return (
-      <ProductRevealScene
-        label={label || layers.typography.badgeText || 'GIẢI PHÁP MỚI'}
-        headline={resolvedHeadline}
-        productImageUrl={productImgUrl}
-        benefitChips={benefitChips || ['Chống ẩm', 'Gọn hơn', 'Dễ lấy']}
-        backgroundUrl={bgUrl}
-      />
-    )
+  // Map to ProductPresentation
+  const presentation: ProductPresentation = {
+    type:
+      layoutVariant === 'detail-focus'
+        ? 'detail-focus'
+        : layoutVariant === 'commerce-offer'
+        ? 'floating-product'
+        : layoutVariant === 'editorial-left'
+        ? 'smart-crop'
+        : 'hero-card',
+    assetId: beat.id,
+    zoom: layoutVariant === 'detail-focus' ? 1.3 : 1.05,
   }
 
-  // 3. Benefits / Demo Scene
-  if (effectiveTemplate === 'benefits') {
-    return (
-      <BenefitsScene
-        label={label || layers.typography.badgeText || 'CHI TIẾT TIỆN LỢI'}
-        headline={resolvedHeadline}
-        productImageUrl={productImgUrl}
-        supportText={supportText}
-        benefitChips={benefitChips || ['Đựng gọn', 'Dễ vệ sinh', 'Bếp đẹp hơn']}
-        displayMode={beat.productDisplayMode === 'closeup' ? 'closeup' : 'card'}
-        backgroundUrl={bgUrl}
-      />
-    )
-  }
+  // Adapt visual beats to contract beats
+  const contractBeats: ContractVisualBeat[] = [
+    {
+      id: `${beat.id}-b0`,
+      atMs: 0,
+      type: 'headline-enter',
+      payload: {},
+    },
+    {
+      id: `${beat.id}-b1`,
+      atMs: 350,
+      type: 'product-enter',
+      payload: {},
+    },
+    ...benefitChips.map((chip, idx) => ({
+      id: `${beat.id}-benefit-${idx}`,
+      atMs: 1000 + idx * 700,
+      type: 'benefit-enter' as const,
+      payload: { chip },
+    })),
+    {
+      id: `${beat.id}-focus`,
+      atMs: Math.round(beat.durationSec * 600),
+      type: 'product-focus',
+      payload: {},
+    },
+  ]
 
-  // 4. Result Scene
-  if (effectiveTemplate === 'result') {
-    return (
-      <ResultScene
-        label={label || layers.typography.badgeText || 'KẾT QUẢ THỎA MÃN'}
-        headline={resolvedHeadline}
-        productImageUrl={productImgUrl}
-        supportText={supportText}
-        resultChips={benefitChips || ['Gọn gàng 100%', 'Bếp thẩm mỹ hơn']}
-        backgroundUrl={bgUrl}
-      />
-    )
-  }
-
-  // 5. Offer / CTA Scene (Last Scene or explicit CTA)
   return (
-    <CTAScene
-      label={label || layers.typography.badgeText || 'TIKTOK SHOP ƯU ĐÃI'}
+    <DynamicCommerceScene
+      layoutVariant={layoutVariant}
+      presentation={presentation}
+      assetUrl={productImgUrl}
+      beats={contractBeats}
       headline={resolvedHeadline}
-      productImageUrl={productImgUrl}
+      supportText={supportText}
+      benefitChips={benefitChips}
+      badgeText={label || layers?.typography?.badgeText}
       priceText={offer?.price || priceText}
       voucherText={offer?.voucher}
-      ctaLabel={offer?.ctaText || 'Xem ở giỏ hàng góc trái'}
-      backgroundUrl={bgUrl}
+      durationSec={beat.durationSec || 3.5}
     />
   )
 }

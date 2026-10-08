@@ -69,6 +69,23 @@ export class VipeeSpeechDirector implements SpeechDirector {
     const segments: SpeechSegment[] = []
     let totalEstimatedDuration = 0
 
+    const intentMap: Record<string, import('./types').SpeechIntent> = {
+      hook: 'hook',
+      problem: 'annoyed',
+      tension: 'annoyed',
+      relatable: 'relatable',
+      curiosity: 'curious',
+      reveal: 'reveal',
+      solution: 'reveal',
+      product_hero: 'reveal',
+      demo: 'satisfied',
+      mechanism: 'satisfied',
+      benefit: 'satisfied',
+      payoff: 'satisfied',
+      offer: 'offer',
+      cta: 'cta',
+    }
+
     const emotionMap: Record<string, EmotionalTone> = {
       hook: 'curiosity',
       problem: 'relatable_frustration',
@@ -95,6 +112,7 @@ export class VipeeSpeechDirector implements SpeechDirector {
       const s = storyScript.scenes[i]
       const rawVoice = s.voice || ''
       const beat = s.storyBeat || (i === 0 ? 'hook' : i === storyScript.scenes.length - 1 ? 'cta' : 'demo')
+      const intent = intentMap[beat] || 'relatable'
       const emotion = emotionMap[beat] || 'interest'
       const pace = paceMap[voicePreset][beat] || 0.95
 
@@ -111,9 +129,12 @@ export class VipeeSpeechDirector implements SpeechDirector {
       const estimatedSec = Math.max(2.0, (wordCount / (3.8 * pace)) + (pauseAfterMs / 1000))
       totalEstimatedDuration += estimatedSec
 
+      const emphasisWords = s.emphasisWords || this.extractKeyEmphasisWords(spokenText)
+
       segments.push({
         id: s.id || `seg-${i + 1}`,
         text: spokenText,
+        intent,
         displayScript: rawVoice,
         ttsScript,
         emotion,
@@ -121,7 +142,8 @@ export class VipeeSpeechDirector implements SpeechDirector {
         energy: beat === 'hook' || beat === 'cta' ? 0.85 : beat === 'problem' ? 0.6 : 0.75,
         pauseBeforeMs,
         pauseAfterMs,
-        emphasis: s.emphasisWords || this.extractKeyEmphasisWords(spokenText),
+        emphasisWords,
+        emphasis: emphasisWords,
         estimatedDurationSec: Number(estimatedSec.toFixed(2)),
       })
     }
@@ -238,7 +260,7 @@ export class VipeeTTSProvider implements TTSProvider {
         await Promise.all(
           plan.segments.map(async (seg, idx) => {
             const rawSegPath = path.join(tempDir, `raw_seg_${idx}.mp3`)
-            const cleanText = sanitizeTextForTTS(seg.ttsScript)
+            const cleanText = sanitizeTextForTTS(seg.ttsScript || seg.text)
             await tts.ttsPromise(cleanText, rawSegPath)
             if (!fs.existsSync(rawSegPath) || fs.statSync(rawSegPath).size < 300) {
               throw new Error(`Segment ${idx} empty`)
@@ -258,7 +280,7 @@ export class VipeeTTSProvider implements TTSProvider {
             const seg = plan.segments[idx]
             const rawSegPath = path.join(tempDir, `raw_seg_${idx}.mp3`)
             if (!fs.existsSync(rawSegPath) || fs.statSync(rawSegPath).size < 300) {
-              const cleanText = sanitizeTextForTTS(seg.ttsScript)
+              const cleanText = sanitizeTextForTTS(seg.ttsScript || seg.text)
               await ttsRetry.ttsPromise(cleanText, rawSegPath)
             }
           }
@@ -307,7 +329,7 @@ export class VipeeTTSProvider implements TTSProvider {
         const rawSegPath = path.join(tempDir, `raw_seg_${idx}.mp3`)
         if (!fs.existsSync(rawSegPath) || fs.statSync(rawSegPath).size < 300) {
           console.warn(`[VipeeTTSProvider] Segment ${idx} falling back to Google TTS`)
-          const chunk = await this.fetchSingleGoogleTTSChunk(plan.segments[idx].ttsScript)
+          const chunk = await this.fetchSingleGoogleTTSChunk(plan.segments[idx].ttsScript || plan.segments[idx].text)
           fs.writeFileSync(rawSegPath, chunk)
         }
       }
@@ -333,7 +355,7 @@ export class VipeeTTSProvider implements TTSProvider {
 
         // Measure actual audio segment duration
         const durationCmd = `"${ffmpeg}" -i "${paddedSegPath}" 2>&1`
-        let segDurationSec = seg.estimatedDurationSec
+        let segDurationSec: number = seg.estimatedDurationSec || 2.5
         try {
           const { stderr } = await execPromise(durationCmd)
           const durationMatch = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/)

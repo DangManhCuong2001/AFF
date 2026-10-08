@@ -135,28 +135,28 @@ export class VipeeVisualDirector implements VisualDirector {
         productVisible = false
         label = 'VẤN ĐỀ HAY GẶP'
         supportText = isSpiceOrKitchen
-          ? 'Gia vị để ngoài rất dễ ẩm & lộn xộn gian bếp'
+          ? 'Góc bếp ngổn ngang nhiều lọ gia vị, khó tìm khi nấu'
           : 'Bừa bộn và bất tiện mỗi khi sử dụng hàng ngày'
       } else if (isReveal) {
         sceneTemplate = 'reveal'
         productDisplayMode = 'card'
         label = 'GIẢI PHÁP MỚI'
         benefitChips = isSpiceOrKitchen
-          ? ['Chống ẩm', 'Gọn hơn', 'Dễ lấy']
+          ? ['Sắp xếp tập trung', 'Gọn hơn', 'Dễ lấy']
           : ['Tiện lợi', 'Gọn gàng', 'Bền đẹp']
       } else if (isDemo) {
         sceneTemplate = 'benefits'
         productDisplayMode = 'closeup'
         label = 'CHI TIẾT TIỆN LỢI'
         benefitChips = isSpiceOrKitchen
-          ? ['Đựng gọn', 'Dễ vệ sinh', 'Nhìn bếp đẹp']
+          ? ['Khay định hình', 'Nắp bật kèm muỗng', 'Bếp gọn đẹp']
           : ['Thiết kế thông minh', 'Dễ sử dụng', 'Chất liệu tốt']
       } else if (isPayoff) {
         sceneTemplate = 'result'
         productDisplayMode = 'card'
         label = 'KẾT QUẢ THỎA MÃN'
         supportText = isSpiceOrKitchen
-          ? 'Bếp nhìn gọn hơn hẳn và lấy gia vị cũng nhanh hơn'
+          ? 'Bếp nhìn gọn gàng hơn hẳn và lấy gia vị cực nhanh'
           : 'Không gian ngăn nắp, cuộc sống tiện nghi hơn'
         benefitChips = ['Gọn gàng 100%', 'Bếp đẹp hơn']
       } else {

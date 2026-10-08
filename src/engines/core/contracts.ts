@@ -83,11 +83,18 @@ export const ProductPresentationSchema = z.object({
   type: ProductPresentationTypeSchema,
   assetId: z.string(),
   crop: CropRectSchema.optional(),
-  zoom: z.number().min(0.5).max(3.0).optional().default(1.0),
+  zoom: z.number().min(0.5).max(3.0).optional(),
   position: Position2DSchema.optional(),
-  variant: z.enum(['frosted', 'clean_white', 'minimal', 'cutout']).optional().default('clean_white'),
+  variant: z.enum(['frosted', 'clean_white', 'minimal', 'cutout']).optional(),
 })
-export type ProductPresentation = z.infer<typeof ProductPresentationSchema>
+export interface ProductPresentation {
+  type: ProductPresentationType
+  assetId: string
+  crop?: CropRect
+  zoom?: number
+  position?: Position2D
+  variant?: 'frosted' | 'clean_white' | 'minimal' | 'cutout' | string
+}
 
 // ============================================================================
 // 2. PRODUCT INPUT & NORMALIZATION CONTRACTS
@@ -224,6 +231,7 @@ export const StoryApproachSchema = z.enum([
   'before-after',
   'relatable-moment',
   'curiosity-test',
+  'three-reasons',
   'three-benefits',
   'mini-review',
   'pov',
@@ -238,6 +246,7 @@ export type StoryApproach = z.infer<typeof StoryApproachSchema>
 export const CreativePlanSchema = z.object({
   concept: z.string(),
   viewerInsight: z.string(),
+  sellingMechanism: z.string(),
   storyApproach: StoryApproachSchema,
   hook: z.string(),
   story: z.string(),
@@ -248,6 +257,20 @@ export const CreativePlanSchema = z.object({
   tone: z.string().default('natural-commerce'),
   durationTarget: z.number().default(16),
   emotionalArc: z.array(z.string()),
+  // Enriched creative director attributes
+  hookAngle: z.string().optional(),
+  buyerSituation: z.string().optional(),
+  pacing: z.enum(['dynamic-fast', 'medium', 'deliberate-smooth']).optional().default('medium'),
+  soundtrackMood: z.string().optional().default('clean-warm'),
+  totalScenes: z.number().int().optional().default(4),
+  hookCandidates: z.array(z.any()).optional(),
+  selectedHook: z.any().optional(),
+  cta: z.string().optional(),
+  creativeScore: z.any().optional(),
+  openLoop: z.any().optional(),
+  spokenScenes: z.array(z.any()).optional(),
+  duration: z.number().optional(),
+  storyType: StoryApproachSchema.optional(),
 })
 export type CreativePlan = z.infer<typeof CreativePlanSchema>
 
