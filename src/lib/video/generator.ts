@@ -309,10 +309,10 @@ export async function renderProductVideo(
 
       try {
         await execPromise(cmd)
-      } catch (segmentErr: any) {
+      } catch (segmentErr: unknown) {
         console.warn(
           `[VideoGenerator] Segment ${i} failed with text overlay filter:`,
-          segmentErr.stderr || segmentErr.message
+          segmentErr instanceof Error ? segmentErr.message : String(segmentErr)
         )
 
         // Resilient Fallback: If drawtext fails due to font or environment issues, render clean Ken Burns product video

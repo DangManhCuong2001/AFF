@@ -1,3 +1,8 @@
+// Re-export formal Phase 2 data contracts and normalizer
+export * from './contracts'
+export * from './normalizer'
+
+// Legacy compatibility types (kept to prevent any breakage across existing codebase)
 export type ProductCategory =
   | 'home'
   | 'fashion'
@@ -5,59 +10,6 @@ export type ProductCategory =
   | 'beauty'
   | 'perfume'
   | 'tech'
-
-export type ProductAssetType =
-  | 'PRODUCT_IMAGE'
-  | 'PRODUCT_VIDEO'
-  | 'DEMO_VIDEO'
-  | 'DETAIL_IMAGE'
-
-export interface ProductAsset {
-  id: string
-  url: string
-  name: string
-  size: number
-  type: ProductAssetType
-  isPrimary?: boolean
-  width?: number
-  height?: number
-  durationSec?: number
-  file?: File
-}
-
-export interface ProductInput {
-  id: string
-  name: string
-  category: ProductCategory
-  price?: string | number
-  originalPrice?: string | number
-  currency?: string
-  description?: string
-  features?: string[]
-  benefits?: string[]
-  problemSolved?: string
-  howToUse?: string
-  targetAudience?: string
-  productUrl?: string
-  shopProductId?: string
-  assets: ProductAsset[]
-}
-
-export type VisualDemoPotential = 'high' | 'medium' | 'low'
-
-export interface ProductAnalysis {
-  productType: string
-  mainProblem: string
-  mainBenefit: string
-  secondaryBenefits: string[]
-  targetAudience: string
-  sellingMechanism: string
-  visualDemoPotential: VisualDemoPotential
-  recommendedFormat: string
-  reasoningSummary: string
-  claimsAllowed: string[]
-  claimsToAvoid: string[]
-}
 
 export interface VideoStrategyVisualDirection {
   mood: string
@@ -98,7 +50,7 @@ export interface StoryboardScene {
   subheadline?: string
   keywords?: string[]
   productAssetIds: string[]
-  backgroundType: string
+  backgroundType?: string
   visualPrompt?: string
   motionPreset?: string
 }
@@ -158,27 +110,3 @@ export type ProjectStatus =
   | 'ready'
   | 'published'
   | 'failed'
-
-export interface VideoProject {
-  id: string
-  createdAt: string
-  updatedAt: string
-  product: ProductInput
-  analysis?: ProductAnalysis
-  strategy?: VideoStrategy
-  storyboard?: VideoStoryboard
-  generatedAssets?: GeneratedAssets
-  voiceAudio?: VoiceAudioTrack
-  musicAudio?: MusicAudioTrack
-  caption?: string
-  hashtags?: string[]
-  coverImageUrl?: string
-  renderedVideo?: RenderedVideo
-  publishStatus?: {
-    status: string
-    publishId?: string
-    publishedAt?: string
-    logId?: string
-  }
-  status: ProjectStatus
-}

@@ -593,8 +593,8 @@ export default function CreateVideoPage() {
 
         setCaption(`${plan.selectedHook.text} 😅 ${product.problemSolved || 'Gọn gàng tức thì'}. Xem ở giỏ hàng nhé!`)
       }
-    } catch (e: any) {
-      alert('Lỗi: ' + e.message)
+    } catch (e: unknown) {
+      alert('Lỗi: ' + (e instanceof Error ? e.message : String(e)))
     } finally {
       setIsRegeneratingAngle(false)
     }

@@ -239,14 +239,61 @@ export function parseModernRouterData(html: string): {
 
   try {
     const data = JSON.parse(match[1])
-    let productInfo: any = null
-    const loaderData = data.loaderData || {}
+    interface TikTokProductData {
+      title?: string
+      product_id?: string | number
+      price?: {
+        real_price?: string | number
+        min_sku_price?: string | number
+        sale_price_format?: string | number
+        original_price?: string | number
+      }
+      skus?: Array<{
+        price?: {
+          sale_price_decimal?: string | number
+          sale_price_format?: string | number
+          origin_price_format?: string | number
+        }
+      }>
+      images?: Array<{
+        url_list?: string[]
+        uri?: string
+      }>
+      sale_props?: Array<{
+        sale_prop_values?: Array<{
+          prop_value?: string
+          image?: {
+            uri?: string
+            url_list?: string[]
+          }
+        }>
+      }>
+      desc_blocks?: Array<{
+        type?: string
+        text?: string
+        content?: string[]
+      }>
+    }
+
+    let productInfo: TikTokProductData | null = null
+    const loaderData = (data.loaderData || {}) as Record<
+      string,
+      {
+        page_config?: {
+          components_map?: Array<{
+            component_data?: {
+              product_info?: TikTokProductData
+            }
+          }>
+        }
+      }
+    >
 
     // Find component_data containing product_info
-    for (const pageVal of Object.values(loaderData) as any[]) {
-      if (pageVal && pageVal.page_config && pageVal.page_config.components_map) {
+    for (const pageVal of Object.values(loaderData)) {
+      if (pageVal?.page_config?.components_map) {
         for (const comp of pageVal.page_config.components_map) {
-          if (comp.component_data && comp.component_data.product_info) {
+          if (comp.component_data?.product_info) {
             productInfo = comp.component_data.product_info
             break
           }

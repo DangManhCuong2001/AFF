@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     const priceStr = formData.get('price') as string
     const price = priceStr ? Number(priceStr) : undefined
     const category = (formData.get('category') as string) || undefined
-    const voicePreset = (formData.get('voicePreset') as any) || undefined
+    const voicePreset = (formData.get('voicePreset') as import('@/engines/speech/types').VoicePersonality) || undefined
     const storyboardRaw = formData.get('storyboard') as string
 
     let scenes: StoryboardScene[] = []

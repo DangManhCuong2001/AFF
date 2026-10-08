@@ -70,7 +70,7 @@ export class QualityValidator {
     }
 
     // 5. Creative Quality Score Gate
-    let score = creativePlan?.creativeScore?.overallQuality || 88
+    const score = creativePlan?.creativeScore?.overallQuality || 88
     if (creativePlan?.creativeScore?.hookScore && creativePlan.creativeScore.hookScore < 70) {
       reasons.push('Điểm giữ chân Hook < 70đ (Cần đổi góc Hook mới).')
     }

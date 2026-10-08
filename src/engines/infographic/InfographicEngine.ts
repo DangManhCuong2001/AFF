@@ -217,7 +217,7 @@ export class InfographicEngine {
         const cardImg = availableImages[idx % availableImages.length] || img1
 
         let stepLabel = `BƯỚC ${stepNumber}`
-        let layoutVariant = 'solution_chips_top' as any
+        let layoutVariant: import('./types').LayoutVariant = 'solution_chips_top'
         let accentEffect: 'rays' | 'sparkles' | 'none' = 'rays'
         let hasHandInteraction = false
 

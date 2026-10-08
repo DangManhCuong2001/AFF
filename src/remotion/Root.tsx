@@ -7,6 +7,7 @@ export const RemotionRoot: React.FC = () => {
   return (
     <Composition
       id="TikTokCommerceVideo"
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       component={TikTokCommerceVideo as React.ComponentType<any>}
       durationInFrames={450} // 15s default @ 30fps
       fps={30}

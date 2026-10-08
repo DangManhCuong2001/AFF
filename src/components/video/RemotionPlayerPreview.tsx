@@ -10,10 +10,12 @@ import { StoryboardScene } from '@/engines/core/types'
 import { Sparkles, Play, RefreshCw, Volume2, ShieldCheck, Film } from 'lucide-react'
 
 // Dynamically import Player from @remotion/player with SSR disabled to prevent hydration mismatches
-const RemotionPlayer = dynamic(
-  () => import('@remotion/player').then((mod) => mod.Player),
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const RemotionPlayer = dynamic<any>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  () => import('@remotion/player').then((mod) => mod.Player as any),
   { ssr: false }
-) as React.ComponentType<any>
+)
 
 interface RemotionPlayerPreviewProps {
   productName: string
@@ -45,21 +47,36 @@ export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
   const remotionProps = useMemo<RemotionVideoProps>(() => {
     const validImages = imageUrls.length > 0 ? imageUrls : ['/backgrounds/minimal_lifestyle.png']
 
-    let currentStart = 0
-    const speechTimings = scenes.map((s, idx) => {
-      const dur = s.duration && s.duration > 0 ? s.duration : 3
-      const timing = {
-        segmentId: s.id || `scene-${idx + 1}`,
-        text: s.voice || s.headline || 'Khám phá sản phẩm chất lượng',
-        emotion: s.type || 'demo',
-        startSec: currentStart,
-        endSec: currentStart + dur,
-        durationSec: dur,
-        emphasis: s.keywords,
-      }
-      currentStart += dur
-      return timing
-    })
+    const speechTimings = scenes.reduce<{
+      timings: Array<{
+        segmentId: string
+        text: string
+        emotion: string
+        startSec: number
+        endSec: number
+        durationSec: number
+        emphasis?: string[]
+      }>
+      currentStart: number
+    }>(
+      (acc, s, idx) => {
+        const dur = s.duration && s.duration > 0 ? s.duration : 3
+        const timing = {
+          segmentId: s.id || `scene-${idx + 1}`,
+          text: s.voice || s.headline || 'Khám phá sản phẩm chất lượng',
+          emotion: s.type || 'demo',
+          startSec: acc.currentStart,
+          endSec: acc.currentStart + dur,
+          durationSec: dur,
+          emphasis: s.keywords,
+        }
+        return {
+          timings: [...acc.timings, timing],
+          currentStart: acc.currentStart + dur,
+        }
+      },
+      { timings: [], currentStart: 0 }
+    ).timings
 
     const storyplan = visualDirector.createVisualStoryplan({
       speechTimings,

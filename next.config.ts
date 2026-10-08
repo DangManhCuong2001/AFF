@@ -6,7 +6,6 @@ const nextConfig: NextConfig = {
     '@remotion/bundler',
     '@remotion/renderer',
     'remotion',
-    '@remotion/player',
     '@remotion/studio',
   ],
   outputFileTracingIncludes: {
