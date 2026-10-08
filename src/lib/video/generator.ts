@@ -370,15 +370,14 @@ export async function renderProductVideo(
     const hasWhoosh = Boolean(whooshPath)
 
     let finalCmd: string
-    if (hasBgm && hasWhoosh) {
-      // Audio Ducking: Voice at volume 1.3, Whoosh SFX at 0.8, BGM ducked at 0.12
+    if (hasBgm) {
+      // Clean mix: Voice at volume 1.3, BGM ducked at 0.12 (no harsh SFX artifacts)
       finalCmd = [
         `"${ffmpeg}" -y`,
         `-i "${rawCombinedVideoPath}"`,
         `-i "${masterVoicePath}"`,
         `-stream_loop -1 -i "${bgmPath}"`,
-        `-i "${whooshPath}"`,
-        `-filter_complex "[1:a]volume=1.3[v];[2:a]volume=0.12[m];[3:a]volume=0.8[sfx];[v][m][sfx]amix=inputs=3:duration=first:dropout_transition=2[aout]"`,
+        `-filter_complex "[1:a]volume=1.3[v];[2:a]volume=0.12[m];[v][m]amix=inputs=2:duration=first:dropout_transition=2[aout]"`,
         `-map 0:v -map "[aout]"`,
         `-c:v copy -c:a aac -b:a 128k -shortest`,
         `"${finalOutputPath}"`,

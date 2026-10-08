@@ -233,13 +233,7 @@ export async function renderRemotionVideo(
     masterAudioUrl: masterAudioDataUri,
     bgmAudioUrl: bgmDataUri || '/music/lofi-beat.mp3',
     bgmVolume: 0.12,
-    sfxCues: [
-      // sfx1 (whoosh at 0.1s) removed – it sounded like a recording-start artifact
-      // Remaining SFX pushed to natural scene transitions, not at video start
-      { id: 'sfx2', name: 'pop',    url: popDataUri   || '/sfx/pop.mp3',   timestampSec: 3.5,  volume: 0.5 },
-      { id: 'sfx3', name: 'snap',   url: snapDataUri  || '/sfx/snap.mp3',  timestampSec: 7.0,  volume: 0.45 },
-      { id: 'sfx4', name: 'whoosh', url: whooshDataUri || '/sfx/whoosh.mp3', timestampSec: 11.0, volume: 0.5 },
-    ],
+    sfxCues: [],
     productName: params.productName || 'Sản phẩm thông minh',
     priceText: params.price ? `${params.price.toLocaleString('vi-VN')}đ` : undefined,
     totalDurationFrames,

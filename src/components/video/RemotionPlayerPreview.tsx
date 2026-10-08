@@ -92,12 +92,7 @@ export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
       masterAudioUrl: voiceAudioUrl || '',
       bgmAudioUrl: bgmAudioUrl,
       bgmVolume: 0.12,
-      sfxCues: [
-        { id: 'sfx1', name: 'whoosh', url: '/sfx/whoosh.mp3', timestampSec: 0.1, volume: 0.8 },
-        { id: 'sfx2', name: 'pop', url: '/sfx/pop.mp3', timestampSec: 3.1, volume: 0.7 },
-        { id: 'sfx3', name: 'snap', url: '/sfx/snap.mp3', timestampSec: 6.1, volume: 0.7 },
-        { id: 'sfx4', name: 'whoosh2', url: '/sfx/whoosh.mp3', timestampSec: 9.1, volume: 0.8 },
-      ],
+      sfxCues: [],
       productName: productName || 'Sản phẩm thông minh',
       priceText: price ? `${price.toLocaleString('vi-VN')}đ` : undefined,
       totalDurationFrames,
