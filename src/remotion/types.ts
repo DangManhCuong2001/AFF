@@ -1,19 +1,2 @@
-import { VisualBeat } from '@/engines/visual/types'
-
-export interface RemotionVideoProps {
-  beats: VisualBeat[]
-  masterAudioUrl: string
-  bgmAudioUrl?: string
-  bgmVolume?: number
-  sfxCues?: Array<{
-    id: string
-    name?: string
-    url: string
-    timestampSec: number
-    volume: number
-  }>
-  productName: string
-  priceText?: string
-  totalDurationFrames: number
-  fps: number
-}
+// Re-export from self-contained remotion-types (no @/ alias – Remotion Webpack safe)
+export type { RemotionVideoProps, StoryplanBeat as VisualBeat } from './remotion-types'

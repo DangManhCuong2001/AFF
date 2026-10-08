@@ -1,5 +1,4 @@
-import { ProductPresentation } from '@/engines/core/contracts'
-import { VisualBeatTimelineState } from '@/engines/visual/VisualBeatEngine'
+import { ProductPresentation, VisualBeatTimelineState } from '../remotion-types'
 
 export interface CommerceLayoutProps {
   headline?: string

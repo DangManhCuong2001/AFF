@@ -1,8 +1,6 @@
 import React from 'react'
 import { useCurrentFrame, useVideoConfig } from 'remotion'
-import { LayoutVariant, ProductPresentation } from '@/engines/core/contracts'
-import { VisualBeatEngine } from '@/engines/visual/VisualBeatEngine'
-import { VisualBeat } from '@/engines/core/contracts'
+import { LayoutVariant, ProductPresentation, VisualBeat, VisualBeatEngine } from './remotion-types'
 
 import { EditorialTopLayout } from './layouts/EditorialTopLayout'
 import { EditorialLeftLayout } from './layouts/EditorialLeftLayout'

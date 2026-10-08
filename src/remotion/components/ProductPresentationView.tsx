@@ -1,7 +1,6 @@
 import React from 'react'
 import { Img, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion'
-import { ProductPresentation } from '@/engines/core/contracts'
-import { ProductPresentationResolver } from '@/engines/assets/ProductPresentationResolver'
+import { ProductPresentation, ProductPresentationResolver } from '../remotion-types'
 
 interface ProductPresentationViewProps {
   presentation: ProductPresentation

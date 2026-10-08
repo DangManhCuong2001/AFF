@@ -1,11 +1,9 @@
 import React from 'react'
-import { VisualBeat } from '@/engines/visual/types'
 import { DynamicCommerceScene } from './DynamicCommerceScene'
-import { LayoutVariant, ProductPresentation } from '@/engines/core/contracts'
-import { VisualBeat as ContractVisualBeat } from '@/engines/core/contracts'
+import { StoryplanBeat, LayoutVariant, ProductPresentation, VisualBeat } from './remotion-types'
 
 interface DynamicSceneProps {
-  beat: VisualBeat
+  beat: StoryplanBeat
   productName: string
   priceText?: string
   isLastScene: boolean
@@ -68,8 +66,8 @@ export const DynamicScene: React.FC<DynamicSceneProps> = ({
     zoom: layoutVariant === 'detail-focus' ? 1.3 : 1.05,
   }
 
-  // Adapt visual beats to contract beats
-  const contractBeats: ContractVisualBeat[] = [
+  // Adapt visual beats to internal motion beats
+  const contractBeats: VisualBeat[] = [
     {
       id: `${beat.id}-b0`,
       atMs: 0,
