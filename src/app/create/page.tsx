@@ -43,6 +43,7 @@ import {
 } from '@/engines/core/types'
 import { CreativePlan, HookCandidate, StoryApproach } from '@/engines/creative/types'
 import { VoicePersonality } from '@/engines/speech/types'
+import { InfographicDeckViewer } from '@/components/infographic/InfographicDeckViewer'
 import { CABLE_ORGANIZER_SEED_PRODUCT } from '@/engines/home/seed'
 import { RemotionPlayerPreview } from '@/components/video/RemotionPlayerPreview'
 
@@ -1678,6 +1679,21 @@ export default function CreateVideoPage() {
                 </div>
               )}
             </div>
+
+            {/* Dynamic 4-Layout Infographic Studio (Category-Adaptive Muji Commerce) */}
+            {Boolean(product.name || product.assets.length > 0) && (
+              <InfographicDeckViewer
+                productName={product.name || 'Sản phẩm gia dụng thông minh'}
+                price={product.price}
+                primaryImageUrl={
+                  product.assets.find((a) => a.isPrimary)?.url ||
+                  product.assets[0]?.url ||
+                  ''
+                }
+                secondaryImageUrl={product.assets[1]?.url}
+                onSendToVideo={handleAnalyzeProduct}
+              />
+            )}
 
             {/* Video Duration Selector (15s, 30s, 45s) */}
             <div className="p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-3">
