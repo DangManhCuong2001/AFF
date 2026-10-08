@@ -12,10 +12,17 @@ export const RemotionRoot: React.FC = () => {
       fps={30}
       width={1080}
       height={1920}
+      calculateMetadata={({ defaultProps, props }) => {
+        const merged = { ...defaultProps, ...props } as unknown as RemotionVideoProps
+        return {
+          durationInFrames: merged.totalDurationFrames || 450,
+          fps: merged.fps || 30,
+        }
+      }}
       defaultProps={{
         beats: [],
         masterAudioUrl: '',
-        bgmAudioUrl: '/music/lofi-beat.aac',
+        bgmAudioUrl: '/music/lofi-beat.mp3',
         bgmVolume: 0.12,
         sfxCues: [],
         productName: 'Sản phẩm thông minh',

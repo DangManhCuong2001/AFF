@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['ffmpeg-static'],
+  serverExternalPackages: [
+    'ffmpeg-static',
+    '@remotion/bundler',
+    '@remotion/renderer',
+    'remotion',
+    '@remotion/player',
+    '@remotion/studio',
+  ],
   outputFileTracingIncludes: {
     '/api/**/*': [
       './public/**/*',

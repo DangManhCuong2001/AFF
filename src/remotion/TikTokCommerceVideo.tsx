@@ -1,7 +1,25 @@
 import React from 'react'
-import { AbsoluteFill, Audio, Sequence } from 'remotion'
+import { AbsoluteFill, Audio, Sequence, staticFile } from 'remotion'
 import { RemotionVideoProps } from './types'
 import { DynamicScene } from './DynamicScene'
+
+function resolveAudioSrc(src?: string): string | undefined {
+  if (!src) return undefined
+  if (
+    src.startsWith('http://') ||
+    src.startsWith('https://') ||
+    src.startsWith('data:') ||
+    src.startsWith('blob:')
+  ) {
+    return src
+  }
+  try {
+    const clean = src.startsWith('/') ? src.slice(1) : src
+    return staticFile(clean)
+  } catch {
+    return src
+  }
+}
 
 export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
   beats,
@@ -13,6 +31,9 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
   priceText,
   fps,
 }) => {
+  const resolvedMasterAudio = resolveAudioSrc(masterAudioUrl)
+  const resolvedBgmAudio = resolveAudioSrc(bgmAudioUrl)
+
   return (
     <AbsoluteFill style={{ backgroundColor: '#09090b' }}>
       {/* 1. Visual Scenes Sequence */}
@@ -39,18 +60,20 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
       })}
 
       {/* 2. Master Voiceover Audio */}
-      {masterAudioUrl && (
-        <Audio src={masterAudioUrl} volume={1.2} />
+      {resolvedMasterAudio && (
+        <Audio src={resolvedMasterAudio} volume={1.2} />
       )}
 
       {/* 3. Ducked Background Music Track */}
-      {bgmAudioUrl && (
-        <Audio src={bgmAudioUrl} volume={bgmVolume} loop />
+      {resolvedBgmAudio && (
+        <Audio src={resolvedBgmAudio} volume={bgmVolume} loop />
       )}
 
       {/* 4. Synced Sound Effects Cues */}
       {sfxCues.map((sfx) => {
         const sfxFromFrame = Math.round(sfx.timestampSec * fps)
+        const resolvedSfx = resolveAudioSrc(sfx.url)
+        if (!resolvedSfx) return null
         return (
           <Sequence
             key={sfx.id}
@@ -58,7 +81,7 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
             durationInFrames={Math.round(fps * 0.8)}
             name={`SFX-${sfx.name || sfx.id}`}
           >
-            <Audio src={sfx.url} volume={sfx.volume} />
+            <Audio src={resolvedSfx} volume={sfx.volume} />
           </Sequence>
         )
       })}

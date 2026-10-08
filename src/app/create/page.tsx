@@ -146,6 +146,10 @@ export default function CreateVideoPage() {
   const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null)
   const previewAudioRef = React.useRef<HTMLAudioElement | null>(null)
 
+  // Full Storyboard Vietnamese Voiceover audio state
+  const [storyboardVoiceUrl, setStoryboardVoiceUrl] = useState<string | null>(null)
+  const [isGeneratingVoice, setIsGeneratingVoice] = useState(false)
+
   // Video duration state (15s, 30s, 45s)
   const [selectedDuration, setSelectedDuration] = useState<15 | 30 | 45>(15)
 
@@ -161,8 +165,6 @@ export default function CreateVideoPage() {
     percent: 0,
     logs: [],
   })
-
-  // Final Publish state
   const [caption, setCaption] = useState('')
   const [hashtags, setHashtags] = useState<string[]>([])
   const [privacyLevel, setPrivacyLevel] = useState<'SELF_ONLY' | 'PUBLIC_TO_EVERYONE'>('SELF_ONLY')
@@ -202,6 +204,46 @@ export default function CreateVideoPage() {
   // Rendered video state
   const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null)
   const [renderedVideoFile, setRenderedVideoFile] = useState<File | null>(null)
+
+  // Automatically generate full Vietnamese voiceover for Storyboard scenes
+  useEffect(() => {
+    const scenes = analysisResult?.storyboard?.scenes
+    if (!scenes || scenes.length === 0) return
+
+    let isSubscribed = true
+    const fetchStoryboardVoice = async () => {
+      try {
+        setIsGeneratingVoice(true)
+        const res = await fetch('/api/audio/storyboard-voice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scenes,
+            voicePreset: selectedVoicePreset,
+          }),
+        })
+        if (!res.ok) throw new Error('Không thể tải giọng đọc')
+        const blob = await res.blob()
+        if (isSubscribed) {
+          const url = URL.createObjectURL(blob)
+          setStoryboardVoiceUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev)
+            return url
+          })
+        }
+      } catch (err) {
+        console.warn('[AutoVoice] Failed to synthesize storyboard audio:', err)
+      } finally {
+        if (isSubscribed) setIsGeneratingVoice(false)
+      }
+    }
+
+    fetchStoryboardVoice()
+
+    return () => {
+      isSubscribed = false
+    }
+  }, [analysisResult?.storyboard?.scenes, selectedVoicePreset])
 
   // Load Seed Product
   const handleLoadSeed = () => {
@@ -630,6 +672,7 @@ export default function CreateVideoPage() {
       const formData = new FormData()
       formData.append('productName', product.name)
       if (product.price) formData.append('price', String(product.price))
+      if (product.category) formData.append('category', product.category)
       formData.append('voicePreset', selectedVoicePreset)
       if (analysisResult?.storyboard) {
         formData.append('storyboard', JSON.stringify(analysisResult.storyboard))
@@ -663,19 +706,18 @@ export default function CreateVideoPage() {
         percent: 40,
         logs: [
           ...prev.logs,
-          `Gọi dịch vụ TTS tiếng Việt cho ${analysisResult?.storyboard.scenes.length || 5} phân cảnh Storyboard (${analysisResult?.strategy.targetDuration || selectedDuration}s)`,
+          `Đồng bộ giọng đọc thuyết minh cho ${analysisResult?.storyboard.scenes.length || 5} phân cảnh Storyboard (${analysisResult?.strategy.targetDuration || selectedDuration}s)`,
           `Lời thoại cảnh 1: "${analysisResult?.storyboard.scenes[0]?.voice || analysisResult?.strategy.hook}"`,
         ],
       }))
 
       setGenerationProgress((prev) => ({
-        stage: '3/4. Render video 1080x1920 (Hiệu ứng chuyển động & TikTok Overlay)...',
+        stage: '3/4. Render Remotion Studio 1080x1920 (Khớp 100% với Preview)...',
         percent: 70,
         logs: [
           ...prev.logs,
-          'Thiết lập khung hình dọc chuẩn TikTok 1080x1920, 30fps',
-          'Áp dụng bộ lọc chuyển động Ken Burns & chèn bảng text thông tin',
-          'Hòa âm nhạc nền BGM (Audio Ducking khi có lời thoại)',
+          'Dựng video bằng Remotion Engine: Đảm bảo đồ họa, typography và hoạt ảnh trùng khớp hoàn toàn với Preview',
+          'Tích hợp đầy đủ giọng đọc tiếng Việt, nhạc nền BGM và hiệu ứng âm thanh SFX',
         ],
       }))
 
@@ -1898,19 +1940,29 @@ export default function CreateVideoPage() {
                     imageUrls={product.assets
                       .filter((a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && a.url)
                       .map((a) => a.url)}
-                    voiceAudioUrl={voicePreviewUrl || undefined}
+                    voiceAudioUrl={storyboardVoiceUrl || voicePreviewUrl || undefined}
                     renderedVideoUrl={renderedVideoUrl}
                   />
 
-                  {renderedVideoUrl && (
+                  {renderedVideoUrl ? (
                     <a
                       href={renderedVideoUrl}
-                      download="tiktok_product_video.mp4"
-                      className="px-4 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-xs text-neutral-200 hover:text-white transition flex items-center gap-2 shadow"
+                      download={`${(product.name || 'tiktok_video').replace(/[^a-zA-Z0-9_-]/g, '_')}_1080x1920.mp4`}
+                      className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs uppercase tracking-wide transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40"
+                    >
+                      <Download className="w-4 h-4" />
+                      Tải video MP4 về máy (Chuẩn 100% khớp Preview)
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isRenderingVideo}
+                      onClick={handleStartGeneratingVideo}
+                      className="w-full py-3 px-4 rounded-2xl bg-neutral-900 border border-neutral-700 hover:border-emerald-500/50 hover:bg-neutral-800 text-neutral-200 hover:text-white font-semibold text-xs transition flex items-center justify-center gap-2 shadow cursor-pointer disabled:opacity-50"
                     >
                       <Download className="w-4 h-4 text-emerald-400" />
-                      Tải video MP4 về máy (Chuẩn TikTok 9:16)
-                    </a>
+                      {isRenderingVideo ? 'Đang render video...' : 'Xuất & Tải Video MP4 chuẩn Preview'}
+                    </button>
                   )}
                 </div>
 
@@ -1921,7 +1973,7 @@ export default function CreateVideoPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <h4 className="font-bold text-sm text-white">Xuất File Video MP4 (1080x1920)</h4>
-                        <p className="text-xs text-neutral-400 mt-0.5">Dựng video cục bộ qua FFmpeg với âm thanh thuyết minh và nhạc nền TikTok.</p>
+                        <p className="text-xs text-neutral-400 mt-0.5">Dựng video chất lượng cao qua Remotion Studio Engine với đầy đủ âm thanh thuyết minh và nhạc nền TikTok.</p>
                       </div>
                       <span className="text-xs font-mono px-2 py-0.5 rounded bg-neutral-800 text-neutral-300">
                         {selectedDuration}s • {analysisResult.storyboard.scenes.length} scenes
@@ -1953,7 +2005,7 @@ export default function CreateVideoPage() {
                         className="w-full py-3.5 px-5 rounded-xl font-bold text-xs uppercase tracking-wide bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-lg shadow-rose-900/30 transition flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <Film className="w-4 h-4" />
-                        {renderedVideoUrl ? 'Render lại Video MP4 khác' : 'Bắt đầu Render Video MP4 (Chuẩn TikTok)'}
+                        {renderedVideoUrl ? 'Render lại Video MP4 khác' : 'Bắt đầu Render Video MP4 (Chuẩn 100% Khớp Preview)'}
                       </button>
                     )}
                   </div>

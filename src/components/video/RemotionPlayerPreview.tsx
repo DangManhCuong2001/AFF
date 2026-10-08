@@ -34,13 +34,11 @@ export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
   scenes,
   imageUrls,
   voiceAudioUrl,
-  bgmAudioUrl = '/music/lofi-beat.aac',
+  bgmAudioUrl = '/music/lofi-beat.mp3',
   fps = 30,
   renderedVideoUrl,
 }) => {
-  const [viewMode, setViewMode] = useState<'remotion' | 'mp4'>(
-    renderedVideoUrl ? 'mp4' : 'remotion'
-  )
+  const [viewMode, setViewMode] = useState<'remotion' | 'mp4'>('remotion')
 
   const visualDirector = useMemo(() => new VipeeVisualDirector(), [])
 
@@ -150,16 +148,21 @@ export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
               controls
               autoPlay
               loop
+              acknowledgeRemotionLicense
             />
           </div>
         )}
       </div>
 
       {/* Live Badge Information */}
-      <div className="flex items-center gap-2 text-xs text-neutral-400">
+      <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-neutral-400">
         <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300">
           <Sparkles className="w-3 h-3 text-amber-400" />
           Kinetic Typography & 3D Spring Card
+        </span>
+        <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300">
+          <Volume2 className={`w-3 h-3 ${voiceAudioUrl ? 'text-emerald-400' : 'text-neutral-500'}`} />
+          {voiceAudioUrl ? 'Thuyết minh & BGM: Sẵn sàng' : 'BGM & SFX'}
         </span>
         <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400">
           9:16 TikTok Format

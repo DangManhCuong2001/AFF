@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
-import { renderProductVideo } from '@/lib/video/generator'
+import path from 'path'
+import { renderRemotionVideo } from '@/lib/video/remotionRenderer'
 import { StoryboardScene } from '@/engines/core/types'
 
 export const dynamic = 'force-dynamic'
@@ -12,6 +13,7 @@ export async function POST(request: NextRequest) {
     const productName = (formData.get('productName') as string) || 'Sản phẩm gia dụng thông minh'
     const priceStr = formData.get('price') as string
     const price = priceStr ? Number(priceStr) : undefined
+    const category = (formData.get('category') as string) || undefined
     const voicePreset = (formData.get('voicePreset') as any) || undefined
     const storyboardRaw = formData.get('storyboard') as string
 
@@ -140,16 +142,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const result = await renderProductVideo({
+    // Render exact Remotion TikTokCommerceVideo matching the preview
+    const result = await renderRemotionVideo({
       productName,
       price,
+      category,
       scenes,
       imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       voicePreset,
     })
 
-    // Return direct MP4 stream for 100% resilience on serverless Lambda environments
+    // Also persist into public/renders for immediate direct URL access
+    try {
+      const publicRendersDir = path.join(process.cwd(), 'public', 'renders')
+      fs.mkdirSync(publicRendersDir, { recursive: true })
+      fs.copyFileSync(result.filePath, path.join(publicRendersDir, result.fileName))
+    } catch (copyErr) {
+      console.warn('[VideoRenderAPI] Failed to copy to public/renders:', copyErr)
+    }
+
+    // Return direct MP4 stream for instant playback & download
     const fileBuffer = fs.readFileSync(result.filePath)
 
     return new NextResponse(fileBuffer, {
@@ -160,6 +173,7 @@ export async function POST(request: NextRequest) {
         'X-Video-Filename': result.fileName,
         'X-Video-Duration': String(result.duration),
         'X-Video-Filesize': String(result.fileSizeBytes),
+        'X-Video-Url': `/renders/${result.fileName}`,
         'Cache-Control': 'no-store',
       },
     })
