@@ -149,8 +149,9 @@ export default function CreateVideoPage() {
   // Video duration state (15s, 30s, 45s)
   const [selectedDuration, setSelectedDuration] = useState<15 | 30 | 45>(15)
 
-  // Step Management: 1: Input | 2: Analysis | 3: Generating | 4: Preview
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1)
+  // Strict 3-step linear flow: 1: Nhập thông tin & Thời lượng | 2: Phân tích & Kế hoạch | 3: Tạo Layout & Video Studio
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1)
+  const [isRenderingVideo, setIsRenderingVideo] = useState(false)
   const [generationProgress, setGenerationProgress] = useState<{
     stage: string
     percent: number
@@ -618,9 +619,9 @@ export default function CreateVideoPage() {
 
   // Start Step 3: Video Generation Flow (Real FFmpeg + Vietnamese TTS Rendering)
   const handleStartGeneratingVideo = async () => {
-    setCurrentStep(3)
+    setIsRenderingVideo(true)
     setGenerationProgress({
-      stage: '1/4. Khởi tạo & nạp kịch bản Storyboard 15s...',
+      stage: `1/4. Khởi tạo & nạp kịch bản Storyboard ${selectedDuration}s...`,
       percent: 15,
       logs: ['Bắt đầu quy trình sản xuất video TikTok 9:16 thật...'],
     })
@@ -662,7 +663,7 @@ export default function CreateVideoPage() {
         percent: 40,
         logs: [
           ...prev.logs,
-          `Gọi dịch vụ TTS tiếng Việt cho ${analysisResult?.storyboard.scenes.length || 5} phân cảnh Storyboard (${analysisResult?.strategy.targetDuration || 15}s)`,
+          `Gọi dịch vụ TTS tiếng Việt cho ${analysisResult?.storyboard.scenes.length || 5} phân cảnh Storyboard (${analysisResult?.strategy.targetDuration || selectedDuration}s)`,
           `Lời thoại cảnh 1: "${analysisResult?.storyboard.scenes[0]?.voice || analysisResult?.strategy.hook}"`,
         ],
       }))
@@ -722,7 +723,7 @@ export default function CreateVideoPage() {
       setRenderedVideoFile(file)
 
       setGenerationProgress((prev) => ({
-        stage: '4/4. Hoàn tất video 15s chuẩn TikTok!',
+        stage: `4/4. Hoàn tất video ${selectedDuration}s chuẩn TikTok!`,
         percent: 100,
         logs: [
           ...prev.logs,
@@ -730,13 +731,10 @@ export default function CreateVideoPage() {
           'Video MP4 sẵn sàng xem trước và đăng trực tiếp lên TikTok!',
         ],
       }))
-
-      setTimeout(() => {
-        setCurrentStep(4)
-      }, 700)
     } catch (err: unknown) {
       alert('Lỗi render video: ' + (err as Error).message)
-      setCurrentStep(2)
+    } finally {
+      setIsRenderingVideo(false)
     }
   }
 
@@ -994,347 +992,77 @@ export default function CreateVideoPage() {
         </div>
 
         {/* Step Indicator */}
-        <div className="grid grid-cols-4 gap-2 text-xs font-mono">
+        {/* Step Indicator - Strict 3-Step Sequential Flow */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
           <button
             type="button"
             onClick={() => setCurrentStep(1)}
-            className={`p-3 rounded-xl border text-left flex items-center gap-2 transition ${
+            className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition cursor-pointer ${
               currentStep === 1
-                ? 'bg-rose-500/10 border-rose-500/40 text-rose-300 font-semibold'
+                ? 'bg-rose-500/10 border-rose-500/40 text-rose-300 font-semibold ring-1 ring-rose-500/30'
                 : 'bg-neutral-900/40 border-neutral-800 text-neutral-400 hover:text-white'
             }`}
           >
             <span className="w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0">1</span>
-            <span className="truncate">1. Nhập sản phẩm</span>
+            <span className="truncate">1. Nhập sản phẩm &amp; Thời lượng</span>
           </button>
 
           <button
             type="button"
             disabled={!analysisResult}
             onClick={() => setCurrentStep(2)}
-            className={`p-3 rounded-xl border text-left flex items-center gap-2 transition ${
+            className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition ${
               currentStep === 2
-                ? 'bg-rose-500/10 border-rose-500/40 text-rose-300 font-semibold'
+                ? 'bg-rose-500/10 border-rose-500/40 text-rose-300 font-semibold ring-1 ring-rose-500/30 cursor-pointer'
                 : analysisResult
-                ? 'bg-neutral-900/40 border-neutral-800 text-neutral-300 hover:text-white'
+                ? 'bg-neutral-900/40 border-neutral-800 text-neutral-300 hover:text-white cursor-pointer'
                 : 'bg-neutral-900/20 border-neutral-800/40 text-neutral-600 cursor-not-allowed'
             }`}
           >
             <span className="w-5 h-5 rounded-full bg-neutral-800 text-neutral-400 flex items-center justify-center text-[10px] font-bold shrink-0">2</span>
-            <span className="truncate">2. AI Phân tích</span>
+            <span className="truncate">2. Phân tích &amp; Lập kế hoạch</span>
           </button>
 
           <button
             type="button"
             disabled={!analysisResult}
-            onClick={() => {
-              if (analysisResult && currentStep < 3) {
-                handleStartGeneratingVideo()
-              } else if (currentStep >= 3) {
-                setCurrentStep(3)
-              }
-            }}
-            className={`p-3 rounded-xl border text-left flex items-center gap-2 transition ${
+            onClick={() => setCurrentStep(3)}
+            className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition ${
               currentStep === 3
-                ? 'bg-rose-500/10 border-rose-500/40 text-rose-300 font-semibold'
+                ? 'bg-amber-500/10 border-amber-500/40 text-amber-300 font-semibold ring-1 ring-amber-500/30 cursor-pointer'
                 : analysisResult
-                ? 'bg-neutral-900/40 border-neutral-800 text-neutral-300 hover:text-white'
+                ? 'bg-neutral-900/40 border-neutral-800 text-neutral-300 hover:text-white cursor-pointer'
                 : 'bg-neutral-900/20 border-neutral-800/40 text-neutral-600 cursor-not-allowed'
             }`}
           >
             <span className="w-5 h-5 rounded-full bg-neutral-800 text-neutral-400 flex items-center justify-center text-[10px] font-bold shrink-0">3</span>
-            <span className="truncate">3. Đang tạo Video</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={currentStep < 4}
-            onClick={() => setCurrentStep(4)}
-            className={`p-3 rounded-xl border text-left flex items-center gap-2 transition ${
-              currentStep === 4
-                ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 font-semibold'
-                : 'bg-neutral-900/20 border-neutral-800/40 text-neutral-600 cursor-not-allowed'
-            }`}
-          >
-            <span className="w-5 h-5 rounded-full bg-neutral-800 text-neutral-400 flex items-center justify-center text-[10px] font-bold shrink-0">4</span>
-            <span className="truncate">4. Preview &amp; Đăng</span>
+            <span className="truncate">3. Tạo Layout &amp; Video Studio</span>
           </button>
         </div>
 
-        {/* Step 3: Video Generation Progress */}
-        {currentStep === 3 && (
-          <div className="p-8 md:p-12 rounded-3xl bg-neutral-900/90 border border-neutral-800 max-w-2xl mx-auto space-y-6 text-center shadow-2xl">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-rose-500 via-pink-500 to-amber-400 flex items-center justify-center mx-auto text-white shadow-lg shadow-rose-500/30 animate-pulse">
-              <Sparkles className="w-8 h-8" />
-            </div>
-
-            <div className="space-y-2">
-              <h2 className="text-xl font-bold text-white">Đang tự động sản xuất Video với Home Engine</h2>
-              <p className="text-xs text-neutral-400">{generationProgress.stage}</p>
-            </div>
-
-            {/* Progress Bar */}
-            <div className="space-y-2">
-              <div className="w-full bg-neutral-950 rounded-full h-3 overflow-hidden border border-neutral-800 p-0.5">
-                <div
-                  className="bg-gradient-to-r from-rose-500 via-pink-500 to-emerald-400 h-full rounded-full transition-all duration-500"
-                  style={{ width: `${generationProgress.percent}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-[11px] font-mono text-neutral-500">
-                <span>Rendering 9:16 Video</span>
-                <span className="text-rose-400 font-bold">{generationProgress.percent}%</span>
-              </div>
-            </div>
-
-            {/* Checklist */}
-            <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 text-left text-xs space-y-2.5">
-              <span className="text-neutral-500 font-semibold block mb-1 font-mono text-[11px]">Quy trình tự động hóa:</span>
-              {generationProgress.logs.map((log, idx) => (
-                <div key={idx} className="flex items-center gap-2 text-neutral-300">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span className="truncate">{log}</span>
-                </div>
-              ))}
-            </div>
+        {/* Guard: If user clicks step 2 or 3 without analysis result */}
+        {currentStep !== 1 && !analysisResult && (
+          <div className="p-12 rounded-3xl bg-neutral-900/90 border border-neutral-800 text-center space-y-4 max-w-lg mx-auto">
+            <Sparkles className="w-8 h-8 text-rose-500 mx-auto" />
+            <h3 className="text-base font-bold text-white">Chưa có thông tin phân tích sản phẩm</h3>
+            <p className="text-xs text-neutral-400">
+              Vui lòng quay lại Bước 1 để nhập thông tin sản phẩm và phân tích kịch bản video trước.
+            </p>
+            <button
+              type="button"
+              onClick={() => setCurrentStep(1)}
+              className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs transition cursor-pointer"
+            >
+              ← Quay lại Bước 1 (Nhập sản phẩm)
+            </button>
           </div>
         )}
 
-        {/* Step 4: Preview & Publish View */}
-        {currentStep === 4 && (
-          <div className="space-y-6">
-            <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/40 text-emerald-200 text-xs flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span className="font-semibold">Video đã sản xuất thành công! Sẵn sàng xem trước &amp; Đăng trực tiếp TikTok.</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setCurrentStep(2)}
-                className="px-3 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white text-xs"
-              >
-                Chỉnh sửa kịch bản
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-              {/* Left Column: 9:16 Video Player Preview */}
-              <div className="lg:col-span-5 flex flex-col items-center space-y-4">
-                {analysisResult?.storyboard?.scenes && analysisResult.storyboard.scenes.length > 0 ? (
-                  <RemotionPlayerPreview
-                    productName={product.name}
-                    price={product.price ? Number(product.price) : undefined}
-                    category={product.category}
-                    scenes={analysisResult.storyboard.scenes}
-                    imageUrls={product.assets
-                      .filter((a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && a.url)
-                      .map((a) => a.url)}
-                    voiceAudioUrl={voicePreviewUrl || undefined}
-                    renderedVideoUrl={renderedVideoUrl}
-                  />
-                ) : (
-                  <div className="w-full max-w-[340px] aspect-[9/16] rounded-3xl overflow-hidden border-2 border-neutral-800 shadow-2xl bg-black relative flex flex-col justify-between p-4 bg-gradient-to-b from-neutral-900 via-neutral-950 to-black">
-                    <div className="pt-8">
-                      <span className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 text-neutral-950 font-black text-xs uppercase tracking-wide shadow-lg">
-                        {analysisResult?.strategy?.hook || `Khám phá ngay: ${product.name || 'Sản phẩm tiện ích'}`}
-                      </span>
-                    </div>
-
-                    <div className="my-auto text-center">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={product.assets[0]?.url || 'https://images.unsplash.com/photo-1541140532154-b024d705b909?w=800'}
-                        alt={product.name}
-                        className="w-48 h-48 object-contain mx-auto drop-shadow-2xl rounded-2xl"
-                      />
-                      <h4 className="font-bold text-white text-sm mt-3">{product.name}</h4>
-                      <p className="text-emerald-400 font-bold text-xs flex items-center justify-center gap-1 mt-1">
-                        <ShoppingBag className="w-3.5 h-3.5" /> Xem giá ưu đãi trong giỏ hàng góc trái
-                      </p>
-                    </div>
-
-                    <div className="pb-6 text-center">
-                      <p className="text-[11px] bg-black/70 backdrop-blur px-3 py-1.5 rounded-full text-white inline-block border border-white/10">
-                        {analysisResult?.storyboard?.scenes[0]?.voice || `Món đồ cực kỳ tiện ích cho gia đình bạn...`}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {renderedVideoUrl && (
-                  <a
-                    href={renderedVideoUrl}
-                    download="tiktok_product_video.mp4"
-                    className="px-4 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-xs text-neutral-200 hover:text-white transition flex items-center gap-2 shadow"
-                  >
-                    <Download className="w-4 h-4 text-emerald-400" />
-                    Tải video MP4 về máy (Chuẩn TikTok 9:16)
-                  </a>
-                )}
-              </div>
-
-              {/* Right Column: Publish Settings */}
-              <div className="lg:col-span-7 space-y-6">
-                <div className="p-6 rounded-3xl bg-neutral-900/80 border border-neutral-800 space-y-5">
-                  <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
-                    <div>
-                      <h3 className="font-bold text-base text-white flex items-center gap-2">
-                        <Send className="w-4 h-4 text-rose-500" />
-                        Đăng trực tiếp lên kênh TikTok (Direct Post)
-                      </h3>
-                      <p className="text-xs text-neutral-400 mt-0.5">
-                        Sử dụng TikTok Content Posting API chính thức đã tích hợp.
-                      </p>
-                    </div>
-
-                    <span className="px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-mono font-bold">
-                      Step 4 of 4
-                    </span>
-                  </div>
-
-                  {/* Caption & Hashtags */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-neutral-300 block">
-                      Tiêu đề &amp; Caption TikTok (AI Tự sinh):
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={caption}
-                      onChange={(e) => setCaption(e.target.value)}
-                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-3 text-xs text-neutral-200 focus:outline-none focus:border-rose-500 leading-relaxed"
-                    />
-                  </div>
-
-                  {/* Hashtags */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-neutral-300 block">
-                      Hashtags xu hướng:
-                    </label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {hashtags.map((tag, idx) => (
-                        <span
-                          key={idx}
-                          className="px-2.5 py-1 rounded-lg bg-neutral-950 border border-neutral-800 text-rose-400 text-xs font-mono"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Settings toggles */}
-                  <div className="pt-4 border-t border-neutral-800 space-y-3">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-neutral-300">Chế độ hiển thị (Privacy Level):</span>
-                      <select
-                        value={privacyLevel}
-                        onChange={(e) => setPrivacyLevel(e.target.value as 'SELF_ONLY' | 'PUBLIC_TO_EVERYONE')}
-                        className="bg-neutral-950 border border-neutral-800 rounded-lg px-2.5 py-1 text-xs text-neutral-300"
-                      >
-                        <option value="SELF_ONLY">SELF_ONLY (Bắt buộc khi đang chờ TikTok duyệt)</option>
-                        <option value="PUBLIC_TO_EVERYONE">PUBLIC_TO_EVERYONE (Công khai)</option>
-                      </select>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-neutral-300">Gắn nhãn nội dung do AI tạo (is_aigc):</span>
-                      <label className="flex items-center gap-2 cursor-pointer text-emerald-400 font-medium">
-                        <input
-                          type="checkbox"
-                          checked={isAigc}
-                          onChange={(e) => setIsAigc(e.target.checked)}
-                          className="rounded border-neutral-700 text-rose-600 focus:ring-0"
-                        />
-                        Bật (Tuân thủ chính sách TikTok)
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Publish Result Feedback */}
-                  {publishResult && (
-                    <div className={`p-4 rounded-xl border text-xs space-y-3 ${
-                      publishResult.success
-                        ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
-                        : 'bg-rose-950/40 border-rose-500/50 text-rose-200'
-                    }`}>
-                      <p className="font-bold flex items-center gap-1.5 text-sm">
-                        {publishResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertTriangle className="w-4 h-4 text-rose-400" />}
-                        {publishResult.message}
-                      </p>
-
-                      {!publishResult.success && publishResult.message?.toLowerCase().includes('connect') && (
-                        <div className="pt-1 space-y-2">
-                          <div>
-                            <a
-                              href="/api/tiktok/auth"
-                              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition cursor-pointer"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                              KẾT NỐI TÀI KHOẢN TIKTOK NGAY (CONNECT TIKTOK)
-                            </a>
-                          </div>
-                          <p className="text-[11px] text-neutral-400">
-                            Hoặc quản lý &amp; kiểm tra tài khoản tại trang{' '}
-                            <Link href="/integrations" className="text-rose-400 underline font-semibold hover:text-rose-300">
-                              Integrations Overview
-                            </Link>
-                          </p>
-                        </div>
-                      )}
-
-                      {publishResult.publishId && (
-                        <div className="bg-neutral-950/80 p-2.5 rounded-lg border border-neutral-800 space-y-1">
-                          <p className="font-mono text-[11px] text-neutral-400">
-                            Publish ID: <strong className="text-white">{publishResult.publishId}</strong>
-                          </p>
-                          <p className="text-[11px] text-amber-300 font-semibold pt-1 border-t border-neutral-900">
-                            👉 Bước kế tiếp: Mở app TikTok trên điện thoại → Vào TikTok Shop Creator Center → &quot;Liên kết sản phẩm&quot; để gắn giỏ hàng trong 5 giây!
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Publish Action Button */}
-                  <div className="pt-2 flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => handleStartGeneratingVideo()}
-                      className="py-3 px-4 rounded-xl text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 text-neutral-200 transition"
-                    >
-                      Tạo lại Video
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handlePublishToTikTok}
-                      disabled={publishing}
-                      className="flex-1 py-3.5 px-5 rounded-xl font-bold text-sm bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white shadow-lg shadow-rose-600/30 disabled:opacity-50 transition flex items-center justify-center gap-2"
-                    >
-                      {publishing ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          Đang tải lên TikTok qua Content Posting API...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-4 h-4" />
-                          ĐĂNG LÊN TIKTOK NGAY (PUBLISH TO TIKTOK)
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 1 & 2: Main Workspace Grid */}
-        {(currentStep === 1 || currentStep === 2) && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Column: Product Inputs & Assets (7 cols) */}
-          <div className="lg:col-span-7 space-y-6">
+        {/* ======================================================== */}
+        {/* STEP 1: NHẬP SẢN PHẨM HOẶC LINK & CHỌN THỜI LƯỢNG */}
+        {/* ======================================================== */}
+        {currentStep === 1 && (
+          <div className="max-w-4xl mx-auto space-y-6">
             {/* Input Mode Selector & Seed Shortcut */}
             <div className="p-5 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1680,21 +1408,6 @@ export default function CreateVideoPage() {
               )}
             </div>
 
-            {/* Dynamic 4-Layout Infographic Studio (Category-Adaptive Muji Commerce) */}
-            {Boolean(product.name || product.assets.length > 0) && (
-              <InfographicDeckViewer
-                productName={product.name || 'Sản phẩm gia dụng thông minh'}
-                price={product.price}
-                primaryImageUrl={
-                  product.assets.find((a) => a.isPrimary)?.url ||
-                  product.assets[0]?.url ||
-                  ''
-                }
-                secondaryImageUrl={product.assets[1]?.url}
-                onSendToVideo={handleAnalyzeProduct}
-              />
-            )}
-
             {/* Video Duration Selector (15s, 30s, 45s) */}
             <div className="p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-3">
               <div className="flex items-center justify-between">
@@ -1793,17 +1506,39 @@ export default function CreateVideoPage() {
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  Phân tích sản phẩm &amp; Lập kế hoạch Video (Analyze Product)
+                  TIẾP TỤC: PHÂN TÍCH &amp; LẬP KẾ HOẠCH VIDEO ({selectedDuration}s)
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </div>
+        )}
 
-          {/* Right Column: VIPEE CREATIVE DIRECTOR ENGINE (5 cols) */}
-          <div className="lg:col-span-5 space-y-6">
-            {analysisResult ? (
-              <div className="space-y-6">
+        {/* ======================================================== */}
+        {/* STEP 2: PHÂN TÍCH & LẬP KẾ HOẠCH VIDEO */}
+        {/* ======================================================== */}
+        {currentStep === 2 && analysisResult && (
+          <div className="space-y-6">
+            {/* Top Bar Navigation for Step 2 */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800">
+              <button
+                type="button"
+                onClick={() => setCurrentStep(1)}
+                className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                ← Quay lại Bước 1 (Sửa thông tin sản phẩm / Đổi thời lượng)
+              </button>
+              <div className="text-right">
+                <span className="text-xs text-neutral-400">Thời lượng kịch bản:</span>{' '}
+                <span className="text-xs font-bold text-amber-400 font-mono">
+                  {selectedDuration}s • {analysisResult.storyboard.scenes.length} phân cảnh
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Left Column: VIPEE CREATIVE DIRECTOR (6 cols) */}
+              <div className="lg:col-span-6 space-y-6">
                 {/* 1. Creative Director Main Card */}
                 <div className="p-5 rounded-2xl bg-neutral-900/90 border border-rose-500/40 space-y-5 shadow-2xl backdrop-blur">
                   {/* Top Bar: Title + Change Angle Button */}
@@ -2052,8 +1787,10 @@ export default function CreateVideoPage() {
                     </p>
                   </div>
                 </div>
+              </div>
 
-                {/* Storyboard Timeline (Audio-First Synchronized) */}
+              {/* Right Column: Storyboard Timeline (6 cols) */}
+              <div className="lg:col-span-6 space-y-6">
                 <div className="p-5 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="font-semibold text-sm text-neutral-200 flex items-center gap-2">
@@ -2102,40 +1839,243 @@ export default function CreateVideoPage() {
                   {/* PROMINENT BUTTON TO GO TO STEP 3 */}
                   <button
                     type="button"
-                    onClick={handleStartGeneratingVideo}
+                    onClick={() => setCurrentStep(3)}
                     className="w-full py-4 px-5 rounded-2xl font-bold text-sm bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-neutral-950 shadow-xl shadow-emerald-500/25 transition flex items-center justify-center gap-2 transform hover:scale-[1.01] cursor-pointer"
                   >
                     <Sparkles className="w-4 h-4 fill-current" />
-                    TIẾN HÀNH TẠO VIDEO (GENERATE VIDEO) → BƯỚC 3
-                    <ArrowRight className="w-4 h-4" />
+                    TIẾP TỤC: TẠO LAYOUT &amp; VIDEO STUDIO ({analysisResult.storyboard.scenes.length} Phân Cảnh) ➔
                   </button>
                 </div>
               </div>
-            ) : (
-              <div className="p-8 rounded-2xl bg-neutral-900/40 border border-neutral-800/80 text-center space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-neutral-800/80 flex items-center justify-center mx-auto text-neutral-400">
-                  <Film className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm text-neutral-200">Chưa có bản phân tích</h3>
-                  <p className="text-xs text-neutral-400 max-w-xs mx-auto mt-1 leading-relaxed">
-                    Nhập thông tin sản phẩm và bấm nút &quot;Phân tích sản phẩm&quot; hoặc bấm nút nạp mẫu demo phía trên để xem kịch bản TikTok UGC tức thì.
-                  </p>
-                </div>
+            </div>
+          </div>
+        )}
 
-                <div className="pt-4 border-t border-neutral-800/60 text-left text-xs text-neutral-400 space-y-2">
-                  <span className="font-semibold text-neutral-300 block">Quy trình tự động của Home Engine:</span>
-                  <div className="space-y-1.5 pl-2 border-l border-neutral-800">
-                    <p>1. Xác định vấn đề khó chịu (Problem) &amp; đối tượng mua</p>
-                    <p>2. Chọn format tối ưu (Problem-Solution / Before-After / Demo)</p>
-                    <p>3. Viết Hook tự nhiên như người dùng thật (Organic UGC)</p>
-                    <p>4. Ghép nối sản phẩm thật với phối cảnh thông minh</p>
+        {/* ======================================================== */}
+        {/* STEP 3: TẠO LAYOUT & VIDEO STUDIO (ĐỒNG BỘ N CẢNH) */}
+        {/* ======================================================== */}
+        {currentStep === 3 && analysisResult && (
+          <div className="space-y-8">
+            {/* Part 1: Infographic Layout Deck ({N} Layouts matching {N} scenes) */}
+            <InfographicDeckViewer
+              productName={product.name || 'Sản phẩm tiện ích'}
+              price={product.price}
+              primaryImageUrl={
+                product.assets.find((a) => a.isPrimary)?.url ||
+                product.assets[0]?.url ||
+                ''
+              }
+              secondaryImageUrl={product.assets[1]?.url}
+              galleryImages={product.assets.map((a) => a.url)}
+              scenes={analysisResult.storyboard.scenes}
+              duration={selectedDuration}
+            />
+
+            {/* Part 2: Video Studio (Remotion Player Preview 60fps & MP4 Render / Publish) */}
+            <div className="p-6 rounded-3xl bg-neutral-900/90 border border-neutral-800 space-y-6">
+              <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                    <Film className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Video Studio TikTok (Xem trước 60fps &amp; Xuất MP4)</h3>
+                    <p className="text-xs text-neutral-400">
+                      Đồng bộ hoàn hảo giữa {analysisResult.storyboard.scenes.length} layout thương mại, hình ảnh sản phẩm và thuyết minh tiếng Việt.
+                    </p>
                   </div>
                 </div>
               </div>
-            )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* Left Column: Remotion Player 9:16 */}
+                <div className="lg:col-span-5 flex flex-col items-center space-y-4">
+                  <RemotionPlayerPreview
+                    productName={product.name}
+                    price={product.price ? Number(product.price) : undefined}
+                    category={product.category}
+                    scenes={analysisResult.storyboard.scenes}
+                    imageUrls={product.assets
+                      .filter((a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && a.url)
+                      .map((a) => a.url)}
+                    voiceAudioUrl={voicePreviewUrl || undefined}
+                    renderedVideoUrl={renderedVideoUrl}
+                  />
+
+                  {renderedVideoUrl && (
+                    <a
+                      href={renderedVideoUrl}
+                      download="tiktok_product_video.mp4"
+                      className="px-4 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-xs text-neutral-200 hover:text-white transition flex items-center gap-2 shadow"
+                    >
+                      <Download className="w-4 h-4 text-emerald-400" />
+                      Tải video MP4 về máy (Chuẩn TikTok 9:16)
+                    </a>
+                  )}
+                </div>
+
+                {/* Right Column: Render MP4 Trigger & TikTok Publish */}
+                <div className="lg:col-span-7 space-y-6">
+                  {/* Rendering Box */}
+                  <div className="p-6 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-bold text-sm text-white">Xuất File Video MP4 (1080x1920)</h4>
+                        <p className="text-xs text-neutral-400 mt-0.5">Dựng video cục bộ qua FFmpeg với âm thanh thuyết minh và nhạc nền TikTok.</p>
+                      </div>
+                      <span className="text-xs font-mono px-2 py-0.5 rounded bg-neutral-800 text-neutral-300">
+                        {selectedDuration}s • {analysisResult.storyboard.scenes.length} scenes
+                      </span>
+                    </div>
+
+                    {isRenderingVideo ? (
+                      <div className="space-y-4 py-2">
+                        <div className="flex items-center gap-3">
+                          <RefreshCw className="w-5 h-5 text-rose-500 animate-spin shrink-0" />
+                          <p className="text-xs text-white font-medium">{generationProgress.stage}</p>
+                        </div>
+                        <div className="w-full bg-neutral-900 rounded-full h-2.5 overflow-hidden border border-neutral-800">
+                          <div
+                            className="bg-gradient-to-r from-rose-500 to-emerald-400 h-full rounded-full transition-all duration-300"
+                            style={{ width: `${generationProgress.percent}%` }}
+                          />
+                        </div>
+                        <div className="text-[11px] font-mono text-neutral-400 space-y-1">
+                          {generationProgress.logs.slice(-2).map((l, i) => (
+                            <p key={i}>✓ {l}</p>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleStartGeneratingVideo}
+                        className="w-full py-3.5 px-5 rounded-xl font-bold text-xs uppercase tracking-wide bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-lg shadow-rose-900/30 transition flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Film className="w-4 h-4" />
+                        {renderedVideoUrl ? 'Render lại Video MP4 khác' : 'Bắt đầu Render Video MP4 (Chuẩn TikTok)'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* TikTok Direct Publish Form */}
+                  <div className="p-6 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-4">
+                    <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+                      <div>
+                        <h4 className="font-bold text-sm text-white flex items-center gap-2">
+                          <Send className="w-4 h-4 text-rose-500" />
+                          Đăng trực tiếp lên kênh TikTok (Direct Post)
+                        </h4>
+                        <p className="text-xs text-neutral-400 mt-0.5">
+                          Sử dụng TikTok Content Posting API chính thức đã tích hợp.
+                        </p>
+                      </div>
+                      {tiktokConnected ? (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-mono font-bold">
+                          Đã kết nối
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 text-[10px] font-mono">
+                          Chưa kết nối
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Caption & Hashtags */}
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold text-neutral-300 block">
+                        Tiêu đề &amp; Caption TikTok (AI Tự sinh):
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={caption}
+                        onChange={(e) => setCaption(e.target.value)}
+                        className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-3 text-xs text-neutral-200 focus:outline-none focus:border-rose-500 leading-relaxed"
+                      />
+                    </div>
+
+                    {/* Hashtags */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-neutral-300 block">
+                        Hashtags xu hướng:
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {hashtags.map((tag, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2.5 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-rose-400 text-xs font-mono"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Settings toggles */}
+                    <div className="pt-3 border-t border-neutral-800 space-y-2.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-neutral-300">Chế độ hiển thị (Privacy Level):</span>
+                        <select
+                          value={privacyLevel}
+                          onChange={(e) => setPrivacyLevel(e.target.value as 'SELF_ONLY' | 'PUBLIC_TO_EVERYONE')}
+                          className="bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1 text-xs text-neutral-300"
+                        >
+                          <option value="SELF_ONLY">SELF_ONLY (Bắt buộc khi đang chờ TikTok duyệt)</option>
+                          <option value="PUBLIC_TO_EVERYONE">PUBLIC_TO_EVERYONE (Công khai)</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-neutral-300">Gắn nhãn nội dung do AI tạo (is_aigc):</span>
+                        <label className="flex items-center gap-2 cursor-pointer text-emerald-400 font-medium">
+                          <input
+                            type="checkbox"
+                            checked={isAigc}
+                            onChange={(e) => setIsAigc(e.target.checked)}
+                            className="rounded border-neutral-700 text-rose-600 focus:ring-0"
+                          />
+                          Bật (Tuân thủ chính sách TikTok)
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Publish Action Button */}
+                    <div className="pt-2 flex gap-3">
+                      <button
+                        type="button"
+                        onClick={handlePublishToTikTok}
+                        disabled={publishing || !renderedVideoUrl}
+                        className="w-full py-3.5 px-5 rounded-xl font-bold text-sm bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white shadow-lg shadow-rose-600/30 disabled:opacity-50 transition flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        {publishing ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            Đang tải lên TikTok qua Content Posting API...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4" />
+                            ĐĂNG LÊN TIKTOK NGAY (PUBLISH TO TIKTOK)
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Back button */}
+              <div className="pt-4 border-t border-neutral-800 flex justify-start">
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(2)}
+                  className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold cursor-pointer"
+                >
+                  ← Quay lại Bước 2 (Chỉnh kịch bản &amp; Hook)
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
         )}
       </div>
     </div>

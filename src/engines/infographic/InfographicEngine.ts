@@ -1,3 +1,4 @@
+import { StoryboardScene } from '@/engines/core/types'
 import {
   InfographicCardData,
   InfographicTheme,
@@ -148,21 +149,35 @@ export class InfographicEngine {
   }
 
   /**
-   * Generates a complete, tailored 4-Card Infographic Deck for ANY product
+   * Generates a tailored Infographic Deck for ANY product.
+   * If `scenes` from storyboard are provided, generates exactly {N} layouts
+   * corresponding to the {N} video scenes (e.g. 5 scenes for 15s, 6 for 30s, 9 for 45s).
    */
   public generateDeck(params: {
     productName: string
     price?: number | string
     primaryImageUrl: string
     secondaryImageUrl?: string
+    galleryImages?: string[]
     customCategory?: ProductCategory
+    scenes?: StoryboardScene[]
+    duration?: number
+    problemSolved?: string
+    benefits?: string[]
   }): ProductInfographicDeck {
-    const { productName, primaryImageUrl, secondaryImageUrl } = params
+    const { productName, primaryImageUrl, secondaryImageUrl, galleryImages, scenes } = params
     const category = params.customCategory || this.detectCategory(productName)
     const theme = THEMES[category]
 
-    const img1 = primaryImageUrl
-    const img2 = secondaryImageUrl || primaryImageUrl
+    // Pool of available product images
+    const availableImages = [
+      primaryImageUrl,
+      secondaryImageUrl,
+      ...(galleryImages || []),
+    ].filter(Boolean) as string[]
+
+    const img1 = availableImages[0] || primaryImageUrl
+    const img2 = availableImages[1] || availableImages[0] || primaryImageUrl
 
     // Format clean price text
     let priceNumber = '39K'
@@ -190,9 +205,189 @@ export class InfographicEngine {
       priceUnit = '/ chiếc'
     }
 
-    // Category-specific content generation
+    // Category-specific content generation (fallbacks)
     const content = this.generateCategoryContent(category, productName)
 
+    // DYNAMIC CASE: If scenes are provided from storyboard planning, map each scene to an Infographic layout!
+    if (scenes && scenes.length > 0) {
+      const cards: InfographicCardData[] = scenes.map((scene, idx) => {
+        const isFirst = idx === 0
+        const isLast = idx === scenes.length - 1
+        const stepNumber = idx + 1
+        const cardImg = availableImages[idx % availableImages.length] || img1
+
+        let stepLabel = `BƯỚC ${stepNumber}`
+        let layoutVariant = 'solution_chips_top' as any
+        let accentEffect: 'rays' | 'sparkles' | 'none' = 'rays'
+        let hasHandInteraction = false
+
+        switch (scene.type) {
+          case 'hook':
+            stepLabel = 'GÂY CHÚ Ý'
+            layoutVariant = 'problem_stickers'
+            accentEffect = 'none'
+            break
+          case 'problem':
+            stepLabel = 'VẤN ĐỀ HAY GẶP'
+            layoutVariant = 'problem_stickers'
+            accentEffect = 'none'
+            break
+          case 'product_hero':
+            stepLabel = 'GIẢI PHÁP MỚI'
+            layoutVariant = 'solution_chips_top'
+            accentEffect = 'rays'
+            break
+          case 'demo':
+            stepLabel = 'CÁCH DÙNG TIỆN LỢI'
+            layoutVariant = 'solution_asymmetric'
+            accentEffect = 'rays'
+            hasHandInteraction = true
+            break
+          case 'before_after':
+            stepLabel = 'TRƯỚC & SAU'
+            layoutVariant = 'result_human_touch'
+            accentEffect = 'rays'
+            break
+          case 'benefit':
+            stepLabel = 'ƯU ĐIỂM NỔI BẬT'
+            layoutVariant = 'solution_chips_top'
+            accentEffect = 'rays'
+            break
+          case 'result':
+            stepLabel = 'KẾT QUẢ THỰC TẾ'
+            layoutVariant = 'result_macro_detail'
+            accentEffect = 'rays'
+            hasHandInteraction = true
+            break
+          case 'price':
+            stepLabel = 'ƯU ĐÃI DEAL HỜI'
+            layoutVariant = 'offer_huge_price'
+            accentEffect = 'rays'
+            break
+          case 'cta':
+            stepLabel = 'ƯU ĐÃI & GIỎ HÀNG'
+            layoutVariant = 'offer_huge_price'
+            accentEffect = 'rays'
+            break
+          default:
+            if (isFirst) {
+              stepLabel = 'VẤN ĐỀ'
+              layoutVariant = 'problem_stickers'
+              accentEffect = 'none'
+            } else if (isLast) {
+              stepLabel = 'ƯU ĐÃI'
+              layoutVariant = 'offer_huge_price'
+              accentEffect = 'rays'
+            } else {
+              stepLabel = 'TÍNH NĂNG'
+              layoutVariant = idx % 2 === 0 ? 'solution_chips_top' : 'result_human_touch'
+              accentEffect = 'rays'
+            }
+        }
+
+        // Force last card to be offer card for TikTok commerce conversion
+        if (isLast) {
+          layoutVariant = 'offer_huge_price'
+          stepLabel = 'ƯU ĐÃI & GIỎ HÀNG'
+        }
+
+        // Headline & Highlight word
+        let headline = scene.headline || `Khám phá ${productName}`
+        let highlightWord: string | undefined = undefined
+
+        if (layoutVariant === 'offer_huge_price') {
+          headline = `${priceNumber} ${priceUnit}`
+          highlightWord = priceNumber
+        } else {
+          // Auto detect highlight word: last 2-3 words or strong keyword
+          const words = headline.trim().split(' ')
+          if (words.length >= 3) {
+            highlightWord = words.slice(-2).join(' ')
+          }
+        }
+
+        // Subtitle from subheadline or voice
+        let subtitle = scene.subheadline || scene.voice || ''
+        if (subtitle.length > 70) {
+          subtitle = subtitle.slice(0, 68) + '...'
+        }
+        if (layoutVariant === 'offer_huge_price') {
+          subtitle = 'Giá ưu đãi độc quyền hôm nay trên TikTok Shop, bấm xem ngay ở giỏ hàng.'
+        }
+
+        // Stickers for problem cards
+        let stickers = undefined
+        if (layoutVariant === 'problem_stickers') {
+          if (scene.keywords && scene.keywords.length >= 2) {
+            stickers = [
+              { text: scene.keywords[0], topPercent: 44, leftPercent: 20, rotationDeg: -6 },
+              { text: scene.keywords[1], topPercent: 54, leftPercent: 68, rotationDeg: 8 },
+              { text: scene.keywords[2] || 'Khó chịu', topPercent: 78, leftPercent: 18, rotationDeg: -4 },
+            ]
+          } else {
+            stickers = content.card1.stickers
+          }
+        }
+
+        // Feature chips for solution/benefit/demo cards
+        let featureChips = undefined
+        if (
+          layoutVariant === 'solution_chips_top' ||
+          layoutVariant === 'solution_asymmetric' ||
+          layoutVariant === 'result_human_touch' ||
+          layoutVariant === 'result_macro_detail'
+        ) {
+          if (scene.keywords && scene.keywords.length >= 3) {
+            const icons = ['shield', 'touch', 'sparkle', 'box', 'zap', 'leaf']
+            featureChips = scene.keywords.slice(0, 3).map((kw, kIdx) => ({
+              id: `chip-${idx}-${kIdx}`,
+              iconName: icons[kIdx % icons.length],
+              title: kw,
+            }))
+          } else if (idx % 2 === 0) {
+            featureChips = content.card2.chips
+          } else {
+            featureChips = content.card3.chips
+          }
+        }
+
+        // Offer details for offer card
+        let offer = undefined
+        if (layoutVariant === 'offer_huge_price') {
+          offer = {
+            priceNumber,
+            priceUnit,
+            voucherTag: 'Voucher giảm 10K',
+            subNote: '* Giá có thể thay đổi theo chương trình ưu đãi hôm nay',
+            ctaText: 'Xem ở giỏ hàng >',
+          }
+        }
+
+        return {
+          stepNumber,
+          stepLabel,
+          headline,
+          highlightWord,
+          subtitle,
+          layoutVariant,
+          productImageUrl: cardImg,
+          stickers,
+          featureChips,
+          offer,
+          accentEffect,
+          hasHandInteraction,
+        }
+      })
+
+      return {
+        productName,
+        category,
+        theme,
+        cards,
+      }
+    }
+
+    // FALLBACK CASE: When scenes are not passed yet, generate standard 4 cards
     const cards: InfographicCardData[] = [
       // -------------------------------------------------------------
       // CARD 1: VẤN ĐỀ HAY GẶP
