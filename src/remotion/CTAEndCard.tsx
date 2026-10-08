@@ -37,24 +37,25 @@ export const CTAEndCard: React.FC<CTAEndCardProps> = ({ priceText }) => {
           alignItems: 'center',
           gap: 16,
           padding: '18px 36px',
-          background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.95) 0%, rgba(14, 165, 233, 0.95) 100%)',
+          background: 'linear-gradient(135deg, #e11d48 0%, #f43f5e 50%, #fb7185 100%)',
           borderRadius: 9999,
-          color: '#09090b',
-          fontWeight: 800,
-          fontSize: 32,
-          boxShadow: '0 16px 36px rgba(6, 182, 212, 0.45)',
-          border: '2px solid rgba(255, 255, 255, 0.4)',
+          color: '#ffffff',
+          fontWeight: 900,
+          fontSize: 30,
+          boxShadow: '0 16px 36px rgba(225, 29, 72, 0.6), 0 0 20px rgba(244, 63, 94, 0.4)',
+          border: '2px solid rgba(255, 255, 255, 0.7)',
         }}
       >
-        <span>🛍️ Xem ưu đãi tại Giỏ hàng góc trái</span>
+        <span>🛒 BẤM GIỎ HÀNG GÓC TRÁI • MUA NGAY</span>
         {priceText && (
           <span
             style={{
-              padding: '4px 12px',
-              backgroundColor: '#09090b',
-              color: '#38bdf8',
+              padding: '6px 16px',
+              backgroundColor: '#facc15',
+              color: '#09090b',
               borderRadius: 9999,
               fontSize: 26,
+              fontWeight: 900,
             }}
           >
             {priceText}

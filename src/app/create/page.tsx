@@ -44,6 +44,7 @@ import {
 import { CreativePlan, HookCandidate, StoryApproach } from '@/engines/creative/types'
 import { VoicePersonality } from '@/engines/speech/types'
 import { CABLE_ORGANIZER_SEED_PRODUCT } from '@/engines/home/seed'
+import { RemotionPlayerPreview } from '@/components/video/RemotionPlayerPreview'
 
 interface CategoryTab {
   id: ProductCategory
@@ -141,6 +142,7 @@ export default function CreateVideoPage() {
   const [isVoicePlaying, setIsVoicePlaying] = useState(false)
   const [isVoiceLoading, setIsVoiceLoading] = useState(false)
   const [isRegeneratingAngle, setIsRegeneratingAngle] = useState(false)
+  const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null)
   const previewAudioRef = React.useRef<HTMLAudioElement | null>(null)
 
   // Video duration state (15s, 30s, 45s)
@@ -546,6 +548,7 @@ export default function CreateVideoPage() {
 
       const blob = await res.blob()
       const objectUrl = URL.createObjectURL(blob)
+      setVoicePreviewUrl(objectUrl)
       const audio = new Audio(objectUrl)
       previewAudioRef.current = audio
 
@@ -1080,55 +1083,46 @@ export default function CreateVideoPage() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               {/* Left Column: 9:16 Video Player Preview */}
               <div className="lg:col-span-5 flex flex-col items-center space-y-4">
-                <div className="w-full max-w-[340px] aspect-[9/16] rounded-3xl overflow-hidden border-2 border-neutral-800 shadow-2xl bg-black relative flex flex-col justify-between">
-                  {renderedVideoUrl ? (
-                    <video
-                      key={renderedVideoUrl}
-                      src={renderedVideoUrl}
-                      controls
-                      autoPlay
-                      loop
-                      playsInline
-                      className="w-full h-full object-cover"
-                    />
-                  ) : product.assets.some((a) => (a.type === 'PRODUCT_VIDEO' || a.type === 'DEMO_VIDEO') && a.url) ? (
-                    <video
-                      src={product.assets.find((a) => a.type === 'PRODUCT_VIDEO' || a.type === 'DEMO_VIDEO')?.url}
-                      controls
-                      autoPlay
-                      loop
-                      playsInline
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full relative flex flex-col justify-between p-4 bg-gradient-to-b from-neutral-900 via-neutral-950 to-black">
-                      <div className="pt-8">
-                        <span className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 text-neutral-950 font-black text-xs uppercase tracking-wide shadow-lg">
-                          {analysisResult?.strategy.hook || `Khám phá ngay: ${product.name || 'Sản phẩm tiện ích'}`}
-                        </span>
-                      </div>
-
-                      <div className="my-auto text-center">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={product.assets[0]?.url || 'https://images.unsplash.com/photo-1541140532154-b024d705b909?w=800'}
-                          alt={product.name}
-                          className="w-48 h-48 object-contain mx-auto drop-shadow-2xl rounded-2xl"
-                        />
-                        <h4 className="font-bold text-white text-sm mt-3">{product.name}</h4>
-                        <p className="text-emerald-400 font-bold text-xs flex items-center justify-center gap-1 mt-1">
-                          <ShoppingBag className="w-3.5 h-3.5" /> Xem giá ưu đãi trong giỏ hàng góc trái
-                        </p>
-                      </div>
-
-                      <div className="pb-6 text-center">
-                        <p className="text-[11px] bg-black/70 backdrop-blur px-3 py-1.5 rounded-full text-white inline-block border border-white/10">
-                          {analysisResult?.storyboard.scenes[0]?.voice || `Món đồ cực kỳ tiện ích cho gia đình bạn...`}
-                        </p>
-                      </div>
+                {analysisResult?.storyboard?.scenes && analysisResult.storyboard.scenes.length > 0 ? (
+                  <RemotionPlayerPreview
+                    productName={product.name}
+                    price={product.price ? Number(product.price) : undefined}
+                    category={product.category}
+                    scenes={analysisResult.storyboard.scenes}
+                    imageUrls={product.assets
+                      .filter((a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && a.url)
+                      .map((a) => a.url)}
+                    voiceAudioUrl={voicePreviewUrl || undefined}
+                    renderedVideoUrl={renderedVideoUrl}
+                  />
+                ) : (
+                  <div className="w-full max-w-[340px] aspect-[9/16] rounded-3xl overflow-hidden border-2 border-neutral-800 shadow-2xl bg-black relative flex flex-col justify-between p-4 bg-gradient-to-b from-neutral-900 via-neutral-950 to-black">
+                    <div className="pt-8">
+                      <span className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 text-neutral-950 font-black text-xs uppercase tracking-wide shadow-lg">
+                        {analysisResult?.strategy?.hook || `Khám phá ngay: ${product.name || 'Sản phẩm tiện ích'}`}
+                      </span>
                     </div>
-                  )}
-                </div>
+
+                    <div className="my-auto text-center">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={product.assets[0]?.url || 'https://images.unsplash.com/photo-1541140532154-b024d705b909?w=800'}
+                        alt={product.name}
+                        className="w-48 h-48 object-contain mx-auto drop-shadow-2xl rounded-2xl"
+                      />
+                      <h4 className="font-bold text-white text-sm mt-3">{product.name}</h4>
+                      <p className="text-emerald-400 font-bold text-xs flex items-center justify-center gap-1 mt-1">
+                        <ShoppingBag className="w-3.5 h-3.5" /> Xem giá ưu đãi trong giỏ hàng góc trái
+                      </p>
+                    </div>
+
+                    <div className="pb-6 text-center">
+                      <p className="text-[11px] bg-black/70 backdrop-blur px-3 py-1.5 rounded-full text-white inline-block border border-white/10">
+                        {analysisResult?.storyboard?.scenes[0]?.voice || `Món đồ cực kỳ tiện ích cho gia đình bạn...`}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {renderedVideoUrl && (
                   <a
@@ -1137,7 +1131,7 @@ export default function CreateVideoPage() {
                     className="px-4 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-xs text-neutral-200 hover:text-white transition flex items-center gap-2 shadow"
                   >
                     <Download className="w-4 h-4 text-emerald-400" />
-                    Tải video MP4 về máy (1080x1920)
+                    Tải video MP4 về máy (Chuẩn TikTok 9:16)
                   </a>
                 )}
               </div>

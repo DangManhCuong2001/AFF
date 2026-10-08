@@ -35,6 +35,13 @@ export const AnimatedCaption: React.FC<AnimatedCaptionProps> = ({
   const captionOpacity = interpolate(frame, [0, 6], [0, 1], { extrapolateRight: 'clamp' })
   const captionTranslateY = interpolate(captionSpring, [0, 1], [20, 0])
 
+  const { durationInFrames } = useVideoConfig()
+  const words = subtitleText.trim().split(/\s+/)
+  const activeWordIndex = Math.min(
+    words.length - 1,
+    Math.floor((frame / Math.max(1, durationInFrames - 4)) * words.length)
+  )
+
   return (
     <div
       style={{
@@ -66,24 +73,47 @@ export const AnimatedCaption: React.FC<AnimatedCaptionProps> = ({
         </div>
       )}
 
-      {/* Main Subtitle Box */}
+      {/* Main Subtitle Box with CapCut Word-by-Word Kinetic Karaoke */}
       <div
         style={{
-          padding: '16px 32px',
-          backgroundColor: 'rgba(15, 23, 42, 0.88)',
-          backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
-          borderRadius: 20,
-          color: '#ffffff',
-          fontWeight: 700,
+          padding: '18px 36px',
+          backgroundColor: 'rgba(9, 9, 11, 0.88)',
+          backdropFilter: 'blur(16px)',
+          border: '1.5px solid rgba(255, 255, 255, 0.18)',
+          borderRadius: 24,
           fontSize: 34,
-          lineHeight: 1.35,
+          lineHeight: 1.4,
           textAlign: 'center',
-          boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
-          maxWidth: 920,
+          boxShadow: '0 16px 36px rgba(0,0,0,0.6), 0 0 20px rgba(244,63,94,0.15)',
+          maxWidth: 940,
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+          alignItems: 'center',
         }}
       >
-        {subtitleText}
+        {words.map((word, wIdx) => {
+          const isPast = wIdx < activeWordIndex
+          const isCurrent = wIdx === activeWordIndex
+          return (
+            <span
+              key={wIdx}
+              style={{
+                display: 'inline-block',
+                margin: '2px 6px',
+                color: isCurrent ? '#facc15' : isPast ? '#ffffff' : 'rgba(255, 255, 255, 0.65)',
+                fontWeight: isCurrent ? 900 : 700,
+                transform: isCurrent ? 'scale(1.15)' : 'scale(1.0)',
+                textShadow: isCurrent
+                  ? '0 0 16px rgba(250, 204, 21, 0.9), 0 2px 4px black'
+                  : '0 2px 4px rgba(0,0,0,0.7)',
+                transition: 'all 0.08s ease-out',
+              }}
+            >
+              {word}
+            </span>
+          )
+        })}
       </div>
 
       {/* Emphasis Pop Badge (Triggered on Key Phrase) */}

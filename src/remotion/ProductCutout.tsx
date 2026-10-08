@@ -63,6 +63,19 @@ export const ProductCutout: React.FC<ProductCutoutProps> = ({
         opacity,
       }}
     >
+      {/* Ambient Pulsing Glow Aura */}
+      <div
+        style={{
+          position: 'absolute',
+          width: 520,
+          height: 520,
+          background: 'radial-gradient(circle, rgba(244,63,94,0.35) 0%, rgba(251,191,36,0.18) 45%, transparent 70%)',
+          borderRadius: '50%',
+          filter: 'blur(35px)',
+          zIndex: 0,
+        }}
+      />
+
       {/* Isolated Product Asset */}
       <Img
         src={imageUrl}
@@ -73,6 +86,8 @@ export const ProductCutout: React.FC<ProductCutoutProps> = ({
           filter:
             'drop-shadow(0 25px 35px rgba(0,0,0,0.65)) drop-shadow(0 10px 15px rgba(0,0,0,0.4))',
           borderRadius: 24,
+          position: 'relative',
+          zIndex: 1,
         }}
       />
 
