@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import {
   Sparkles,
   Link as LinkIcon,
@@ -927,12 +928,19 @@ export default function CreateVideoPage() {
         <header className="border-b border-neutral-800 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-rose-500 via-pink-500 to-amber-400 flex items-center justify-center shadow-lg shadow-rose-500/20">
-                <Sparkles className="w-5 h-5 text-white" />
-              </div>
+              <Link href="/" className="relative rounded-xl overflow-hidden border border-white/10 shadow-lg shadow-rose-500/20 shrink-0">
+                <Image
+                  src="/vipee-icon-512.png"
+                  alt="Vipee Logo"
+                  width={44}
+                  height={44}
+                  priority
+                  className="object-cover"
+                />
+              </Link>
               <div>
                 <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-                  AI Product Video Platform
+                  Vipee Studio
                   <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono font-medium">
                     Home Engine Active
                   </span>

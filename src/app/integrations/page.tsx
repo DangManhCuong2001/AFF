@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import {
   Film,
   ShoppingBag,
@@ -80,11 +81,23 @@ export default function IntegrationsPage() {
           </button>
         </div>
 
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Integrations Overview</h1>
-          <p className="text-sm text-neutral-400 mt-1">
-            Manage official OAuth connections for TikTok Content Posting & TikTok Shop Creator
-          </p>
+        <div className="flex items-center gap-3">
+          <Link href="/" className="relative rounded-xl overflow-hidden border border-white/10 shadow-lg shadow-rose-500/20 shrink-0">
+            <Image
+              src="/vipee-icon-512.png"
+              alt="Vipee Logo"
+              width={44}
+              height={44}
+              priority
+              className="object-cover"
+            />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-white">Vipee Integrations</h1>
+            <p className="text-sm text-neutral-400 mt-0.5">
+              Manage official OAuth connections for TikTok Content Posting &amp; TikTok Shop Creator
+            </p>
+          </div>
         </div>
 
         <div className="space-y-6">
