@@ -186,8 +186,12 @@ export async function renderProductVideo(
 
     const theme = deck.theme || (THEMES[detectedCategory as ProductCategory] || THEMES.kitchen)
     const cards = deck.cards || []
-    const themeAccentHex = hexToFfmpegColor(theme?.accentColor, '0xf43f5e')
+    const themeAccentHex = hexToFfmpegColor(theme?.accentColor, '0xB45309')
     const themeBadgeBgHex = hexToFfmpegColor(theme?.badgeBg, '0x292524')
+    const themeSurfaceBgHex = hexToFfmpegColor(theme?.surfaceBg, '0xFAF8F5')
+    const themeTextPrimaryHex = hexToFfmpegColor(theme?.textPrimary, '0x1C1917')
+    const themeTextSecondaryHex = hexToFfmpegColor(theme?.textSecondary, '0x57534E')
+    const themeBorderHex = hexToFfmpegColor(theme?.borderColor, '0xE7E5E4')
 
     // 4. Build Video Segments with multi-path font resolution
     const segmentFiles: string[] = []
@@ -220,42 +224,12 @@ export async function renderProductVideo(
       const segPath = path.join(tempDir, `segment_${i}.mp4`)
       segmentFiles.push(segPath)
 
-      // Background selection based on category theme
-      let bgFilename = 'minimal_lifestyle.png'
-      if (theme.backgroundUrl.includes('kitchen') || theme.id === 'kitchen') {
-        bgFilename = 'kitchen_modern.png'
-      } else if (theme.backgroundUrl.includes('desk') || theme.id === 'desk_tech') {
-        bgFilename = 'desk_workspace.png'
-      } else {
-        bgFilename = 'minimal_lifestyle.png'
-      }
-
-      const bgCandidates = [
-        path.join(process.cwd(), 'src', 'assets', 'backgrounds', bgFilename),
-        path.join(process.cwd(), 'public', 'backgrounds', bgFilename),
-        path.join(__dirname, '..', '..', 'assets', 'backgrounds', bgFilename),
-        path.join(__dirname, '..', '..', '..', 'public', 'backgrounds', bgFilename),
-      ]
-
-      let bgImagePath = ''
-      for (const b of bgCandidates) {
-        if (fs.existsSync(/*turbopackIgnore: true*/ b)) {
-          bgImagePath = b
-          break
-        }
-      }
-      const hasBgImage = Boolean(bgImagePath)
-
       const sceneImgPath = availableImagePaths[i % availableImagePaths.length]
-
-      // Parallax Zoom on background and product card
       const isFirstScene = i === 0
       const isLastScene = i === params.scenes.length - 1
-      const bgScaleRate = isFirstScene ? 0.02 : 0.015
-      const prodScaleRate = isLastScene ? 0.03 : 0.02
 
       // 1. Step Badge Text (e.g. "01 • GÂY CHÚ Ý", "02 • VẤN ĐỀ HAY GẶP")
-      const stepBadgeText = escapeFfmpegText(`  0${card.stepNumber}  •  ${card.stepLabel}  `)
+      const stepBadgeText = escapeFfmpegText(`   0${card.stepNumber}  •  ${card.stepLabel}   `)
 
       // 2. Headline with smart wrapping
       const headlineRaw = card.headline || scene.headline || `Khám phá ${params.productName}`
@@ -266,53 +240,56 @@ export async function renderProductVideo(
       const cleanSub = subtitleRaw.length > 60 ? subtitleRaw.slice(0, 58) + '...' : subtitleRaw
       const wrappedSubtitle = escapeFfmpegText(wrapText(cleanSub, 28))
 
-      // Multi-layer FFmpeg filtergraph:
-      // 1. Animated theme background with vignette
-      // 2. Floating product card with soft drop shadow container
-      // 3. Top animated TikTok Progress Line matching theme accent
-      // 4. Step badge pill with theme badge background
-      // 5. Main Bold Headline
+      // Commercial Infographic Layout Pipeline:
+      // 1. Clean theme surface background plate (matching InfographicCardRenderer)
+      // 2. Outer decorative border
+      // 3. Top animated progress bar matching theme accent
+      // 4. Step badge pill in theme badge background
+      // 5. Main dark bold headline
       // 6. Subtitle summary
-      // 7. Scene-specific overlays (Problem stickers / Feature chips / Huge Price & CTA)
+      // 7. Middle pristine white card stage with product image & Ken Burns zoom
+      // 8. Layout variant specific overlays (Problem stickers / Feature chips / Huge Price & CTA)
       const filterComplexParts: string[] = [
-        `[0:v]scale='720*(1+${bgScaleRate}*t)':'1280*(1+${bgScaleRate}*t)':eval=frame,crop=720:1280,vignette=PI/5[bg]`,
+        `[0:v]drawbox=x=16:y=16:w=688:h=1248:color=${themeBorderHex}:t=2[bg_frame]`,
+        `[bg_frame]drawbox=x=0:y=0:w='iw*t/${sceneDuration}':h=8:color=${themeAccentHex}:t=fill[bg_prog]`,
       ]
 
-      // Product Card: Rounded container + Ken Burns drift
-      const cardSize = isLastScene ? 420 : 460
+      // Step Badge
       filterComplexParts.push(
-        `[1:v]scale=${cardSize}:${cardSize}:force_original_aspect_ratio=decrease,pad=${cardSize + 24}:${cardSize + 24}:(ow-iw)/2:(oh-ih)/2:color=0xffffff@0.12,scale='${cardSize + 24}*(1+0.04*max(0,1-t/0.3)+${prodScaleRate}*t)':'${cardSize + 24}*(1+0.04*max(0,1-t/0.3)+${prodScaleRate}*t)':eval=frame[prod]`,
-        `[bg][prod]overlay=(W-w)/2:320-(h-${cardSize + 24})/2[comp_base]`
+        `[bg_prog]drawtext=text='${stepBadgeText}'${fontParam}:fontcolor=white:fontsize=18:x=48:y=60:box=1:boxcolor=${themeBadgeBgHex}:boxborderw=10[t_badge]`
       )
 
-      // Top Animated TikTok Progress Bar
+      // Main Headline (Dark bold typography matching Part 1)
       filterComplexParts.push(
-        `[comp_base]drawbox=x=0:y=0:w='iw*t/${sceneDuration}':h=8:color=${themeAccentHex}@0.95:t=fill[prog]`
+        `[t_badge]drawtext=text='${wrappedHeadline}'${fontParam}:fontcolor=${themeTextPrimaryHex}:fontsize=34:line_spacing=8:x=48:y=120[t_head]`
       )
 
-      // Top Step Badge (Circle with number + dark pill)
+      // Subtitle (Secondary charcoal text matching Part 1)
       filterComplexParts.push(
-        `[prog]drawtext=text='${stepBadgeText}'${fontParam}:fontcolor=white:fontsize=18:x=(w-text_w)/2:y=80:box=1:boxcolor=${themeBadgeBgHex}@0.95:boxborderw=10[t_badge]`
+        `[t_head]drawtext=text='${wrappedSubtitle}'${fontParam}:fontcolor=${themeTextSecondaryHex}:fontsize=18:line_spacing=6:x=48:y=220[t_sub]`
       )
 
-      // Main Headline
+      // White Product Stage Card Container
+      const stageW = 624
+      const stageH = isLastScene ? 560 : 620
+      const stageX = 48
+      const stageY = 280
       filterComplexParts.push(
-        `[t_badge]drawtext=text='${wrappedHeadline}'${fontParam}:fontcolor=white:fontsize=32:line_spacing=8:borderw=3:bordercolor=black:shadowcolor=black@0.7:shadowx=2:shadowy=2:x=(w-text_w)/2:y=135[t_head]`
+        `[t_sub]drawbox=x=${stageX}:y=${stageY}:w=${stageW}:h=${stageH}:color=white:t=fill[stage_bg]`,
+        `[stage_bg]drawbox=x=${stageX}:y=${stageY}:w=${stageW}:h=${stageH}:color=${themeBorderHex}:t=2[stage_border]`,
+        `[1:v]scale=${stageW - 60}:${stageH - 60}:force_original_aspect_ratio=decrease,scale='iw*(1+0.04*t)':'ih*(1+0.04*t)':eval=frame[prod_scaled]`,
+        `[stage_border][prod_scaled]overlay=${stageX}+(${stageW}-w)/2:${stageY}+(${stageH}-h)/2[stage_comp]`
       )
 
-      // Subtitle
-      filterComplexParts.push(
-        `[t_head]drawtext=text='${wrappedSubtitle}'${fontParam}:fontcolor=0xe4e4e7:fontsize=18:line_spacing=6:borderw=2:bordercolor=black:shadowcolor=black@0.5:x=(w-text_w)/2:y=235[t_sub]`
-      )
-
-      // Contextual bottom & scene layout matching InfographicMotionScene
+      // Contextual layout variant overlays matching InfographicMotionScene
       if (card.layoutVariant === 'problem_stickers' || (isFirstScene && card.stickers)) {
-        // Problem Scene: Render real warning stickers on top of product visual
-        const stk1 = escapeFfmpegText(`⚠️ ${card.stickers?.[0]?.text || scene.keywords?.[0] || 'Vấn đề phiền toái'}`)
-        const stk2 = escapeFfmpegText(`⚠️ ${card.stickers?.[1]?.text || scene.keywords?.[1] || 'Bất tiện khi dùng'}`)
+        // Problem Scene: Warning Problem Stickers
+        const stk1 = escapeFfmpegText(card.stickers?.[0]?.text || scene.keywords?.[0] || 'Vấn đề phiền toái')
+        const stk2 = escapeFfmpegText(card.stickers?.[1]?.text || scene.keywords?.[1] || 'Bất tiện khi dùng')
         filterComplexParts.push(
-          `[t_sub]drawtext=text='  ${stk1}  '${fontParam}:fontcolor=0x991b1b:fontsize=20:box=1:boxcolor=0xfee2e2@0.95:boxborderw=8:x=40:y=350[stk_1]`,
-          `[stk_1]drawtext=text='  ${stk2}  '${fontParam}:fontcolor=0x991b1b:fontsize=20:box=1:boxcolor=0xfee2e2@0.95:boxborderw=8:x=w-text_w-40:y=490[flash]`
+          `[stage_comp]drawtext=text='   ${stk1}   '${fontParam}:fontcolor=0x991B1B:fontsize=20:box=1:boxcolor=0xFEE2E2:boxborderw=8:x=70:y=${stageY + 50}[stk_1]`,
+          `[stk_1]drawtext=text='   ${stk2}   '${fontParam}:fontcolor=0x991B1B:fontsize=20:box=1:boxcolor=0xFEE2E2:boxborderw=8:x=w-text_w-70:y=${stageY + 200}[stk_2]`,
+          `[stk_2]drawtext=text='   Khám phá giải pháp mới tiện ích   '${fontParam}:fontcolor=white:fontsize=18:box=1:boxcolor=${themeBadgeBgHex}:boxborderw=12:x=(w-text_w)/2:y=960[flash]`
         )
       } else if (isLastScene) {
         // Last Scene: Commercial Offer with huge price & TikTok Shop CTA
@@ -323,33 +300,31 @@ export async function renderProductVideo(
           : 'Giá tốt hôm nay'
         const ctaText = card.offer?.ctaText || 'XEM NGAY Ở GIỎ HÀNG GÓC TRÁI'
         filterComplexParts.push(
-          `[t_sub]drawtext=text='  ${escapeFfmpegText(priceDisplay)}  '${fontParam}:fontcolor=0xfbbf24:fontsize=36:borderw=2:bordercolor=black:box=1:boxcolor=0x09090b@0.85:boxborderw=12:x=(w-text_w)/2:y=780[t_price]`,
-          `[t_price]drawtext=text='  Voucher giảm giá TikTok Shop • Freeship toàn quốc  '${fontParam}:fontcolor=0x34d399:fontsize=18:box=1:boxcolor=0x09090b@0.75:boxborderw=8:x=(w-text_w)/2:y=840[t_vouch]`,
-          `[t_vouch]drawtext=text='  🛒 ${escapeFfmpegText(ctaText)}  '${fontParam}:fontcolor=white:fontsize=22:box=1:boxcolor=0xe11d48@0.95:boxborderw=16:x=(w-text_w)/2:y='895+3*sin(3*PI*t)'[flash]`
+          `[stage_comp]drawtext=text='${escapeFfmpegText(priceDisplay)}'${fontParam}:fontcolor=${themeAccentHex}:fontsize=52:x=(w-text_w)/2:y=890[t_price]`,
+          `[t_price]drawtext=text='* Giá ưu đãi độc quyền hôm nay trên TikTok Shop'${fontParam}:fontcolor=${themeTextSecondaryHex}:fontsize=16:x=(w-text_w)/2:y=960[t_note]`,
+          `[t_note]drawtext=text='   ${escapeFfmpegText(ctaText)}   '${fontParam}:fontcolor=white:fontsize=24:box=1:boxcolor=${themeAccentHex}:boxborderw=18:x=(w-text_w)/2:y='1010+3*sin(3*PI*t)'[flash]`
         )
       } else {
-        // Feature/Demo/Benefit Scenes: Real feature chips row matching preview
+        // Feature/Demo/Benefit Scenes: Feature Chips
         let chipsStr = ''
         if (card.featureChips && card.featureChips.length > 0) {
-          chipsStr = card.featureChips.map((c) => `✓ ${c.title}`).join('    ')
+          chipsStr = card.featureChips.map((c) => c.title).join('   •   ')
         } else if (scene.keywords && scene.keywords.length > 0) {
-          chipsStr = scene.keywords.map((k) => `✓ ${k}`).join('    ')
+          chipsStr = scene.keywords.map((k) => k).join('   •   ')
         } else {
-          chipsStr = '✓ Tiện lợi    ✓ Cao cấp    ✓ Đáng tiền'
+          chipsStr = 'Tiện lợi   •   Cao cấp   •   Đáng tiền'
         }
         filterComplexParts.push(
-          `[t_sub]drawtext=text='  ${escapeFfmpegText(chipsStr)}  '${fontParam}:fontcolor=white:fontsize=20:box=1:boxcolor=${themeAccentHex}@0.9:boxborderw=12:x=(w-text_w)/2:y=830[flash]`
+          `[stage_comp]drawtext=text='   ${escapeFfmpegText(chipsStr)}   '${fontParam}:fontcolor=white:fontsize=20:box=1:boxcolor=${themeBadgeBgHex}:boxborderw=14:x=(w-text_w)/2:y=960[flash]`
         )
       }
 
-      // Smooth white flash entrance transition
+      // Smooth white flash transition between scenes
       filterComplexParts.push(`[flash]fade=t=in:st=0:d=0.10:color=white[out]`)
 
       const filterComplex = filterComplexParts.join(';')
 
-      const bgInput = hasBgImage
-        ? `-loop 1 -t ${sceneDuration} -i "${bgImagePath}"`
-        : `-f lavfi -i color=c=0x18181b:s=720x1280:d=${sceneDuration}:r=30`
+      const bgInput = `-f lavfi -i color=c=${themeSurfaceBgHex}:s=720x1280:d=${sceneDuration}:r=30`
 
       const cmd = [
         `"${ffmpeg}" -y`,
@@ -371,8 +346,8 @@ export async function renderProductVideo(
 
         // Resilient Fallback: If drawtext fails due to font or environment issues, render clean Ken Burns product video
         const fallbackFilterComplex = [
-          `[0:v]scale='720*(1+${bgScaleRate}*t)':'1280*(1+${bgScaleRate}*t)':eval=frame,crop=720:1280[bg]`,
-          `[1:v]scale=500:500:force_original_aspect_ratio=decrease,pad=520:520:(ow-iw)/2:(oh-ih)/2:color=0x000000@0.25,scale='520*(1+0.07*max(0,1-t/0.35)+${prodScaleRate}*t)':'520*(1+0.07*max(0,1-t/0.35)+${prodScaleRate}*t)':eval=frame[prod]`,
+          `[0:v]scale='720*(1+0.02*t)':'1280*(1+0.02*t)':eval=frame,crop=720:1280[bg]`,
+          `[1:v]scale=500:500:force_original_aspect_ratio=decrease,pad=520:520:(ow-iw)/2:(oh-ih)/2:color=0x000000@0.25,scale='520*(1+0.07*max(0,1-t/0.35)+0.03*t)':'520*(1+0.07*max(0,1-t/0.35)+0.03*t)':eval=frame[prod]`,
           `[bg][prod]overlay=(W-w)/2:310-(h-520)/2,fade=t=in:st=0:d=0.12:color=white[out]`,
         ].join(';')
 
