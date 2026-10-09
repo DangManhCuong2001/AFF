@@ -5,7 +5,7 @@
 
 export function upgradeTikTokImageUrl(rawUrl: string): string {
   if (!rawUrl || typeof rawUrl !== 'string') return rawUrl
-  let url = rawUrl.trim().replace(/&amp;/g, '&')
+  const url = rawUrl.trim().replace(/&amp;/g, '&')
 
   const isByteDanceCdn =
     url.includes('ibyteimg.com') ||

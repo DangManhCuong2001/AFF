@@ -818,7 +818,7 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
     const seenHashes = new Set<string>()
 
     const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*)["']/i)
-    let primaryImageUrl = upgradeTikTokImageUrl(bestUrlImage || jsonLdImage || ogImageMatch?.[1] || '')
+    const primaryImageUrl = upgradeTikTokImageUrl(bestUrlImage || jsonLdImage || ogImageMatch?.[1] || '')
 
     if (primaryImageUrl) {
       const hashMatch = primaryImageUrl.match(/tos-maliva[a-zA-Z0-9_\-]+\/([a-f0-9]{32})/)

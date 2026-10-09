@@ -322,7 +322,7 @@ Yêu cầu xuất ra JSON chính xác theo cấu trúc:
     const selectedHook = candidateHooks[0]
 
     const prob = product.problemSolved || analysis.mainProblem || 'đồ đạc bừa bộn và bất tiện mỗi khi sử dụng'
-    const prodBenefits = 'verifiedBenefits' in product ? product.verifiedBenefits : (product as any).benefits
+    const prodBenefits = 'verifiedBenefits' in product ? product.verifiedBenefits : ('benefits' in product ? (product as { benefits?: string[] }).benefits : undefined)
     const ben1 = prodBenefits?.[0] || analysis.mainBenefit || 'thiết kế thông minh và tiện lợi'
     const ben2 = prodBenefits?.[1] || analysis.secondaryBenefits?.[0] || 'độ bền vượt trội'
 
