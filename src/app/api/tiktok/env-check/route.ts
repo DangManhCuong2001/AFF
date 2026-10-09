@@ -13,5 +13,6 @@ export async function GET() {
     redirectUri,
     appUrl: process.env.APP_URL || null,
     vercelEnv: process.env.VERCEL_ENV || null,
+    commitSha: process.env.VERCEL_GIT_COMMIT_SHA || 'dev',
   })
 }
