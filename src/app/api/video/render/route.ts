@@ -119,7 +119,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Render exact Remotion TikTokCommerceVideo matching the preview
+    // 3. Check for pre-generated audio track from client
+    const audioFile = (formData.get('audio') || formData.get('voice')) as File | null
+    let masterAudioBuffer: Buffer | undefined = undefined
+    if (audioFile && typeof audioFile.arrayBuffer === 'function') {
+      try {
+        const bytes = await audioFile.arrayBuffer()
+        if (bytes.byteLength > 100) {
+          masterAudioBuffer = Buffer.from(bytes)
+          console.log(`[VideoRenderAPI] Received pre-synthesized audio track: ${(masterAudioBuffer.length / 1024).toFixed(1)} KB`)
+        }
+      } catch (audioErr) {
+        console.warn('[VideoRenderAPI] Failed to read audio buffer from formData:', audioErr)
+      }
+    }
+
+    // Render video
     let result: {
       filePath: string
       fileName: string
@@ -127,22 +142,10 @@ export async function POST(request: NextRequest) {
       fileSizeBytes: number
     }
 
-    try {
-      result = await renderRemotionVideo({
-        productName,
-        price,
-        category,
-        scenes,
-        imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
-        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-        voicePreset,
-      })
-    } catch (remotionErr) {
-      console.warn(
-        '[VideoRenderAPI] Remotion headless render failed (Chromium missing on serverless), falling back to native FFmpeg engine:',
-        (remotionErr as Error)?.message
-      )
-      // High-performance serverless fallback using ffmpeg-static
+    const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+
+    if (isServerless) {
+      console.log('[VideoRenderAPI] Running on Vercel Serverless, using native FFmpeg engine directly...')
       result = await renderProductVideo({
         productName,
         price,
@@ -150,7 +153,35 @@ export async function POST(request: NextRequest) {
         imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
         imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
         voicePreset,
+        masterAudioBuffer,
       })
+    } else {
+      try {
+        result = await renderRemotionVideo({
+          productName,
+          price,
+          category,
+          scenes,
+          imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
+          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+          voicePreset,
+          masterAudioBuffer,
+        })
+      } catch (remotionErr) {
+        console.warn(
+          '[VideoRenderAPI] Remotion headless render failed, falling back to native FFmpeg engine:',
+          (remotionErr as Error)?.message
+        )
+        result = await renderProductVideo({
+          productName,
+          price,
+          scenes,
+          imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
+          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+          voicePreset,
+          masterAudioBuffer,
+        })
+      }
     }
 
     // Also persist into public/renders for immediate direct URL access
@@ -159,7 +190,8 @@ export async function POST(request: NextRequest) {
       fs.mkdirSync(publicRendersDir, { recursive: true })
       fs.copyFileSync(result.filePath, path.join(publicRendersDir, result.fileName))
     } catch (copyErr) {
-      console.warn('[VideoRenderAPI] Failed to copy to public/renders:', copyErr)
+      // Safe to ignore on read-only serverless filesystems
+      console.warn('[VideoRenderAPI] Failed to copy to public/renders (safe on serverless):', copyErr)
     }
 
     // Return direct MP4 stream for instant playback & download
@@ -178,9 +210,14 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (err: unknown) {
-    console.error('[VideoRenderAPI] Error:', err)
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    const errorStack = err instanceof Error ? err.stack : undefined
+    console.error('[VideoRenderAPI] Render error:', errorMsg, errorStack)
     return NextResponse.json(
-      { error: (err as Error)?.message || 'Lỗi trong quá trình render video' },
+      {
+        error: errorMsg || 'Lỗi trong quá trình render video',
+        details: errorStack,
+      },
       { status: 500 }
     )
   }

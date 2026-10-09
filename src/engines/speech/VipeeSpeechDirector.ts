@@ -317,10 +317,10 @@ export class VipeeTTSProvider implements TTSProvider {
         const cleanText = sanitizeTextForTTS(seg.ttsScript || seg.text)
         let success = false
 
-        // Attempt 1-3: Sequential EdgeTTS with identical voice and rate
-        for (let attempt = 1; attempt <= 3; attempt++) {
+        // Attempt 1-2: Fast Sequential EdgeTTS with identical voice and rate
+        for (let attempt = 1; attempt <= 2; attempt++) {
           try {
-            const tts = new EdgeTTS({ voice, lang: 'vi-VN', rate, timeout: 25000 })
+            const tts = new EdgeTTS({ voice, lang: 'vi-VN', rate, timeout: 6000 })
             await tts.ttsPromise(cleanText, rawSegPath)
             if (fs.existsSync(rawSegPath) && fs.statSync(rawSegPath).size > 300) {
               success = true
@@ -328,7 +328,7 @@ export class VipeeTTSProvider implements TTSProvider {
             }
           } catch (e) {
             console.warn(`[VipeeTTSProvider] Segment ${idx} EdgeTTS attempt ${attempt} failed:`, e)
-            await new Promise((r) => setTimeout(r, 600 * attempt))
+            await new Promise((r) => setTimeout(r, 400 * attempt))
           }
         }
 

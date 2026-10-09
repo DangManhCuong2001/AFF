@@ -1,5 +1,5 @@
 import { StoryboardScene } from '@/engines/core/types'
-import { upgradeTikTokImageUrl } from '@/lib/tiktok-shop/import'
+import { upgradeTikTokImageUrl } from '@/lib/tiktok/image-utils'
 import {
   InfographicCardData,
   InfographicTheme,

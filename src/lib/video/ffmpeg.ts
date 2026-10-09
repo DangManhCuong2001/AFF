@@ -18,32 +18,66 @@ export function getFfmpegBinaryPath(): string {
     }
   }
 
-  let sourcePath = ''
-
-  // 1. Try require('ffmpeg-static') and unwrap Next.js /ROOT/ prefix
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    let staticPath = require('ffmpeg-static')
-    if (typeof staticPath === 'string') {
-      if (staticPath.startsWith('/ROOT/')) {
-        staticPath = path.join(/*turbopackIgnore: true*/ process.cwd(), staticPath.replace(/^\/ROOT\//, ''))
-      }
-      if (fs.existsSync(/*turbopackIgnore: true*/ staticPath)) {
-        sourcePath = staticPath
-      }
-    }
-  } catch (err) {
-    console.warn('[ffmpeg] require ffmpeg-static failed:', err)
+  if (process.env.FFMPEG_BIN && fs.existsSync(process.env.FFMPEG_BIN)) {
+    return process.env.FFMPEG_BIN
   }
 
-  // 2. Direct filesystem candidates in node_modules
+  let sourcePath = ''
+
+  // 1. Try require.resolve('ffmpeg-static')
+  try {
+    const pkgPath = require.resolve('ffmpeg-static')
+    const dir = path.dirname(pkgPath)
+    const binCandidate = path.join(dir, 'ffmpeg' + (process.platform === 'win32' ? '.exe' : ''))
+    if (fs.existsSync(binCandidate)) {
+      sourcePath = binCandidate
+    }
+  } catch {
+    // continue
+  }
+
+  // 2. Try require('ffmpeg-static') and unwrap Next.js /ROOT/ prefix
+  if (!sourcePath) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      let staticPath = require('ffmpeg-static')
+      if (typeof staticPath === 'string') {
+        if (staticPath.startsWith('/ROOT/')) {
+          staticPath = path.join(/*turbopackIgnore: true*/ process.cwd(), staticPath.replace(/^\/ROOT\//, ''))
+        }
+        if (fs.existsSync(/*turbopackIgnore: true*/ staticPath)) {
+          sourcePath = staticPath
+        }
+      }
+    } catch {
+      // continue
+    }
+  }
+
+  // 3. Search common node_modules locations including pnpm and Vercel Lambda /var/task
   if (!sourcePath) {
     const candidates = [
-      path.join(/*turbopackIgnore: true*/ process.cwd(), 'node_modules/.pnpm/ffmpeg-static@5.3.0_supports-color@7.2.0/node_modules/ffmpeg-static/ffmpeg'),
-      path.join(/*turbopackIgnore: true*/ process.cwd(), 'node_modules/ffmpeg-static/ffmpeg'),
+      path.join(process.cwd(), 'node_modules', 'ffmpeg-static', 'ffmpeg'),
+      path.join('/var/task', 'node_modules', 'ffmpeg-static', 'ffmpeg'),
       '/opt/homebrew/bin/ffmpeg',
       '/usr/local/bin/ffmpeg',
+      '/usr/bin/ffmpeg',
     ]
+
+    // Also look inside .pnpm directory
+    try {
+      const pnpmDir = path.join(process.cwd(), 'node_modules', '.pnpm')
+      if (fs.existsSync(pnpmDir)) {
+        const entries = fs.readdirSync(pnpmDir)
+        for (const e of entries) {
+          if (e.startsWith('ffmpeg-static')) {
+            candidates.unshift(path.join(pnpmDir, e, 'node_modules', 'ffmpeg-static', 'ffmpeg'))
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
 
     for (const candidate of candidates) {
       if (fs.existsSync(/*turbopackIgnore: true*/ candidate)) {
@@ -53,7 +87,7 @@ export function getFfmpegBinaryPath(): string {
     }
   }
 
-  // 3. On serverless Linux (AWS Lambda / Vercel), copy to /tmp/ffmpeg and chmod 0755
+  // 4. On serverless Linux (AWS Lambda / Vercel), copy to /tmp/ffmpeg and chmod 0755
   if (sourcePath && fs.existsSync(/*turbopackIgnore: true*/ sourcePath)) {
     if (process.platform === 'linux') {
       try {
@@ -61,6 +95,8 @@ export function getFfmpegBinaryPath(): string {
           fs.copyFileSync(sourcePath, tmpBinary)
         }
         fs.chmodSync(tmpBinary, 0o755)
+        fs.accessSync(tmpBinary, fs.constants.X_OK)
+        process.env.FFMPEG_BIN = tmpBinary
         return tmpBinary
       } catch (copyErr) {
         console.warn('[ffmpeg] failed to prepare /tmp/ffmpeg:', copyErr)
@@ -69,7 +105,7 @@ export function getFfmpegBinaryPath(): string {
     return sourcePath
   }
 
-  // 4. Fallback to system ffmpeg command
+  // 5. Fallback to system ffmpeg command
   return 'ffmpeg'
 }
 

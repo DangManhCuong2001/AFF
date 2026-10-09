@@ -704,6 +704,23 @@ export default function CreateVideoPage() {
         formData.append('image', primaryAsset.file)
       }
 
+      // Attach pre-generated audio track if already synthesized in Preview
+      const activeVoiceUrl = storyboardVoiceUrl || voicePreviewUrl
+      if (activeVoiceUrl) {
+        try {
+          const audioRes = await fetch(activeVoiceUrl)
+          if (audioRes.ok) {
+            const audioBlob = await audioRes.blob()
+            if (audioBlob.size > 100) {
+              formData.append('audio', audioBlob, 'master_voice.mp3')
+              console.log('[handleStartGeneratingVideo] Attached pre-synthesized audio blob:', audioBlob.size, 'bytes')
+            }
+          }
+        } catch (audioFetchErr) {
+          console.warn('[handleStartGeneratingVideo] Could not attach preview audio:', audioFetchErr)
+        }
+      }
+
       setGenerationProgress((prev) => ({
         stage: '2/4. Đang tạo giọng đọc thuyết minh tiếng Việt (TTS)...',
         percent: 40,

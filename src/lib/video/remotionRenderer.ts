@@ -36,7 +36,7 @@ let cachedBundleLocation: string | null = null
 let bundlingPromise: Promise<string> | null = null
 
 async function getOrCreateBundle(): Promise<string> {
-  if (cachedBundleLocation && fs.existsSync(cachedBundleLocation)) {
+  if (cachedBundleLocation && fs.existsSync(/*turbopackIgnore: true*/ cachedBundleLocation)) {
     return cachedBundleLocation
   }
 

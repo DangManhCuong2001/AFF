@@ -19,6 +19,7 @@ export interface RenderVideoParams {
   imageUrls?: string[]
   imageMimeType?: string
   voicePreset?: 'Natural Friend' | 'Warm Reviewer' | 'Curious Tester' | 'Energetic Seller' | 'Calm Explainer'
+  masterAudioBuffer?: Buffer
 }
 
 export interface RenderVideoResult {
@@ -91,27 +92,49 @@ export async function renderProductVideo(
       availableImagePaths.push(fallbackPath)
     }
 
-    // 2. Audio-First Timeline: Generate Voiceover with VipeeSpeechDirector and VipeeTTSProvider
-    const speechDirector = new VipeeSpeechDirector()
-    const speechPlan = speechDirector.createSpeechPlan(
-      {
-        scenes: params.scenes.map((s) => ({
-          id: s.id,
-          voice: s.voice || s.headline,
-          storyBeat: s.type || 'demo',
-          emphasisWords: s.keywords,
-        })),
-      },
-      {
-        voicePreset: params.voicePreset || 'Natural Friend',
-      }
-    )
-
-    const ttsProvider = new VipeeTTSProvider()
-    const speechAudioResult = await ttsProvider.generateSpeech(speechPlan)
-
+    // 2. Audio-First Timeline: Reuse provided Master Audio Buffer OR synthesize with VipeeSpeechDirector
+    let masterAudioDuration = 0
+    let segmentTimings: Array<{ segmentId: string; startSec: number; endSec: number; durationSec: number }> = []
     const masterVoicePath = path.join(tempDir, 'master_voice.mp3')
-    fs.writeFileSync(masterVoicePath, speechAudioResult.audioBuffer)
+
+    if (params.masterAudioBuffer && params.masterAudioBuffer.length > 0) {
+      console.log('[VideoGenerator] Reusing pre-generated master audio buffer, skipping server TTS synthesis.')
+      fs.writeFileSync(masterVoicePath, params.masterAudioBuffer)
+      let cur = 0
+      segmentTimings = params.scenes.map((s, idx) => {
+        const dur = s.duration && s.duration > 0 ? s.duration : 3
+        const t = {
+          segmentId: s.id || `scene-${idx + 1}`,
+          startSec: cur,
+          endSec: cur + dur,
+          durationSec: dur,
+        }
+        cur += dur
+        return t
+      })
+      masterAudioDuration = cur
+    } else {
+      const speechDirector = new VipeeSpeechDirector()
+      const speechPlan = speechDirector.createSpeechPlan(
+        {
+          scenes: params.scenes.map((s) => ({
+            id: s.id,
+            voice: s.voice || s.headline,
+            storyBeat: s.type || 'demo',
+            emphasisWords: s.keywords,
+          })),
+        },
+        {
+          voicePreset: params.voicePreset || 'Natural Friend',
+        }
+      )
+
+      const ttsProvider = new VipeeTTSProvider()
+      const speechAudioResult = await ttsProvider.generateSpeech(speechPlan)
+      fs.writeFileSync(masterVoicePath, speechAudioResult.audioBuffer)
+      masterAudioDuration = speechAudioResult.durationSec
+      segmentTimings = speechAudioResult.segmentTimings
+    }
 
     // 4. Build Video Segments with multi-path font resolution
     const segmentFiles: string[] = []
@@ -138,7 +161,7 @@ export async function renderProductVideo(
 
     for (let i = 0; i < params.scenes.length; i++) {
       const scene = params.scenes[i]
-      const timing = speechAudioResult.segmentTimings.find((t) => t.segmentId === scene.id)
+      const timing = segmentTimings.find((t) => t.segmentId === scene.id)
       const sceneDuration = timing ? timing.durationSec : (scene.duration && scene.duration > 0 ? scene.duration : 3)
       const segPath = path.join(tempDir, `segment_${i}.mp4`)
       segmentFiles.push(segPath)
@@ -411,7 +434,7 @@ export async function renderProductVideo(
 
     const stats = fs.statSync(finalOutputPath)
 
-    const totalDuration = speechAudioResult.durationSec || params.scenes.reduce(
+    const totalDuration = masterAudioDuration || params.scenes.reduce(
       (acc, s) => acc + (s.duration && s.duration > 0 ? s.duration : 3),
       0
     )
