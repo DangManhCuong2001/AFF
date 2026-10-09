@@ -160,15 +160,23 @@ export class InfographicEngine {
     primaryImageUrl: string
     secondaryImageUrl?: string
     galleryImages?: string[]
-    customCategory?: ProductCategory
+    customCategory?: ProductCategory | string
     scenes?: StoryboardScene[]
     duration?: number
     problemSolved?: string
     benefits?: string[]
   }): ProductInfographicDeck {
     const { productName, primaryImageUrl, secondaryImageUrl, galleryImages, scenes } = params
-    const category = params.customCategory || this.detectCategory(productName)
-    const theme = THEMES[category]
+    
+    // Safely resolve category: validate against THEMES keys, otherwise fallback to detectCategory
+    let category: ProductCategory = 'kitchen'
+    if (params.customCategory && THEMES[params.customCategory as ProductCategory]) {
+      category = params.customCategory as ProductCategory
+    } else {
+      category = this.detectCategory(productName)
+    }
+
+    const theme = THEMES[category] || THEMES.kitchen
 
     // Pool of available product images (upgraded to Ultra HD origin-jpeg)
     const availableImages = [

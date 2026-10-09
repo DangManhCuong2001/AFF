@@ -6,7 +6,7 @@ import { promisify } from 'util'
 import { StoryboardScene } from '@/engines/core/types'
 import { VipeeSpeechDirector, VipeeTTSProvider } from '@/engines/speech/VipeeSpeechDirector'
 import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
-import { InfographicEngine } from '@/engines/infographic/InfographicEngine'
+import { InfographicEngine, THEMES } from '@/engines/infographic/InfographicEngine'
 import { ProductCategory } from '@/engines/infographic/types'
 
 const execPromise = promisify(exec)
@@ -173,20 +173,21 @@ export async function renderProductVideo(
 
     // 3. Generate Commercial Infographic Deck (100% matching Remotion Preview)
     const infographicEngine = new InfographicEngine()
-    const detectedCategory = (params.category as ProductCategory) || infographicEngine.detectCategory(params.productName)
+    const detectedCategory = infographicEngine.detectCategory(params.productName)
     const deck = infographicEngine.generateDeck({
       productName: params.productName || 'Sản phẩm tiện ích',
       price: params.price,
       primaryImageUrl: availableImagePaths[0] || '',
       secondaryImageUrl: availableImagePaths[1] || availableImagePaths[0],
       galleryImages: availableImagePaths,
-      customCategory: detectedCategory,
+      customCategory: (params.category as ProductCategory) || detectedCategory,
       scenes: params.scenes,
     })
 
-    const { theme, cards } = deck
-    const themeAccentHex = hexToFfmpegColor(theme.accentColor, '0xf43f5e')
-    const themeBadgeBgHex = hexToFfmpegColor(theme.badgeBg, '0x292524')
+    const theme = deck.theme || (THEMES[detectedCategory as ProductCategory] || THEMES.kitchen)
+    const cards = deck.cards || []
+    const themeAccentHex = hexToFfmpegColor(theme?.accentColor, '0xf43f5e')
+    const themeBadgeBgHex = hexToFfmpegColor(theme?.badgeBg, '0x292524')
 
     // 4. Build Video Segments with multi-path font resolution
     const segmentFiles: string[] = []
