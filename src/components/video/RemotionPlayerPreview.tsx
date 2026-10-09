@@ -7,6 +7,7 @@ import { RemotionVideoProps } from '@/remotion/types'
 import { VisualBeat } from '@/engines/visual/types'
 import { VipeeVisualDirector } from '@/engines/visual/VipeeVisualDirector'
 import { StoryboardScene } from '@/engines/core/types'
+import { InfographicEngine } from '@/engines/infographic/InfographicEngine'
 import { Sparkles, Play, RefreshCw, Volume2, ShieldCheck, Film } from 'lucide-react'
 
 // Dynamically import Player from @remotion/player with SSR disabled to prevent hydration mismatches
@@ -85,10 +86,28 @@ export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
       category: category,
     })
 
+    // Generate Commercial Infographic Deck for exact visual fidelity matching Part 1
+    const infographicEngine = new InfographicEngine()
+    const deck = infographicEngine.generateDeck({
+      productName: productName || 'Sản phẩm thông minh',
+      price,
+      primaryImageUrl: validImages[0] || '',
+      secondaryImageUrl: validImages[1],
+      galleryImages: validImages,
+      scenes,
+    })
+
+    // Attach Infographic Cards & Category Theme to each story beat
+    const beatsWithCards = storyplan.beats.map((beat, idx) => ({
+      ...beat,
+      infographicCard: deck.cards[idx] || deck.cards[deck.cards.length - 1],
+      theme: deck.theme,
+    }))
+
     const totalDurationFrames = Math.max(90, Math.round(storyplan.totalDurationSec * fps))
 
     return {
-      beats: storyplan.beats,
+      beats: beatsWithCards,
       masterAudioUrl: voiceAudioUrl || '',
       bgmAudioUrl: bgmAudioUrl,
       bgmVolume: 0.12,

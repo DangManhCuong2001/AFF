@@ -9,6 +9,7 @@ import { StoryboardScene } from '@/engines/core/types'
 import { VoicePersonality } from '@/engines/speech/types'
 import { RemotionVideoProps } from '@/remotion/types'
 import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
+import { InfographicEngine } from '@/engines/infographic/InfographicEngine'
 
 export interface RenderRemotionParams {
   productName: string
@@ -185,27 +186,47 @@ export async function renderRemotionVideo(
     category: params.category || 'home',
   })
 
-  // 4. Convert Backgrounds to Base64 to ensure 100% reliable rendering in Chromium
-  const beatsWithInlineAssets = storyplan.beats.map((beat) => {
+  // 4. Generate Commercial Infographic Deck matching Part 1
+  const infographicEngine = new InfographicEngine()
+  const deck = infographicEngine.generateDeck({
+    productName: params.productName || 'Sản phẩm thông minh',
+    price: params.price,
+    primaryImageUrl: validImages[0] || '',
+    secondaryImageUrl: validImages[1],
+    galleryImages: validImages,
+    scenes: params.scenes,
+  })
+
+  // 5. Convert Backgrounds and Product Assets to Base64 to ensure 100% reliable rendering in Chromium
+  const beatsWithInlineAssets = storyplan.beats.map((beat, idx) => {
+    let bgDataUri: string | undefined = undefined
     const bgUrl = beat.layers.background.url
     if (bgUrl && bgUrl.startsWith('/backgrounds/')) {
       const filename = path.basename(bgUrl)
       const localBgPath = path.join(process.cwd(), 'public', 'backgrounds', filename)
-      const dataUri = fileToDataUri(localBgPath, 'image/png')
-      if (dataUri) {
-        return {
-          ...beat,
-          layers: {
-            ...beat.layers,
-            background: {
-              ...beat.layers.background,
-              url: dataUri,
-            },
-          },
-        }
-      }
+      bgDataUri = fileToDataUri(localBgPath, 'image/png')
     }
-    return beat
+
+    const card = deck.cards[idx] || deck.cards[deck.cards.length - 1]
+    const cardWithInlineAsset = card
+      ? {
+          ...card,
+          productImageUrl: beat.layers.product.url || card.productImageUrl,
+        }
+      : undefined
+
+    return {
+      ...beat,
+      infographicCard: cardWithInlineAsset,
+      theme: deck.theme,
+      layers: {
+        ...beat.layers,
+        background: {
+          ...beat.layers.background,
+          url: bgDataUri || beat.layers.background.url,
+        },
+      },
+    }
   })
 
   // 5. Convert Audio Tracks to Inlined Base64 Data URIs

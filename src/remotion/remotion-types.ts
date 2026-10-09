@@ -347,6 +347,60 @@ export interface StoryplanBeat {
     voucher?: string
     ctaText?: string
   }
+  infographicCard?: InfographicCardData
+  theme?: InfographicTheme
+}
+
+// ─── Commercial Infographic Layout Data ───────────────────────────────────────
+
+export interface InfographicTheme {
+  id: string
+  name: string
+  backgroundUrl: string
+  surfaceBg: string
+  cardBg: string
+  accentColor: string
+  accentHover: string
+  accentBgLight: string
+  textPrimary: string
+  textSecondary: string
+  borderColor: string
+  badgeBg: string
+}
+
+export interface FeatureChip {
+  id: string
+  iconName: string
+  title: string
+}
+
+export interface ProblemSticker {
+  text: string
+  topPercent: number
+  leftPercent: number
+  rotationDeg: number
+  variant?: 'warning' | 'neutral'
+}
+
+export interface InfographicCardData {
+  stepNumber: number
+  stepLabel: string
+  headline: string
+  highlightWord?: string
+  subtitle: string
+  layoutVariant: string
+  productImageUrl: string
+  featureChips?: FeatureChip[]
+  stickers?: ProblemSticker[]
+  accentEffect?: 'rays' | 'sparkles' | 'none'
+  hasHandInteraction?: boolean
+  offer?: {
+    priceNumber: string
+    priceUnit: string
+    voucherTag?: string
+    subNote?: string
+    ctaText: string
+  }
 }
 
 // ─── Remotion Video Props ─────────────────────────────────────────────────────
