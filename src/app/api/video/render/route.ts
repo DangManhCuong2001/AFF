@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
-import { renderRemotionVideo } from '@/lib/video/remotionRenderer'
 import { renderProductVideo } from '@/lib/video/generator'
 import { StoryboardScene } from '@/engines/core/types'
 
@@ -134,55 +133,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Render video
-    let result: {
-      filePath: string
-      fileName: string
-      duration: number
-      fileSizeBytes: number
-    }
-
-    const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
-
-    if (isServerless) {
-      console.log('[VideoRenderAPI] Running on Vercel Serverless, using native FFmpeg engine directly...')
-      result = await renderProductVideo({
-        productName,
-        price,
-        scenes,
-        imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
-        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-        voicePreset,
-        masterAudioBuffer,
-      })
-    } else {
-      try {
-        result = await renderRemotionVideo({
-          productName,
-          price,
-          category,
-          scenes,
-          imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
-          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-          voicePreset,
-          masterAudioBuffer,
-        })
-      } catch (remotionErr) {
-        console.warn(
-          '[VideoRenderAPI] Remotion headless render failed, falling back to native FFmpeg engine:',
-          (remotionErr as Error)?.message
-        )
-        result = await renderProductVideo({
-          productName,
-          price,
-          scenes,
-          imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
-          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-          voicePreset,
-          masterAudioBuffer,
-        })
-      }
-    }
+    // Render video using high-performance FFmpeg engine
+    const result = await renderProductVideo({
+      productName,
+      price,
+      scenes,
+      imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
+      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+      voicePreset,
+      masterAudioBuffer,
+    })
 
     // Also persist into public/renders for immediate direct URL access
     try {

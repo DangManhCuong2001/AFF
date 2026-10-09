@@ -87,7 +87,7 @@ export async function renderProductVideo(
 
     if (availableImagePaths.length === 0) {
       const fallbackPath = path.join(tempDir, 'product_img_fallback.png')
-      const createImgCmd = `${ffmpeg} -y -f lavfi -i color=c=0x18181b:s=800x800:d=1 -vframes 1 "${fallbackPath}"`
+      const createImgCmd = `"${ffmpeg}" -y -f lavfi -i color=c=0x18181b:s=800x800:d=1 -vframes 1 "${fallbackPath}"`
       await execPromise(createImgCmd)
       availableImagePaths.push(fallbackPath)
     }
@@ -362,7 +362,7 @@ export async function renderProductVideo(
 
     const rawCombinedVideoPath = path.join(tempDir, 'raw_video.mp4')
     await execPromise(
-      `${ffmpeg} -y -f concat -safe 0 -i "${videoConcatListPath}" -c copy "${rawCombinedVideoPath}"`
+      `"${ffmpeg}" -y -f concat -safe 0 -i "${videoConcatListPath}" -c copy "${rawCombinedVideoPath}"`
     )
 
     // 6. Final Sound Design: Combine Video + Master Voice + Synced SFX + Ducked BGM into final MP4

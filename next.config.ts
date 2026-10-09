@@ -3,10 +3,6 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   serverExternalPackages: [
     'ffmpeg-static',
-    '@remotion/bundler',
-    '@remotion/renderer',
-    'remotion',
-    '@remotion/studio',
   ],
   outputFileTracingIncludes: {
     '/api/**/*': [
