@@ -2171,14 +2171,30 @@ export default function CreateVideoPage() {
                     <div className="pt-2 flex gap-3">
                       <button
                         type="button"
-                        onClick={handlePublishToTikTok}
-                        disabled={publishing || !renderedVideoUrl}
+                        onClick={() => {
+                          if (!renderedVideoUrl && !renderedVideoFile) {
+                            handleStartGeneratingVideo()
+                          } else {
+                            handlePublishToTikTok()
+                          }
+                        }}
+                        disabled={publishing || isRenderingVideo}
                         className="w-full py-3.5 px-5 rounded-xl font-bold text-sm bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white shadow-lg shadow-rose-600/30 disabled:opacity-50 transition flex items-center justify-center gap-2 cursor-pointer"
                       >
                         {publishing ? (
                           <>
                             <RefreshCw className="w-4 h-4 animate-spin" />
                             Đang tải lên TikTok qua Content Posting API...
+                          </>
+                        ) : isRenderingVideo ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            Đang render video chuẩn Preview...
+                          </>
+                        ) : !renderedVideoUrl ? (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            Render &amp; Đăng lên TikTok (Chuẩn 100% Khớp Preview)
                           </>
                         ) : (
                           <>

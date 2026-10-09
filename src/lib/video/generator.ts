@@ -3,16 +3,18 @@ import path from 'path'
 import os from 'os'
 import { exec } from 'child_process'
 import { promisify } from 'util'
-import { generateVietnameseTTS } from '@/lib/audio/tts'
 import { StoryboardScene } from '@/engines/core/types'
 import { VipeeSpeechDirector, VipeeTTSProvider } from '@/engines/speech/VipeeSpeechDirector'
 import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
+import { InfographicEngine } from '@/engines/infographic/InfographicEngine'
+import { ProductCategory } from '@/engines/infographic/types'
 
 const execPromise = promisify(exec)
 
 export interface RenderVideoParams {
   productName: string
   price?: number
+  category?: string
   scenes: StoryboardScene[]
   imageBuffer?: Buffer
   imageBuffers?: Buffer[]
@@ -37,7 +39,40 @@ function escapeFfmpegText(text: string): string {
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "\\'")
     .replace(/:/g, '\\:')
-    .replace(/%/g, '\\%')
+    .replace(/%/g, '%%')
+}
+
+/**
+ * Smart word-wrap helper for multi-line ffmpeg drawtext
+ */
+function wrapText(text: string, maxCharsPerLine: number = 24): string {
+  if (!text) return ''
+  const words = text.trim().split(/\s+/)
+  const lines: string[] = []
+  let currentLine = ''
+
+  for (const word of words) {
+    if (!currentLine) {
+      currentLine = word
+    } else if ((currentLine + ' ' + word).length <= maxCharsPerLine) {
+      currentLine += ' ' + word
+    } else {
+      lines.push(currentLine)
+      currentLine = word
+    }
+  }
+  if (currentLine) lines.push(currentLine)
+  return lines.join('\n')
+}
+
+/**
+ * Converts CSS hex color (#B45309) to FFmpeg color (0xB45309)
+ */
+function hexToFfmpegColor(hex?: string, fallback: string = '0x18181b'): string {
+  if (!hex) return fallback
+  const clean = hex.replace('#', '')
+  if (clean.length === 6) return `0x${clean}`
+  return fallback
 }
 
 /**
@@ -136,6 +171,23 @@ export async function renderProductVideo(
       segmentTimings = speechAudioResult.segmentTimings
     }
 
+    // 3. Generate Commercial Infographic Deck (100% matching Remotion Preview)
+    const infographicEngine = new InfographicEngine()
+    const detectedCategory = (params.category as ProductCategory) || infographicEngine.detectCategory(params.productName)
+    const deck = infographicEngine.generateDeck({
+      productName: params.productName || 'Sản phẩm tiện ích',
+      price: params.price,
+      primaryImageUrl: availableImagePaths[0] || '',
+      secondaryImageUrl: availableImagePaths[1] || availableImagePaths[0],
+      galleryImages: availableImagePaths,
+      customCategory: detectedCategory,
+      scenes: params.scenes,
+    })
+
+    const { theme, cards } = deck
+    const themeAccentHex = hexToFfmpegColor(theme.accentColor, '0xf43f5e')
+    const themeBadgeBgHex = hexToFfmpegColor(theme.badgeBg, '0x292524')
+
     // 4. Build Video Segments with multi-path font resolution
     const segmentFiles: string[] = []
     const fontCandidates = [
@@ -161,35 +213,21 @@ export async function renderProductVideo(
 
     for (let i = 0; i < params.scenes.length; i++) {
       const scene = params.scenes[i]
+      const card = cards[i] || cards[cards.length - 1]
       const timing = segmentTimings.find((t) => t.segmentId === scene.id)
       const sceneDuration = timing ? timing.durationSec : (scene.duration && scene.duration > 0 ? scene.duration : 3)
       const segPath = path.join(tempDir, `segment_${i}.mp4`)
       segmentFiles.push(segPath)
 
-      const badgeText = escapeFfmpegText(
-        i === 0
-          ? '🔥 HOT TIKTOK • 3 GIÂY ĐẦU'
-          : i === params.scenes.length - 1
-          ? '🛒 TIKTOK SHOP • GÓC TRÁI'
-          : scene.type === 'problem'
-          ? '😫 VẤN ĐỀ HAY GẶP'
-          : scene.type === 'demo'
-          ? '✨ TRẢI NGHIỆM THỰC TẾ'
-          : scene.type === 'benefit'
-          ? '🎉 KẾT QUẢ THỎA MÃN'
-          : '💡 GIẢI PHÁP TỨC THÌ'
-      )
-
-      const headlineEscaped = escapeFfmpegText(scene.headline.slice(0, 42))
-
-      // Contextual Background selection based on product name
-      const pNameLower = params.productName.toLowerCase()
-      const bgFilename =
-        pNameLower.includes('dây') || pNameLower.includes('bàn') || pNameLower.includes('sạc') || pNameLower.includes('office')
-          ? 'desk_workspace.png'
-          : pNameLower.includes('bếp') || pNameLower.includes('gia vị') || pNameLower.includes('nồi')
-          ? 'kitchen_modern.png'
-          : 'minimal_lifestyle.png'
+      // Background selection based on category theme
+      let bgFilename = 'minimal_lifestyle.png'
+      if (theme.backgroundUrl.includes('kitchen') || theme.id === 'kitchen') {
+        bgFilename = 'kitchen_modern.png'
+      } else if (theme.backgroundUrl.includes('desk') || theme.id === 'desk_tech') {
+        bgFilename = 'desk_workspace.png'
+      } else {
+        bgFilename = 'minimal_lifestyle.png'
+      }
 
       const bgCandidates = [
         path.join(process.cwd(), 'src', 'assets', 'backgrounds', bgFilename),
@@ -209,99 +247,97 @@ export async function renderProductVideo(
 
       const sceneImgPath = availableImagePaths[i % availableImagePaths.length]
 
-      // Dynamic Ken Burns Zoom on both background and product card (creating 3D depth parallax)
-      const bgScaleRate = i === 0 ? 0.02 : i === 2 ? 0.025 : 0.015
-      const prodScaleRate = i === 0 ? 0.04 : i === 2 ? 0.045 : i === 3 ? 0.03 : 0.02
-
+      // Parallax Zoom on background and product card
       const isFirstScene = i === 0
       const isLastScene = i === params.scenes.length - 1
-      const isRevealScene = i === 1
-      const isBenefitScene = i === 2
+      const bgScaleRate = isFirstScene ? 0.02 : 0.015
+      const prodScaleRate = isLastScene ? 0.03 : 0.02
 
-      const benefitChipsText = escapeFfmpegText('✓ Tiện lợi    ✓ Gọn gàng    ✓ Bền đẹp')
+      // 1. Step Badge Text (e.g. "01 • GÂY CHÚ Ý", "02 • VẤN ĐỀ HAY GẶP")
+      const stepBadgeText = escapeFfmpegText(`  0${card.stepNumber}  •  ${card.stepLabel}  `)
 
-      // Context-aware scene label
-      const sceneLabel = escapeFfmpegText(
-        isFirstScene
-          ? 'VẤN ĐỀ HAY GẶP'
-          : isLastScene
-          ? 'TIKTOK SHOP ƯU ĐÃI'
-          : isRevealScene
-          ? 'GIẢI PHÁP MỚI'
-          : isBenefitScene
-          ? 'CHI TIẾT TIỆN LỢI'
-          : 'KẾT QUẢ THỎA MÃN'
-      )
+      // 2. Headline with smart wrapping
+      const headlineRaw = card.headline || scene.headline || `Khám phá ${params.productName}`
+      const wrappedHeadline = escapeFfmpegText(wrapText(headlineRaw, 22))
 
-      // Smart word-boundary truncation so words are never cut in half
-      const cleanVoice = scene.voice || scene.headline
-      const voiceSubtitle = escapeFfmpegText(
-        cleanVoice.length > 50
-          ? cleanVoice.slice(0, cleanVoice.slice(0, 50).lastIndexOf(' ') || 50) + '...'
-          : cleanVoice
-      )
+      // 3. Subtitle with smart wrapping
+      const subtitleRaw = card.subtitle || scene.voice || ''
+      const cleanSub = subtitleRaw.length > 60 ? subtitleRaw.slice(0, 58) + '...' : subtitleRaw
+      const wrappedSubtitle = escapeFfmpegText(wrapText(cleanSub, 28))
 
       // Multi-layer FFmpeg filtergraph:
-      // 1. Background layer with continuous cinematic parallax drift & vignette
-      // 2. Product Card: Rounded frosted container + dynamic Ken Burns scale (hidden in scene 1)
-      // 3. Composite product card centered over background
-      // 4. Top animated TikTok Progress Line
-      // 5. Top Context Label (small, uppercase, low emphasis)
-      // 6. Main Headline (Bold white with soft shadow, high emphasis)
-      // 7. Middle / Bottom: Benefit Chips or Clean Offer CTA
+      // 1. Animated theme background with vignette
+      // 2. Floating product card with soft drop shadow container
+      // 3. Top animated TikTok Progress Line matching theme accent
+      // 4. Step badge pill with theme badge background
+      // 5. Main Bold Headline
+      // 6. Subtitle summary
+      // 7. Scene-specific overlays (Problem stickers / Feature chips / Huge Price & CTA)
       const filterComplexParts: string[] = [
-        // 1. Animated background
         `[0:v]scale='720*(1+${bgScaleRate}*t)':'1280*(1+${bgScaleRate}*t)':eval=frame,crop=720:1280,vignette=PI/5[bg]`,
       ]
 
-      if (isFirstScene) {
-        // Scene 1: Problem focus - NO giant product card yet! Gives breathing room.
-        filterComplexParts.push(
-          `[bg]drawtext=text='⚠️ Dễ ẩm mốc • Khó lấy thìa • Bừa bộn gian bếp':fontcolor=0xfda4af:fontsize=20:x=(w-text_w)/2:y=560:box=1:boxcolor=0x09090b@0.75:boxborderw=16[comp]`
-        )
-      } else {
-        // Scenes 2+: Product card in soft frosted container
-        const cardSize = isLastScene ? 400 : 460
-        filterComplexParts.push(
-          `[1:v]scale=${cardSize}:${cardSize}:force_original_aspect_ratio=decrease,pad=${cardSize + 20}:${cardSize + 20}:(ow-iw)/2:(oh-ih)/2:color=0xffffff@0.08,scale='${cardSize + 20}*(1+0.04*max(0,1-t/0.3)+${prodScaleRate}*t)':'${cardSize + 20}*(1+0.04*max(0,1-t/0.3)+${prodScaleRate}*t)':eval=frame[prod]`,
-          `[bg][prod]overlay=(W-w)/2:300-(h-${cardSize + 20})/2[comp]`
-        )
-      }
-
-      // Top progress line
+      // Product Card: Rounded container + Ken Burns drift
+      const cardSize = isLastScene ? 420 : 460
       filterComplexParts.push(
-        `[comp]drawbox=x=0:y=0:w='iw*t/${sceneDuration}':h=6:color=0xf43f5e@0.95:t=fill[prog]`
+        `[1:v]scale=${cardSize}:${cardSize}:force_original_aspect_ratio=decrease,pad=${cardSize + 24}:${cardSize + 24}:(ow-iw)/2:(oh-ih)/2:color=0xffffff@0.12,scale='${cardSize + 24}*(1+0.04*max(0,1-t/0.3)+${prodScaleRate}*t)':'${cardSize + 24}*(1+0.04*max(0,1-t/0.3)+${prodScaleRate}*t)':eval=frame[prod]`,
+        `[bg][prod]overlay=(W-w)/2:320-(h-${cardSize + 24})/2[comp_base]`
       )
 
-      // Top Context Label
+      // Top Animated TikTok Progress Bar
       filterComplexParts.push(
-        `[prog]drawtext=text='${sceneLabel}'${fontParam}:fontcolor=0xfbbf24:fontsize=18:x=(w-text_w)/2:y=110:box=1:boxcolor=0x09090b@0.65:boxborderw=8[t_label]`
+        `[comp_base]drawbox=x=0:y=0:w='iw*t/${sceneDuration}':h=8:color=${themeAccentHex}@0.95:t=fill[prog]`
+      )
+
+      // Top Step Badge (Circle with number + dark pill)
+      filterComplexParts.push(
+        `[prog]drawtext=text='${stepBadgeText}'${fontParam}:fontcolor=white:fontsize=18:x=(w-text_w)/2:y=80:box=1:boxcolor=${themeBadgeBgHex}@0.95:boxborderw=10[t_badge]`
       )
 
       // Main Headline
       filterComplexParts.push(
-        `[t_label]drawtext=text='${headlineEscaped}'${fontParam}:fontcolor=white:fontsize=32:borderw=3:bordercolor=black:shadowcolor=black@0.7:shadowx=2:shadowy=2:x=(w-text_w)/2:y=165[t_head]`
+        `[t_badge]drawtext=text='${wrappedHeadline}'${fontParam}:fontcolor=white:fontsize=32:line_spacing=8:borderw=3:bordercolor=black:shadowcolor=black@0.7:shadowx=2:shadowy=2:x=(w-text_w)/2:y=135[t_head]`
       )
 
-      // Contextual bottom layout
-      if (isLastScene) {
-        // Offer + Clean CTA
-        const priceDisplay = params.price && params.price > 0
-          ? `${params.price.toLocaleString('vi-VN')}₫`
-          : '39K / bộ'
+      // Subtitle
+      filterComplexParts.push(
+        `[t_head]drawtext=text='${wrappedSubtitle}'${fontParam}:fontcolor=0xe4e4e7:fontsize=18:line_spacing=6:borderw=2:bordercolor=black:shadowcolor=black@0.5:x=(w-text_w)/2:y=235[t_sub]`
+      )
+
+      // Contextual bottom & scene layout matching InfographicMotionScene
+      if (card.layoutVariant === 'problem_stickers' || (isFirstScene && card.stickers)) {
+        // Problem Scene: Render real warning stickers on top of product visual
+        const stk1 = escapeFfmpegText(`⚠️ ${card.stickers?.[0]?.text || scene.keywords?.[0] || 'Vấn đề phiền toái'}`)
+        const stk2 = escapeFfmpegText(`⚠️ ${card.stickers?.[1]?.text || scene.keywords?.[1] || 'Bất tiện khi dùng'}`)
         filterComplexParts.push(
-          `[t_head]drawtext=text='${escapeFfmpegText(priceDisplay)} • Voucher giảm 10K'${fontParam}:fontcolor=0xfbbf24:fontsize=22:x=(w-text_w)/2:y=800:box=1:boxcolor=0x09090b@0.8:boxborderw=10[t_offer]`,
-          `[t_offer]drawtext=text='🛒 XEM Ở GIỎ HÀNG GÓC TRÁI'${fontParam}:fontcolor=white:fontsize=22:x=(w-text_w)/2:y='880+3*sin(3*PI*t)':box=1:boxcolor=0xe11d48@0.95:boxborderw=14[flash]`
+          `[t_sub]drawtext=text='  ${stk1}  '${fontParam}:fontcolor=0x991b1b:fontsize=20:box=1:boxcolor=0xfee2e2@0.95:boxborderw=8:x=40:y=350[stk_1]`,
+          `[stk_1]drawtext=text='  ${stk2}  '${fontParam}:fontcolor=0x991b1b:fontsize=20:box=1:boxcolor=0xfee2e2@0.95:boxborderw=8:x=w-text_w-40:y=490[flash]`
         )
-      } else if (!isFirstScene) {
-        // Benefit chips row below product card
+      } else if (isLastScene) {
+        // Last Scene: Commercial Offer with huge price & TikTok Shop CTA
+        const priceDisplay = card.offer?.priceNumber
+          ? `${card.offer.priceNumber} ${card.offer.priceUnit || ''}`
+          : params.price && params.price > 0
+          ? `${params.price.toLocaleString('vi-VN')}₫`
+          : 'Giá tốt hôm nay'
+        const ctaText = card.offer?.ctaText || 'XEM NGAY Ở GIỎ HÀNG GÓC TRÁI'
         filterComplexParts.push(
-          `[t_head]drawtext=text='${benefitChipsText}'${fontParam}:fontcolor=0x34d399:fontsize=20:x=(w-text_w)/2:y=830:box=1:boxcolor=0x09090b@0.7:boxborderw=10[flash]`
+          `[t_sub]drawtext=text='  ${escapeFfmpegText(priceDisplay)}  '${fontParam}:fontcolor=0xfbbf24:fontsize=36:borderw=2:bordercolor=black:box=1:boxcolor=0x09090b@0.85:boxborderw=12:x=(w-text_w)/2:y=780[t_price]`,
+          `[t_price]drawtext=text='  Voucher giảm giá TikTok Shop • Freeship toàn quốc  '${fontParam}:fontcolor=0x34d399:fontsize=18:box=1:boxcolor=0x09090b@0.75:boxborderw=8:x=(w-text_w)/2:y=840[t_vouch]`,
+          `[t_vouch]drawtext=text='  🛒 ${escapeFfmpegText(ctaText)}  '${fontParam}:fontcolor=white:fontsize=22:box=1:boxcolor=0xe11d48@0.95:boxborderw=16:x=(w-text_w)/2:y='895+3*sin(3*PI*t)'[flash]`
         )
       } else {
-        // Problem scene subtitle
+        // Feature/Demo/Benefit Scenes: Real feature chips row matching preview
+        let chipsStr = ''
+        if (card.featureChips && card.featureChips.length > 0) {
+          chipsStr = card.featureChips.map((c) => `✓ ${c.title}`).join('    ')
+        } else if (scene.keywords && scene.keywords.length > 0) {
+          chipsStr = scene.keywords.map((k) => `✓ ${k}`).join('    ')
+        } else {
+          chipsStr = '✓ Tiện lợi    ✓ Cao cấp    ✓ Đáng tiền'
+        }
         filterComplexParts.push(
-          `[t_head]drawtext=text='${voiceSubtitle}'${fontParam}:fontcolor=0xe4e4e7:fontsize=20:borderw=2:bordercolor=black:x=(w-text_w)/2:y=830[flash]`
+          `[t_sub]drawtext=text='  ${escapeFfmpegText(chipsStr)}  '${fontParam}:fontcolor=white:fontsize=20:box=1:boxcolor=${themeAccentHex}@0.9:boxborderw=12:x=(w-text_w)/2:y=830[flash]`
         )
       }
 

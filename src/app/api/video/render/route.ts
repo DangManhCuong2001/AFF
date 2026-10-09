@@ -137,6 +137,7 @@ export async function POST(request: NextRequest) {
     const result = await renderProductVideo({
       productName,
       price,
+      category,
       scenes,
       imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
