@@ -550,12 +550,67 @@ export function parseModernRouterData(html: string): {
 }
 
 /**
+ * Helper to fetch page via configured Scraping Proxy or Cloudflare Worker
+ * Bypasses TikTok Security Check / Datacenter Geoblocking on Production (Vercel)
+ */
+async function fetchViaProxy(targetUrl: string): Promise<string | null> {
+  const customProxyUrl = process.env.TIKTOK_SCRAPE_PROXY_URL?.trim()
+  const scraperApiKey = process.env.SCRAPER_API_KEY?.trim()
+  const zenrowsApiKey = process.env.ZENROWS_API_KEY?.trim()
+
+  if (!customProxyUrl && !scraperApiKey && !zenrowsApiKey) {
+    return null
+  }
+
+  let fetchUrl = ''
+  if (customProxyUrl) {
+    const sep = customProxyUrl.includes('?') ? '&' : '?'
+    fetchUrl = `${customProxyUrl}${sep}url=${encodeURIComponent(targetUrl)}`
+  } else if (scraperApiKey) {
+    fetchUrl = `https://api.scraperapi.com?api_key=${scraperApiKey}&url=${encodeURIComponent(targetUrl)}&country_code=vn`
+  } else if (zenrowsApiKey) {
+    fetchUrl = `https://api.zenrows.com/v1/?apikey=${zenrowsApiKey}&url=${encodeURIComponent(targetUrl)}&premium_proxy=true&proxy_country=vn`
+  }
+
+  if (!fetchUrl) return null
+
+  try {
+    const res = await fetch(fetchUrl, {
+      signal: AbortSignal.timeout(15000),
+    })
+    if (res.ok) {
+      const text = await res.text()
+      if (text && !isAntiBotHtml(text) && text.includes('__MODERN_ROUTER_DATA__')) {
+        return text
+      }
+    }
+  } catch (err) {
+    console.warn('[TikTokShopImport] fetchViaProxy failed:', (err as Error)?.message)
+  }
+  return null
+}
+
+/**
  * Helper to fetch TikTok PDP with cookie session warmup
  */
 async function fetchTikTokPage(
   targetUrl: string,
   cleanPdpUrl?: string
 ): Promise<{ html: string; finalUrl: string }> {
+  // Strategy 0: If Scraping Proxy / Cloudflare Worker is configured, prioritize proxy on production
+  const hasProxy = Boolean(
+    process.env.TIKTOK_SCRAPE_PROXY_URL?.trim() ||
+      process.env.SCRAPER_API_KEY?.trim() ||
+      process.env.ZENROWS_API_KEY?.trim()
+  )
+
+  if (hasProxy) {
+    const proxyHtml = await fetchViaProxy(cleanPdpUrl || targetUrl)
+    if (proxyHtml) {
+      return { html: proxyHtml, finalUrl: cleanPdpUrl || targetUrl }
+    }
+  }
+
   // Strategy 1: Clean standard browser headers without Sec-Ch-Ua (prevents Akamai TLS fingerprint mismatch)
   const standardHeaders: Record<string, string> = {
     'User-Agent':
@@ -672,24 +727,35 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
     // immediately fetch the modern canonical web PDP (/vn/pdp/:productId) which is NOT blocked by Security Check!
     if (!modernData && productId) {
       const canonicalPdp = `https://shop.tiktok.com/vn/pdp/${productId}`
-      try {
-        const canonicalRes = await fetch(canonicalPdp, {
-          headers: {
-            'User-Agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-            Accept: 'text/html',
-            'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
-          },
-        })
-        const canonicalHtml = await canonicalRes.text()
-        const canonicalModern = parseModernRouterData(canonicalHtml)
+      const proxyPdpHtml = await fetchViaProxy(canonicalPdp)
+      if (proxyPdpHtml) {
+        const canonicalModern = parseModernRouterData(proxyPdpHtml)
         if (canonicalModern) {
           modernData = canonicalModern
           finalUrl = canonicalPdp
-          html = canonicalHtml
+          html = proxyPdpHtml
         }
-      } catch (err) {
-        console.warn('[TikTokShopImport] canonical PDP fetch error:', err)
+      }
+      if (!modernData) {
+        try {
+          const canonicalRes = await fetch(canonicalPdp, {
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+              Accept: 'text/html',
+              'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+            },
+          })
+          const canonicalHtml = await canonicalRes.text()
+          const canonicalModern = parseModernRouterData(canonicalHtml)
+          if (canonicalModern) {
+            modernData = canonicalModern
+            finalUrl = canonicalPdp
+            html = canonicalHtml
+          }
+        } catch (err) {
+          console.warn('[TikTokShopImport] canonical PDP fetch error:', err)
+        }
       }
     }
 
