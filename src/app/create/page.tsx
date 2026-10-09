@@ -730,13 +730,19 @@ export default function CreateVideoPage() {
       })
 
       if (!res.ok) {
-        let errMsg = 'Render video thất bại'
+        let errMsg = `Render video thất bại (${res.status})`
         try {
-          const errData = await res.json()
-          errMsg = errData.error || errMsg
-        } catch {
           const text = await res.text()
-          errMsg = text.slice(0, 150) || errMsg
+          try {
+            const errData = JSON.parse(text)
+            errMsg = errData.error || errData.message || errMsg
+          } catch {
+            if (text && text.trim()) {
+              errMsg = text.slice(0, 250)
+            }
+          }
+        } catch {
+          // ignore stream read error
         }
         throw new Error(errMsg)
       }

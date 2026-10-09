@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { renderRemotionVideo } from '@/lib/video/remotionRenderer'
+import { renderProductVideo } from '@/lib/video/generator'
 import { StoryboardScene } from '@/engines/core/types'
 
 export const dynamic = 'force-dynamic'
@@ -119,15 +120,38 @@ export async function POST(request: NextRequest) {
     }
 
     // Render exact Remotion TikTokCommerceVideo matching the preview
-    const result = await renderRemotionVideo({
-      productName,
-      price,
-      category,
-      scenes,
-      imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
-      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-      voicePreset,
-    })
+    let result: {
+      filePath: string
+      fileName: string
+      duration: number
+      fileSizeBytes: number
+    }
+
+    try {
+      result = await renderRemotionVideo({
+        productName,
+        price,
+        category,
+        scenes,
+        imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
+        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+        voicePreset,
+      })
+    } catch (remotionErr) {
+      console.warn(
+        '[VideoRenderAPI] Remotion headless render failed (Chromium missing on serverless), falling back to native FFmpeg engine:',
+        (remotionErr as Error)?.message
+      )
+      // High-performance serverless fallback using ffmpeg-static
+      result = await renderProductVideo({
+        productName,
+        price,
+        scenes,
+        imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
+        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+        voicePreset,
+      })
+    }
 
     // Also persist into public/renders for immediate direct URL access
     try {
