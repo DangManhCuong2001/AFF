@@ -1,4 +1,5 @@
 import { StoryboardScene } from '@/engines/core/types'
+import { upgradeTikTokImageUrl } from '@/lib/tiktok-shop/import'
 import {
   InfographicCardData,
   InfographicTheme,
@@ -169,15 +170,17 @@ export class InfographicEngine {
     const category = params.customCategory || this.detectCategory(productName)
     const theme = THEMES[category]
 
-    // Pool of available product images
+    // Pool of available product images (upgraded to Ultra HD origin-jpeg)
     const availableImages = [
       primaryImageUrl,
       secondaryImageUrl,
       ...(galleryImages || []),
-    ].filter(Boolean) as string[]
+    ]
+      .filter(Boolean)
+      .map((url) => upgradeTikTokImageUrl(url as string))
 
-    const img1 = availableImages[0] || primaryImageUrl
-    const img2 = availableImages[1] || availableImages[0] || primaryImageUrl
+    const img1 = availableImages[0] || (primaryImageUrl ? upgradeTikTokImageUrl(primaryImageUrl) : '')
+    const img2 = availableImages[1] || availableImages[0] || img1
 
     // Format clean price text
     let priceNumber = '39K'
