@@ -470,37 +470,37 @@ export class InfographicEngine {
       case 'kitchen':
         return {
           card1: {
-            headline: 'Gia vị để ngoài dễ ẩm & lộn xộn',
-            highlightWord: 'dễ ẩm & lộn xộn',
-            subtitle: 'Bếp nhìn rối, gia vị cũng khó bảo quản hơn mỗi ngày.',
+            headline: 'Bếp núc bừa bộn & khó tìm',
+            highlightWord: 'bừa bộn & khó tìm',
+            subtitle: 'Đồ dùng để lung tung khiến việc nấu nướng mất thời gian và bực mình.',
             stickers: [
-              { text: 'Dễ ẩm', topPercent: 44, leftPercent: 20, rotationDeg: -6 },
-              { text: 'Lộn xộn', topPercent: 54, leftPercent: 68, rotationDeg: 8 },
-              { text: 'Khó bảo quản', topPercent: 78, leftPercent: 18, rotationDeg: -4 },
+              { text: 'Bừa bộn', topPercent: 44, leftPercent: 20, rotationDeg: -6 },
+              { text: 'Bất tiện', topPercent: 54, leftPercent: 68, rotationDeg: 8 },
+              { text: 'Khó tìm', topPercent: 78, leftPercent: 18, rotationDeg: -4 },
             ],
           },
           card2: {
-            headline: 'Đổi sang bộ này',
-            highlightWord: 'bộ này',
-            subtitle: 'Gọn hơn, dễ lấy hơn và nhìn bếp sạch sẽ hẳn.',
+            headline: `Dùng ${productName.slice(0, 18)}`,
+            highlightWord: productName.slice(0, 15),
+            subtitle: 'Gọn gàng, dễ dùng và nâng cấp không gian bếp hiện đại.',
             chips: [
-              { id: 'c1', iconName: 'shield', title: 'Chống ẩm' },
-              { id: 'c2', iconName: 'touch', title: 'Dễ lấy' },
-              { id: 'c3', iconName: 'box', title: 'Gọn bếp' },
+              { id: 'c1', iconName: 'shield', title: 'Chất liệu tốt' },
+              { id: 'c2', iconName: 'touch', title: 'Dễ sử dụng' },
+              { id: 'c3', iconName: 'box', title: 'Gọn gàng' },
             ],
           },
           card3: {
-            headline: 'Nhìn gọn và sạch hơn hẳn',
-            highlightWord: 'gọn và sạch hơn hẳn',
-            subtitle: 'Sắp xếp ngăn nắp, lấy gia vị cũng nhanh hơn mỗi lần nấu nướng.',
+            headline: 'Gọn gàng và sạch đẹp hơn hẳn',
+            highlightWord: 'gọn gàng và sạch đẹp',
+            subtitle: 'Sắp xếp ngăn nắp, sinh hoạt và nấu nướng tiện lợi mỗi ngày.',
             chips: [
               { id: 'c4', iconName: 'sparkle', title: 'Dễ vệ sinh' },
               { id: 'c5', iconName: 'box', title: 'Tiết kiệm chỗ' },
-              { id: 'c6', iconName: 'leaf', title: 'Dùng hằng ngày' },
+              { id: 'c6', iconName: 'leaf', title: 'Bền đẹp' },
             ],
           },
           card4: {
-            subtitle: 'Nếu bếp nhà bạn cũng hay lộn xộn như vậy, xem ngay ở giỏ hàng.',
+            subtitle: 'Ưu đãi đặc quyền TikTok Shop hôm nay, bấm xem ngay ở giỏ hàng.',
           },
         }
 

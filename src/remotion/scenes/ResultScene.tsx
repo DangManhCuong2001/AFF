@@ -19,8 +19,8 @@ export const ResultScene: React.FC<ResultSceneProps> = ({
   label = 'KẾT QUẢ THỎA MÃN',
   headline,
   productImageUrl,
-  supportText = 'Gia vị luôn khô ráo, sạch sẽ và tiện dụng',
-  resultChips = ['Gọn gàng 100%', 'Bếp thẩm mỹ hơn'],
+  supportText = 'Không gian ngăn nắp, cuộc sống tiện nghi hơn',
+  resultChips = ['Gọn gàng 100%', 'Thẩm mỹ tiện nghi'],
   backgroundUrl,
 }) => {
   return (

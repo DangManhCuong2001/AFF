@@ -195,13 +195,7 @@ export async function renderProductVideo(
       const isRevealScene = i === 1
       const isBenefitScene = i === 2
 
-      const pLower = params.productName.toLowerCase()
-      const isSpice = pLower.includes('gia vị') || pLower.includes('hũ') || pLower.includes('bếp')
-      const benefitChipsText = escapeFfmpegText(
-        isSpice
-          ? '✓ Chống ẩm    ✓ Gọn hơn    ✓ Dễ lấy'
-          : '✓ Tiện lợi    ✓ Gọn gàng    ✓ Bền đẹp'
-      )
+      const benefitChipsText = escapeFfmpegText('✓ Tiện lợi    ✓ Gọn gàng    ✓ Bền đẹp')
 
       // Context-aware scene label
       const sceneLabel = escapeFfmpegText(

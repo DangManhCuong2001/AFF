@@ -75,18 +75,10 @@ export class HomeUtilityEngine implements ProductVideoEngine {
     targetDuration: number = 15
   ): Promise<VideoStrategy> {
     const format = analysis.recommendedFormat || 'problem-solution'
-    const nameLower = (product.name || '').toLowerCase()
-    const isCable = nameLower.includes('dây sạc') || nameLower.includes('cable') || nameLower.includes('kẹp dây')
-    const isKitchen = nameLower.includes('gia vị') || nameLower.includes('bếp') || nameLower.includes('hũ') || nameLower.includes('nồi') || nameLower.includes('dao')
-    
-    // Natural TikTok organic hook tailored for Home & Utility
+    // Natural TikTok organic hook tailored for product
     let hook = `Ai thích nhà cửa gọn gàng, tiện lợi thì xem ngay món này nhé.`
-    if (isCable) {
-      hook = `Nhà ai dây sạc cứ rơi xuống gầm bàn như này thì thử miếng kẹp này xem.`
-    } else if (isKitchen) {
-      hook = `Góc bếp mà lộn xộn gia vị nấu nướng thì xem ngay giải pháp này nhé.`
-    } else if (product.problemSolved) {
-      hook = `${product.problemSolved} thì xem ngay cách giải quyết này nhé.`
+    if (product.problemSolved) {
+      hook = `Ai mà hay gặp tình trạng ${product.problemSolved.toLowerCase()} thì xem ngay giải pháp này nhé.`
     } else if (product.name) {
       hook = `Bạn đã biết đến ${product.name} cực kỳ tiện lợi này chưa?`
     }
@@ -105,7 +97,7 @@ export class HomeUtilityEngine implements ProductVideoEngine {
         mood: 'Sáng sủa, hiện đại, sạch sẽ và ngăn nắp',
         lighting: 'Ánh sáng ban ngày tự nhiên mềm mại',
         palette: ['#FFFFFF', '#F3F4F6', '#E5E7EB', '#111827'],
-        environment: isKitchen ? 'Góc bếp hiện đại, sạch sẽ và ngăn nắp' : 'Không gian gia đình hiện đại tối giản',
+        environment: 'Không gian sống hiện đại, sạch sẽ và ngăn nắp',
       },
     }
   }
@@ -122,45 +114,17 @@ export class HomeUtilityEngine implements ProductVideoEngine {
     const primaryAssetId = assets.find((a) => a.isPrimary)?.id || assets[0]?.id || 'asset-1'
     const secondaryAssetId = assets[1]?.id || primaryAssetId
 
-    const nameLower = (product.name || '').toLowerCase()
-    const isCable = nameLower.includes('dây sạc') || nameLower.includes('cable') || nameLower.includes('kẹp dây')
-    const isKitchen = nameLower.includes('gia vị') || nameLower.includes('bếp') || nameLower.includes('hũ')
+    const mainProblem = product.problemSolved || 'đồ đạc bừa bộn và bất tiện mỗi khi sử dụng'
+    const mainBenefit = product.benefits?.[0] || 'sắp xếp gọn gàng và tiện lợi tức thì'
+    const secondaryBenefit = product.benefits?.[1] || 'chất liệu cao cấp, dùng bền đẹp theo thời gian'
 
-    const scene1Headline = isKitchen
-      ? 'Góc bếp lộn xộn gia vị?'
-      : isCable
-      ? 'Dây sạc cứ rơi xuống sàn?'
-      : 'Nhà bừa bộn tìm đồ khó?'
+    const scene1Headline = `Giải pháp cho ${product.name.slice(0, 20)}`
+    const scene1Keywords = [product.name.slice(0, 15), 'tiện lợi', 'gọn gàng']
 
-    const scene1Keywords = isKitchen
-      ? ['bếp bừa bộn', 'gia vị', 'bất tiện']
-      : isCable
-      ? ['bừa bộn', 'dây sạc', 'bất tiện']
-      : ['bừa bộn', 'bất tiện', 'tìm đồ']
-
-    const scene2Voice = isKitchen
-      ? `Đây là ${product.name}, thiết kế trong suốt cực kỳ thông minh và tiện dụng.`
-      : isCable
-      ? `Đây là miếng kẹp giữ dây ${product.name}, nhỏ mà cực kỳ hữu ích.`
-      : `Đây là ${product.name}, món đồ nhỏ mà cực kỳ hữu ích cho gia đình.`
-
-    const scene3Voice = isKitchen
-      ? `Nắp bật thông minh mở một chạm, kèm muỗng múc tiện lợi chống ẩm mốc hoàn toàn.`
-      : isCable
-      ? `Chỉ cần dán mép bàn là giữ cùng lúc các loại dây cáp cố định luôn tại chỗ.`
-      : `Thiết kế thông minh, giải quyết ngay vấn đề bừa bộn chỉ trong một nốt nhạc.`
-
-    const scene3Headline = isKitchen
-      ? 'Nắp bật một chạm tiện lợi'
-      : isCable
-      ? 'Cố định mọi loại dây cáp'
-      : 'Sắp xếp nhanh chóng tiện lợi'
-
-    const scene4Voice = isKitchen
-      ? `Gian bếp nhìn gọn gàng sang xịn hẳn lên, nấu nướng cần gia vị gì lấy ngay tức thì.`
-      : isCable
-      ? `Bàn làm việc nhìn gọn hơn hẳn, dây sạc cần là với tay lấy được ngay.`
-      : `Không gian nhà gọn gàng, đẹp mắt hơn hẳn, cần dùng là thấy ngay.`
+    const scene2Voice = `Đây là ${product.name}, thiết kế thông minh và cực kỳ tiện dụng cho gia đình.`
+    const scene3Voice = `Điểm ưng ý nhất là ${mainBenefit.toLowerCase()}, giải quyết triệt để vấn đề chỉ trong vài giây.`
+    const scene3Headline = 'Thiết kế thông minh tiện lợi'
+    const scene4Voice = `Không gian nhìn gọn gàng sang xịn hẳn lên nhờ ${secondaryBenefit.toLowerCase()}, ưng cái bụng 10 điểm luôn!`
 
     let scenes: StoryboardScene[] = []
 
@@ -185,15 +149,11 @@ export class HomeUtilityEngine implements ProductVideoEngine {
           id: 'scene-2',
           type: 'problem',
           duration: 5,
-          voice: isKitchen
-            ? 'Mỗi lần nấu ăn nêm nếm là một lần bừa bộn, hũ gia vị thì lỏng lẻo dễ ẩm mốc và hút kiến gián.'
-            : 'Đồ đạc bừa bộn tìm mãi không ra, vừa mất thời gian lại dễ cáu gắt mỗi khi cần dùng gấp.',
-          tts: isKitchen
-            ? 'Mỗi lần nấu ăn nêm nếm là một lần bừa bộn, hũ gia vị thì lỏng lẻo dễ ẩm mốc và hút kiến gián.'
-            : 'Đồ đạc bừa bộn tìm mãi không ra, vừa mất thời gian lại dễ cáu gắt mỗi khi cần dùng gấp.',
+          voice: `Bình thường ${mainProblem.toLowerCase()}, vừa mất thời gian lại dễ cáu gắt mỗi khi cần dùng gấp.`,
+          tts: `Bình thường ${mainProblem.toLowerCase()}, vừa mất thời gian lại dễ cáu gắt mỗi khi cần dùng gấp.`,
           headline: 'Vấn đề thường gặp',
           subheadline: 'Bực mình mỗi ngày',
-          keywords: ['bừa bộn', 'ẩm mốc', 'phiền phức'],
+          keywords: ['bừa bộn', 'bất tiện', 'phiền phức'],
           productAssetIds: [primaryAssetId],
           backgroundType: 'clean_surface',
           motionPreset: 'parallax_float',
@@ -206,7 +166,7 @@ export class HomeUtilityEngine implements ProductVideoEngine {
           tts: scene2Voice,
           headline: product.name.slice(0, 30),
           subheadline: 'Chất liệu cao cấp, độ bền vượt trội',
-          keywords: [product.name, 'chắc chắn', 'tiện lợi'],
+          keywords: [product.name.slice(0, 15), 'chắc chắn', 'tiện lợi'],
           productAssetIds: [primaryAssetId],
           backgroundType: 'clean_surface',
           visualPrompt: 'bright clean surface, warm sunlight, minimal interior, vertical 9:16',
@@ -220,7 +180,7 @@ export class HomeUtilityEngine implements ProductVideoEngine {
           tts: scene3Voice,
           headline: scene3Headline,
           subheadline: 'Thao tác dễ dàng trong 1 giây',
-          keywords: ['gọn gàng', 'cố định', 'tiện dụng'],
+          keywords: ['gọn gàng', 'tiện dụng', 'dễ dùng'],
           productAssetIds: [secondaryAssetId],
           backgroundType: 'setup_action',
           visualPrompt: 'aesthetic space edge, clean apartment, vertical 9:16',
@@ -276,15 +236,11 @@ export class HomeUtilityEngine implements ProductVideoEngine {
           id: 'scene-2',
           type: 'problem',
           duration: 5,
-          voice: isKitchen
-            ? 'Mỗi lần nấu ăn là một cực hình khi gia vị lung tung, nắp đóng không kín làm đồ nêm bị vón cục ẩm ướt.'
-            : 'Đồ đạc rơi rớt bừa bãi khắp sàn và gầm bàn, tìm kiếm mất thời gian mà lại nhanh hỏng hóc đồ dùng.',
-          tts: isKitchen
-            ? 'Mỗi lần nấu ăn là một cực hình khi gia vị lung tung, nắp đóng không kín làm đồ nêm bị vón cục ẩm ướt.'
-            : 'Đồ đạc rơi rớt bừa bãi khắp sàn và gầm bàn, tìm kiếm mất thời gian mà lại nhanh hỏng hóc đồ dùng.',
+          voice: `Trước đây lúc nào cũng khó chịu vì ${mainProblem.toLowerCase()}, tìm kiếm mất thời gian mà lại nhanh hỏng hóc đồ dùng.`,
+          tts: `Trước đây lúc nào cũng khó chịu vì ${mainProblem.toLowerCase()}, tìm kiếm mất thời gian mà lại nhanh hỏng hóc đồ dùng.`,
           headline: 'Nỗi đau bừa bộn kéo dài',
           subheadline: 'Làm mất thời gian quý báu',
-          keywords: ['bừa bộn', 'vón cục', 'ẩm mốc'],
+          keywords: ['bừa bộn', 'bất tiện', 'phiền phức'],
           productAssetIds: [primaryAssetId],
           backgroundType: 'clean_surface',
           motionPreset: 'parallax_float',
@@ -297,7 +253,7 @@ export class HomeUtilityEngine implements ProductVideoEngine {
           tts: scene2Voice,
           headline: product.name.slice(0, 30),
           subheadline: 'Giải pháp hoàn hảo cho mọi gia đình',
-          keywords: [product.name, 'thông minh', 'bền đẹp'],
+          keywords: [product.name.slice(0, 15), 'thông minh', 'bền đẹp'],
           productAssetIds: [primaryAssetId],
           backgroundType: 'clean_surface',
           motionPreset: 'parallax_float',
@@ -319,12 +275,8 @@ export class HomeUtilityEngine implements ProductVideoEngine {
           id: 'scene-5',
           type: 'demo',
           duration: 5,
-          voice: isKitchen
-            ? 'Chất liệu thủy tinh và mica cao cấp trong suốt, nhìn rõ bên trong giúp bạn nêm nếm chuẩn xác không bao giờ nhầm lẫn.'
-            : 'Được gia công từ chất liệu cao cấp chịu lực, thiết kế tinh xảo bám dính chắc chắn trên mọi bề mặt phẳng.',
-          tts: isKitchen
-            ? 'Chất liệu thủy tinh và mica cao cấp trong suốt, nhìn rõ bên trong giúp bạn nêm nếm chuẩn xác không bao giờ nhầm lẫn.'
-            : 'Được gia công từ chất liệu cao cấp chịu lực, thiết kế tinh xảo bám dính chắc chắn trên mọi bề mặt phẳng.',
+          voice: `Được hoàn thiện từ chất liệu cao cấp với độ bền vượt trội, thiết kế tinh xảo và tiện dụng cho mọi gia đình.`,
+          tts: `Được hoàn thiện từ chất liệu cao cấp với độ bền vượt trội, thiết kế tinh xảo và tiện dụng cho mọi gia đình.`,
           headline: 'Chất liệu cao cấp',
           subheadline: 'An toàn và bền đẹp dài lâu',
           keywords: ['chất liệu', 'cao cấp', 'an toàn'],
@@ -410,8 +362,8 @@ export class HomeUtilityEngine implements ProductVideoEngine {
           voice: scene2Voice,
           tts: scene2Voice,
           headline: product.name.slice(0, 30),
-          subheadline: 'Thiết kế thông minh, bám dính chắc chắn',
-          keywords: [product.name, 'chắc chắn', 'tiện lợi'],
+          subheadline: 'Thiết kế thông minh, độ bền vượt trội',
+          keywords: [product.name.slice(0, 15), 'tiện lợi', 'chất lượng'],
           productAssetIds: [primaryAssetId],
           backgroundType: 'clean_surface',
           visualPrompt: 'bright clean surface, warm sunlight, minimal Scandinavian interior, vertical 9:16',
@@ -424,8 +376,8 @@ export class HomeUtilityEngine implements ProductVideoEngine {
           voice: scene3Voice,
           tts: scene3Voice,
           headline: scene3Headline,
-          subheadline: 'Không còn cảnh bừa bộn tìm đồ',
-          keywords: ['gọn gàng', 'cố định', 'tiện dụng'],
+          subheadline: 'Trải nghiệm tiện lợi tức thì',
+          keywords: ['gọn gàng', 'tiện dụng', 'dễ dùng'],
           productAssetIds: [secondaryAssetId],
           backgroundType: 'setup_action',
           visualPrompt: 'aesthetic space edge, clean minimalist apartment, vertical 9:16',

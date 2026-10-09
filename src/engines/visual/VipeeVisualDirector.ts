@@ -21,8 +21,9 @@ export class VipeeVisualDirector implements VisualDirector {
     productImages: string[]
     productName: string
     category: string
+    price?: number | string
   }): VisualStoryplan {
-    const { speechTimings, productImages, productName, category } = params
+    const { speechTimings, productImages, productName, category, price } = params
     const primaryImg = productImages[0] || '/backgrounds/minimal_lifestyle.png'
     const totalDuration = speechTimings.reduce((sum, s) => sum + s.durationSec, 0)
 
@@ -126,39 +127,28 @@ export class VipeeVisualDirector implements VisualDirector {
       let benefitChips: string[] | undefined = undefined
       let supportText: string | undefined = undefined
 
-      const pLower = productName.toLowerCase()
-      const isSpiceOrKitchen = pLower.includes('gia vị') || pLower.includes('hũ') || pLower.includes('bếp') || pLower.includes('nồi')
-
       if (isHook || isProblem) {
         sceneTemplate = 'problem'
         productDisplayMode = 'none'
         productVisible = false
         label = 'VẤN ĐỀ HAY GẶP'
-        supportText = isSpiceOrKitchen
-          ? 'Góc bếp ngổn ngang nhiều lọ gia vị, khó tìm khi nấu'
-          : 'Bừa bộn và bất tiện mỗi khi sử dụng hàng ngày'
+        supportText = 'Bừa bộn và bất tiện mỗi khi sử dụng hàng ngày'
       } else if (isReveal) {
         sceneTemplate = 'reveal'
         productDisplayMode = 'card'
         label = 'GIẢI PHÁP MỚI'
-        benefitChips = isSpiceOrKitchen
-          ? ['Sắp xếp tập trung', 'Gọn hơn', 'Dễ lấy']
-          : ['Tiện lợi', 'Gọn gàng', 'Bền đẹp']
+        benefitChips = ['Tiện lợi', 'Gọn gàng', 'Bền đẹp']
       } else if (isDemo) {
         sceneTemplate = 'benefits'
         productDisplayMode = 'closeup'
         label = 'CHI TIẾT TIỆN LỢI'
-        benefitChips = isSpiceOrKitchen
-          ? ['Khay định hình', 'Nắp bật kèm muỗng', 'Bếp gọn đẹp']
-          : ['Thiết kế thông minh', 'Dễ sử dụng', 'Chất liệu tốt']
+        benefitChips = ['Thiết kế thông minh', 'Dễ sử dụng', 'Chất liệu tốt']
       } else if (isPayoff) {
         sceneTemplate = 'result'
         productDisplayMode = 'card'
         label = 'KẾT QUẢ THỎA MÃN'
-        supportText = isSpiceOrKitchen
-          ? 'Bếp nhìn gọn gàng hơn hẳn và lấy gia vị cực nhanh'
-          : 'Không gian ngăn nắp, cuộc sống tiện nghi hơn'
-        benefitChips = ['Gọn gàng 100%', 'Bếp đẹp hơn']
+        supportText = 'Không gian ngăn nắp, cuộc sống tiện nghi hơn'
+        benefitChips = ['Gọn gàng 100%', 'Tiện nghi hơn']
       } else {
         sceneTemplate = 'cta'
         productDisplayMode = 'card'
@@ -186,7 +176,7 @@ export class VipeeVisualDirector implements VisualDirector {
         supportText,
         benefitChips,
         offer: isCTA ? {
-          price: isSpiceOrKitchen ? '39K / bộ' : 'Deal hời hôm nay',
+          price: params.price ? `${typeof params.price === 'number' ? params.price.toLocaleString('vi-VN') : params.price}đ` : 'Deal hời hôm nay',
           voucher: 'Voucher giảm 10K',
           ctaText: 'Xem ở giỏ hàng góc trái',
         } : undefined,

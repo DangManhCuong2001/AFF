@@ -266,126 +266,44 @@ Yêu cầu xuất ra JSON chính xác theo cấu trúc:
     product: ReturnType<typeof normalizeProduct> | ProductInput,
     _approach: StoryApproach
   ): HookCandidate[] {
-    const nameLower = product.name.toLowerCase()
-    const isCable = nameLower.includes('dây sạc') || nameLower.includes('cable') || nameLower.includes('kẹp')
-    const isKitchen = nameLower.includes('gia vị') || nameLower.includes('bếp') || nameLower.includes('hũ')
+    const pName = product.name || 'sản phẩm này'
+    const prob = product.problemSolved || 'đồ đạc bừa bộn và bất tiện mỗi khi tìm kiếm'
 
-    if (isCable) {
-      return [
-        {
-          id: 'h1',
-          text: 'Mỗi lần ngồi vào bàn là thấy một đống dây sạc rối tung rối mù bực mình ghê.',
-          type: 'problem',
-          scores: { curiosity: 88, relatability: 96, specificity: 92, visualPotential: 90, clarity: 95, total: 92 },
-          reasoning: 'Đánh trúng 100% người dùng có bàn làm việc bừa bộn.',
-        },
-        {
-          id: 'h2',
-          text: 'Ai mà cứ phải cúi xuống gầm bàn nhặt dây sạc mỗi ngày thì xem ngay nha!',
-          type: 'observation',
-          scores: { curiosity: 91, relatability: 94, specificity: 90, visualPotential: 92, clarity: 93, total: 92 },
-          reasoning: 'Hình ảnh cúi gầm bàn nhặt dây tạo đồng cảm rất cao.',
-        },
-        {
-          id: 'h3',
-          text: 'Mình đã nghĩ món kẹp dây này không cần thiết, cho đến khi dán nó ở mép bàn...',
-          type: 'confession',
-          scores: { curiosity: 95, relatability: 88, specificity: 89, visualPotential: 86, clarity: 90, total: 90 },
-          reasoning: 'Cung cấp góc nhìn nghi ngờ rồi bất ngờ thỏa mãn.',
-        },
-        {
-          id: 'h4',
-          text: 'POV: Cuối cùng bàn làm việc của bạn cũng không còn như một cái tổ nhện.',
-          type: 'pov',
-          scores: { curiosity: 86, relatability: 90, specificity: 84, visualPotential: 92, clarity: 89, total: 88 },
-          reasoning: 'Bắt trend POV của giới trẻ TikTok rất tự nhiên.',
-        },
-        {
-          id: 'h5',
-          text: 'Bàn làm việc nhìn bừa không phải vì nhiều đồ, mà do dây sạc chưa được xếp gọn.',
-          type: 'curiosity',
-          scores: { curiosity: 90, relatability: 89, specificity: 85, visualPotential: 88, clarity: 90, total: 88 },
-          reasoning: 'Tạo tò mò định hình lại nhận thức của người xem.',
-        },
-      ]
-    }
-
-    if (isKitchen) {
-      return [
-        {
-          id: 'h1',
-          text: 'Mỗi lần nấu ăn mà vội vàng là y như rằng góc bếp ngổn ngang đủ thứ chai lọ.',
-          type: 'problem',
-          scores: { curiosity: 90, relatability: 96, specificity: 91, visualPotential: 93, clarity: 94, total: 93 },
-          reasoning: 'Nỗi đau bếp núc kinh điển của bất kỳ ai vào bếp.',
-        },
-        {
-          id: 'h2',
-          text: 'Nhà ai góc bếp cũng có một mớ gia vị lộn xộn tìm mãi không ra đúng không?',
-          type: 'observation',
-          scores: { curiosity: 89, relatability: 94, specificity: 90, visualPotential: 90, clarity: 92, total: 91 },
-          reasoning: 'Chỉ ra hiện trạng gia vị sắp xếp bừa bộn gây mất thời gian.',
-        },
-        {
-          id: 'h3',
-          text: 'Gom hết gia vị vào một khay tập trung là góc bếp nhìn gọn hơn hẳn luôn!',
-          type: 'curiosity',
-          scores: { curiosity: 92, relatability: 91, specificity: 88, visualPotential: 91, clarity: 90, total: 90 },
-          reasoning: 'Mở đầu bằng lợi ích sắp xếp tập trung đã được xác thực.',
-        },
-        {
-          id: 'h4',
-          text: 'Góc bếp nhìn sang xịn lên hẳn chỉ nhờ xếp gia vị ngăn nắp lại.',
-          type: 'curiosity',
-          scores: { curiosity: 92, relatability: 87, specificity: 86, visualPotential: 92, clarity: 89, total: 89 },
-          reasoning: 'Hứa hẹn kết quả nâng cấp thẩm mỹ tức thì.',
-        },
-        {
-          id: 'h5',
-          text: 'POV: Bạn nấu ăn mà không phải loay hoay tìm muỗng hay lục tung từng góc bếp.',
-          type: 'pov',
-          scores: { curiosity: 87, relatability: 91, specificity: 85, visualPotential: 89, clarity: 88, total: 88 },
-          reasoning: 'Trải nghiệm nấu nướng mượt mà không va vấp.',
-        },
-      ]
-    }
-
-    // Generic home utility hooks
     return [
       {
         id: 'h1',
-        text: `Nhà ai cũng có một góc bừa bộn tìm mãi không thấy đồ đúng không?`,
-        type: 'observation',
-        scores: { curiosity: 89, relatability: 94, specificity: 86, visualPotential: 88, clarity: 91, total: 90 },
-        reasoning: 'Khơi gợi sự đồng cảm tức thì.',
+        text: `Ai mà hay bị phiền toái vì ${prob.toLowerCase()} thì xem ngay món đồ này nhé!`,
+        type: 'problem',
+        scores: { curiosity: 90, relatability: 96, specificity: 92, visualPotential: 92, clarity: 95, total: 93 },
+        reasoning: 'Đánh trúng nỗi đau thực tế của người dùng.',
       },
       {
         id: 'h2',
-        text: `Một món đồ nhỏ thôi nhưng lại giải quyết đúng thứ làm mình bực mình cả ngày.`,
-        type: 'curiosity',
-        scores: { curiosity: 93, relatability: 91, specificity: 88, visualPotential: 89, clarity: 90, total: 90 },
-        reasoning: 'Tạo open loop tò mò cực mạnh.',
+        text: `Bạn đã biết đến ${pName} cực kỳ tiện lợi này chưa?`,
+        type: 'observation',
+        scores: { curiosity: 91, relatability: 94, specificity: 90, visualPotential: 90, clarity: 93, total: 92 },
+        reasoning: 'Khơi gợi tò mò khám phá giải pháp thông minh.',
       },
       {
         id: 'h3',
-        text: `Mình đã chán cảnh đồ đạc cứ lung tung khắp nơi, cho đến khi thử món này...`,
+        text: `Mình đã nghĩ món này không quá cần thiết, cho đến khi dùng thử trên tay...`,
         type: 'confession',
-        scores: { curiosity: 91, relatability: 89, specificity: 85, visualPotential: 87, clarity: 90, total: 88 },
-        reasoning: 'Tâm sự chân thật người dùng.',
+        scores: { curiosity: 95, relatability: 89, specificity: 88, visualPotential: 89, clarity: 90, total: 90 },
+        reasoning: 'Cung cấp góc nhìn nghi ngờ rồi bất ngờ thỏa mãn.',
       },
       {
         id: 'h4',
-        text: `Không gian nhà gọn gàng hơn hẳn chỉ mất đúng một phút sắp xếp lại.`,
-        type: 'problem',
-        scores: { curiosity: 88, relatability: 90, specificity: 87, visualPotential: 90, clarity: 92, total: 89 },
-        reasoning: 'Cam kết giải pháp nhanh chóng.',
+        text: `POV: Cuối cùng bạn cũng tìm được giải pháp chân ái cho cuộc sống tiện nghi hơn.`,
+        type: 'pov',
+        scores: { curiosity: 88, relatability: 91, specificity: 86, visualPotential: 91, clarity: 89, total: 89 },
+        reasoning: 'Bắt trend POV của TikTok tạo thiện cảm tự nhiên.',
       },
       {
         id: 'h5',
-        text: `Đừng để góc nhà bừa bộn thêm nữa nếu bạn chưa biết cách sắp xếp này.`,
-        type: 'test',
-        scores: { curiosity: 92, relatability: 86, specificity: 84, visualPotential: 86, clarity: 88, total: 87 },
-        reasoning: 'Cảnh báo ngược tạo tò mò cao.',
+        text: `Một món đồ nhỏ gọn thôi nhưng giải quyết đúng thứ làm mình bực mình bấy lâu nay.`,
+        type: 'curiosity',
+        scores: { curiosity: 92, relatability: 90, specificity: 87, visualPotential: 89, clarity: 91, total: 90 },
+        reasoning: 'Tạo open loop tò mò mạnh mẽ thúc đẩy xem tiếp.',
       },
     ]
   }
@@ -403,33 +321,18 @@ Yêu cầu xuất ra JSON chính xác theo cấu trúc:
     const candidateHooks = this.generateDefaultHooks(product, approach)
     const selectedHook = candidateHooks[0]
 
-    const nameLower = product.name.toLowerCase()
-    const isCable = nameLower.includes('dây sạc') || nameLower.includes('cable') || nameLower.includes('kẹp dây')
-    const isKitchen = nameLower.includes('gia vị') || nameLower.includes('bếp') || nameLower.includes('hũ')
+    const prob = product.problemSolved || analysis.mainProblem || 'đồ đạc bừa bộn và bất tiện mỗi khi sử dụng'
+    const prodBenefits = 'verifiedBenefits' in product ? product.verifiedBenefits : (product as any).benefits
+    const ben1 = prodBenefits?.[0] || analysis.mainBenefit || 'thiết kế thông minh và tiện lợi'
+    const ben2 = prodBenefits?.[1] || analysis.secondaryBenefits?.[0] || 'độ bền vượt trội'
 
-    const spokenScenes = isCable
-      ? [
-          { beat: 'hook', headline: '🔥 DÂY SẠC RƠI BỪA BÃI?', voice: selectedHook.text, sticker: 'CẢNH BÁO ⚠️' },
-          { beat: 'problem', headline: '😩 CÚI NHẶT MỎI CẢ LƯNG', voice: 'Bình thường cúi xuống gầm bàn nhặt dây vừa bẩn vừa mỏi lưng, dây lại còn nhanh gãy đứt nữa chứ!', sticker: 'PHIỀN TOÁI 😩' },
-          { beat: 'solution', headline: '✨ CỨU TINH 10/10 ĐÂY RỒI', voice: `May mà mình tậu được cái miếng kẹp này, nhỏ xíu mà tiện dã man luôn á!`, sticker: 'GIẢI PHÁP ⭐' },
-          { beat: 'demo', headline: '🔒 DÁN LÀ DÍNH CHẮC NỊCH', voice: 'Chỉ cần dán mép bàn là giữ ngay ngắn mọi loại dây sạc, cần cái là rút ra dùng cực êm!', sticker: 'SIÊU DÍNH 🔒' },
-          { beat: 'cta', headline: '🛒 GIỎ HÀNG GÓC TRÁI', voice: 'Bàn làm việc gọn gàng 10 điểm luôn nha, mọi người bấm ngay giỏ hàng góc trái săn deal nhé!', sticker: 'MUA NGAY 🛍️' },
-        ]
-      : isKitchen
-      ? [
-          { beat: 'hook', headline: '🔥 GÓC BẾP LỘN XỘN GIA VỊ?', voice: selectedHook.text, sticker: 'LỘN XỘN ⚠️' },
-          { beat: 'problem', headline: '😩 TÌM MÃI KHÔNG THẤY ĐỒ', voice: 'Mỗi lần nấu ăn vội mà gia vị vương vãi lộn xộn, tìm mãi không ra phát bực luôn á!', sticker: 'BỰC MÌNH 😩' },
-          { beat: 'solution', headline: '✨ SẮP XẾP TẬP TRUNG 1 KHAY', voice: `Gom hết vào bộ hũ này là sắp xếp tập trung, góc bếp nhìn gọn hơn hẳn!`, sticker: 'GỌN GÀNG ⭐' },
-          { beat: 'demo', headline: '👌 DỄ LẤY KHI NẤU NƯỚNG', voice: 'Nắp bật một chạm kèm muỗng sẵn, xào nấu vội với tay là cực kỳ dễ lấy!', sticker: 'DỄ LẤY ✨' },
-          { beat: 'cta', headline: '🛒 GIỎ HÀNG GÓC TRÁI', voice: 'Góc bếp nhìn gọn gàng sang xịn hẳn lên, mọi người bấm ngay giỏ hàng góc trái săn deal ưu đãi nha!', sticker: 'SĂN DEAL 🛍️' },
-        ]
-      : [
-          { beat: 'hook', headline: '🔥 AI BỊ NHƯ NÀY XEM NGAY!', voice: selectedHook.text, sticker: 'MẸO HAY 🔥' },
-          { beat: 'problem', headline: '😩 BỪA BỘN MẤT THỜI GIAN', voice: 'Đồ đạc cứ vứt lung tung mỗi lần tìm phát bực, mất bao nhiêu thời gian luôn đúng không!', sticker: 'BỰC MÌNH 😩' },
-          { beat: 'solution', headline: '✨ BẤT NGỜ TIỆN LỢI', voice: `May mà mình tìm được em ${product.name} này, nhỏ gọn mà sắp xếp cực kỳ ngăn nắp!`, sticker: 'CỨU TINH ⭐' },
-          { beat: 'demo', headline: '👌 DÙNG CỰC KỲ DỄ DÀNG', voice: 'Dùng siêu đơn giản, vừa vặn chắc chắn mà không gian nhìn gọn gàng hẳn lên!', sticker: '10 ĐIỂM 💯' },
-          { beat: 'cta', headline: '🛒 BẤM GÓC TRÁI MUA NGAY', voice: 'Phòng ốc gọn gàng ưng cái bụng luôn, mọi người bấm ngay giỏ hàng góc trái săn ưu đãi nha!', sticker: 'MUA NGAY 🛍️' },
-        ]
+    const spokenScenes = [
+      { beat: 'hook', headline: `🔥 ${product.name.slice(0, 22).toUpperCase()}`, voice: selectedHook.text, sticker: 'MẸO HAY 🔥' },
+      { beat: 'problem', headline: '😩 BẤT TIỆN MỖI NGÀY', voice: `Bình thường ${prob.toLowerCase()}, mất bao nhiêu thời gian và bực mình luôn đúng không!`, sticker: 'PHIỀN TOÁI 😩' },
+      { beat: 'solution', headline: '✨ GIẢI PHÁP 10/10', voice: `May mà mình tìm được em ${product.name} này, giải quyết gọn gàng chỉ trong một nốt nhạc!`, sticker: 'CỨU TINH ⭐' },
+      { beat: 'demo', headline: '👌 TRẢI NGHIỆM TIỆN LỢI', voice: `Điểm ưng ý nhất là ${ben1.toLowerCase()}, thao tác dễ dàng mà hiệu quả thấy rõ luôn!`, sticker: '10 ĐIỂM 💯' },
+      { beat: 'cta', headline: '🛒 BẤM GÓC TRÁI MUA NGAY', voice: `${ben2 ? `Không gian nhìn xịn hơn hẳn nhờ ${ben2.toLowerCase()}. ` : ''}Mọi người bấm ngay giỏ hàng góc trái săn deal ưu đãi nhé!`, sticker: 'MUA NGAY 🛍️' },
+    ]
 
     return {
       concept: `Giải pháp giải phóng không gian và phiền toái với ${product.name}`,
