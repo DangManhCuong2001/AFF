@@ -320,7 +320,7 @@ export async function renderProductVideo(
         `-loop 1 -t ${sceneDuration} -i "${sceneImgPath}"`,
         `-filter_complex "${filterComplex}"`,
         `-map "[out]"`,
-        `-c:v libx264 -preset ultrafast -tune fastdecode -crf 26 -pix_fmt yuv420p -r 30`,
+        `-c:v libx264 -preset veryfast -crf 27 -maxrate 2200k -bufsize 4400k -pix_fmt yuv420p -r 30`,
         `"${segPath}"`,
       ].join(' ')
 
@@ -345,7 +345,7 @@ export async function renderProductVideo(
           `-loop 1 -t ${sceneDuration} -i "${sceneImgPath}"`,
           `-filter_complex "${fallbackFilterComplex}"`,
           `-map "[out]"`,
-          `-c:v libx264 -preset ultrafast -tune fastdecode -crf 26 -pix_fmt yuv420p -r 30`,
+          `-c:v libx264 -preset veryfast -crf 27 -maxrate 2200k -bufsize 4400k -pix_fmt yuv420p -r 30`,
           `"${segPath}"`,
         ].join(' ')
 

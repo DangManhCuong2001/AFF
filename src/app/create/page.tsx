@@ -806,28 +806,28 @@ export default function CreateVideoPage() {
     }
   }
 
-  // Publish Directly to TikTok
+  // Publish Directly to TikTok with chunked upload support (bypasses Vercel 4.5MB limit)
   const handlePublishToTikTok = async () => {
     setPublishing(true)
     setPublishResult(null)
 
     try {
       const fullCaption = `${caption} ${hashtags.join(' ')}`
-      const formData = new FormData()
 
-      // Prioritize the newly rendered MP4 video
+      // 1. Resolve video file
+      let videoFile: File | null = null
       if (renderedVideoFile) {
-        formData.append('video', renderedVideoFile)
+        videoFile = renderedVideoFile
       } else if (renderedVideoUrl) {
         const res = await fetch(renderedVideoUrl)
         const blob = await res.blob()
-        formData.append('video', new File([blob], 'tiktok_video.mp4', { type: 'video/mp4' }))
+        videoFile = new File([blob], 'tiktok_video.mp4', { type: 'video/mp4' })
       } else {
         const videoAsset = product.assets.find(
           (a) => (a.type === 'PRODUCT_VIDEO' || a.type === 'DEMO_VIDEO') && a.file
         )
         if (videoAsset && videoAsset.file) {
-          formData.append('video', videoAsset.file)
+          videoFile = videoAsset.file
         } else {
           alert('Chưa có file video hoàn chỉnh để đăng. Vui lòng quay lại Bước 3 để tạo video trước.')
           setPublishing(false)
@@ -835,31 +835,81 @@ export default function CreateVideoPage() {
         }
       }
 
-      formData.append('title', fullCaption)
-      formData.append('privacyLevel', privacyLevel)
-      formData.append('disableComment', 'false')
-      formData.append('disableDuet', 'false')
-      formData.append('disableStitch', 'false')
-      formData.append('isAigc', String(isAigc))
+      if (!videoFile || videoFile.size <= 0) {
+        throw new Error('File video không hợp lệ hoặc rỗng.')
+      }
 
-      const res = await fetch('/api/tiktok/publish', {
+      // 2. Step 1: Initialize post with lightweight JSON (payload < 1KB, completely avoids 413)
+      const initRes = await fetch('/api/tiktok/publish', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: fullCaption,
+          privacyLevel,
+          videoSize: videoFile.size,
+          disableComment: false,
+          disableDuet: false,
+          disableStitch: false,
+          isAigc,
+        }),
       })
 
-      const json = await res.json()
-      if (!res.ok || json.error) {
-        setPublishResult({
-          success: false,
-          message: json.error?.message || 'Đăng video thất bại',
-        })
-      } else {
-        setPublishResult({
-          success: true,
-          publishId: json.publishId,
-          message: 'Video đã được đăng lên TikTok thành công! Đang chờ TikTok xử lý hiển thị.',
-        })
+      const initJson = await initRes.json().catch(() => ({}))
+      if (!initRes.ok || !initJson.uploadUrl || !initJson.publishId) {
+        throw new Error(initJson.error?.message || `Khởi tạo đăng video thất bại (${initRes.status})`)
       }
+
+      const { publishId, uploadUrl } = initJson
+
+      // 3. Step 2: Upload Video Bytes
+      // Try Direct Upload to TikTok's upload_url first
+      let uploadSuccess = false
+      try {
+        const directRes = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'video/mp4',
+            'Content-Length': String(videoFile.size),
+            'Content-Range': `bytes 0-${videoFile.size - 1}/${videoFile.size}`,
+          },
+          body: videoFile,
+        })
+        if (directRes.ok) {
+          uploadSuccess = true
+        }
+      } catch (directErr) {
+        console.warn('Direct upload to TikTok storage failed, using resilient chunk proxy:', directErr)
+      }
+
+      // If direct upload failed (e.g. CORS), upload through Serverless Chunk Proxy (2MB chunks < 4.5MB limit)
+      if (!uploadSuccess) {
+        const CHUNK_SIZE = 2 * 1024 * 1024 // 2MB chunk
+        for (let start = 0; start < videoFile.size; start += CHUNK_SIZE) {
+          const end = Math.min(start + CHUNK_SIZE, videoFile.size)
+          const chunkBlob = videoFile.slice(start, end)
+          const chunkForm = new FormData()
+          chunkForm.append('action', 'chunk')
+          chunkForm.append('uploadUrl', uploadUrl)
+          chunkForm.append('startByte', String(start))
+          chunkForm.append('totalBytes', String(videoFile.size))
+          chunkForm.append('chunk', chunkBlob)
+
+          const chunkRes = await fetch('/api/tiktok/publish', {
+            method: 'POST',
+            body: chunkForm,
+          })
+          if (!chunkRes.ok) {
+            const chunkErr = await chunkRes.json().catch(() => ({}))
+            throw new Error(chunkErr.error?.message || `Lỗi tải phân đoạn video (${chunkRes.status})`)
+          }
+        }
+      }
+
+      setPublishResult({
+        success: true,
+        publishId,
+        message: 'Video đã được đăng lên TikTok thành công! Đang chờ TikTok xử lý hiển thị.',
+      })
     } catch (err: unknown) {
       setPublishResult({
         success: false,
