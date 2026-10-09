@@ -183,8 +183,8 @@ export class InfographicEngine {
     const img2 = availableImages[1] || availableImages[0] || img1
 
     // Format clean price text
-    let priceNumber = '39K'
-    let priceUnit = '/ cái'
+    let priceNumber = ''
+    let priceUnit = ''
 
     if (params.price) {
       const pNum = Number(String(params.price).replace(/[^\d]/g, ''))
@@ -197,15 +197,22 @@ export class InfographicEngine {
       }
     }
 
-    const lowerName = productName.toLowerCase()
-    if (lowerName.includes('bộ') || lowerName.includes('set')) {
-      priceUnit = '/ bộ'
-    } else if (lowerName.includes('combo')) {
-      priceUnit = '/ combo'
-    } else if (lowerName.includes('hộp') || lowerName.includes('hũ')) {
-      priceUnit = '/ hũ'
-    } else if (lowerName.includes('chiếc')) {
-      priceUnit = '/ chiếc'
+    if (!priceNumber) {
+      priceNumber = 'Giá tốt'
+      priceUnit = 'hôm nay'
+    } else {
+      const lowerName = productName.toLowerCase()
+      if (lowerName.includes('bộ') || lowerName.includes('set')) {
+        priceUnit = '/ bộ'
+      } else if (lowerName.includes('combo')) {
+        priceUnit = '/ combo'
+      } else if (lowerName.includes('hộp') || lowerName.includes('hũ')) {
+        priceUnit = '/ hũ'
+      } else if (lowerName.includes('chiếc')) {
+        priceUnit = '/ chiếc'
+      } else {
+        priceUnit = '/ cái'
+      }
     }
 
     // Category-specific content generation (fallbacks)

@@ -286,9 +286,12 @@ export default function CreateVideoPage() {
               ? data.product.assets
               : prev.assets,
         }))
+        const hasPrice = Boolean(data.product.price)
         setImportNotice({
-          message: data.message || 'Đã trích xuất thông tin sản phẩm thành công!',
-          requiresFallback: false,
+          message: data.message || (hasPrice
+            ? 'Đã trích xuất thông tin sản phẩm thành công!'
+            : 'Đã trích xuất Tên và Bộ ảnh từ link. Bạn nhớ nhập Giá sản phẩm ở ô bên dưới nhé!'),
+          requiresFallback: !hasPrice,
         })
       } else if (data.requiresManualFallback) {
         setImportNotice({

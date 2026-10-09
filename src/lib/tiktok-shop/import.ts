@@ -32,7 +32,11 @@ export function upgradeTikTokImageUrl(rawUrl: string): string {
     url.includes('tos-useast')
 
   if (isByteDanceCdn) {
-    // 1. If URL contains template ~tplv-... replace with origin-jpeg
+    // 1. If URL contains template ~tplv-{tplId}-... replace with origin-jpeg preserving exact template ID
+    const tplMatch = url.match(/~tplv-([a-zA-Z0-9_\-]+)-/i)
+    if (tplMatch && tplMatch[1]) {
+      return url.replace(/~tplv-[^?#]+/i, `~tplv-${tplMatch[1]}-origin-jpeg.jpeg`)
+    }
     if (url.includes('~tplv-')) {
       return url.replace(/~tplv-[^?#]+/i, '~tplv-o3syd03w52-origin-jpeg.jpeg')
     }
