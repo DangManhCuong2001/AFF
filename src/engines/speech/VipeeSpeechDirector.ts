@@ -383,14 +383,21 @@ export class VipeeTTSProvider implements TTSProvider {
         const filterStr = [
           `equalizer=f=250:t=q:w=1:g=2.0`,
           `equalizer=f=3500:t=q:w=1.2:g=2.5`,
-          `compand=0.02|0.05:6:-60/-60|-24/-10|0/-2:6:0:0:0`,
+          `compand=attacks=0.02:decays=0.05:points=-60/-60|-24/-10|0/-2:soft-knee=6`,
           `apad=pad_dur=${pauseSec}`,
         ].join(',')
 
-        // FIX: Force 44100 Hz stereo 192k so all segments are identical before concat
-        await execPromise(
-          `"${ffmpeg}" -y -i "${rawSegPath}" -af "${filterStr}" -c:a libmp3lame -b:a 192k -ar 44100 -ac 2 "${paddedSegPath}"`
-        )
+        // Force 44100 Hz stereo 192k so all segments are identical before concat
+        try {
+          await execPromise(
+            `"${ffmpeg}" -y -i "${rawSegPath}" -af "${filterStr}" -c:a libmp3lame -b:a 192k -ar 44100 -ac 2 "${paddedSegPath}"`
+          )
+        } catch (filterErr) {
+          console.warn(`[VipeeTTSProvider] Segment ${i} vocal filter error, falling back to basic padding:`, filterErr)
+          await execPromise(
+            `"${ffmpeg}" -y -i "${rawSegPath}" -af "apad=pad_dur=${pauseSec}" -c:a libmp3lame -b:a 192k -ar 44100 -ac 2 "${paddedSegPath}"`
+          )
+        }
 
         // FIX: measure duration via execFile so we always get stderr content
         let segDurationSec = seg.estimatedDurationSec || 2.5
