@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mediabunny/aac-encoder": "^1.61.3",
+    "@mediabunny/mp3-encoder": "^1.61.3",
     "@remotion/bundler": "^4.0.533",
     "@remotion/player": "^4.0.533",
     "@remotion/renderer": "^4.0.533",

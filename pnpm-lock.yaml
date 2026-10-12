@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@mediabunny/aac-encoder':
+        specifier: ^1.61.3
+        version: 1.61.3(mediabunny@1.56.1)
+      '@mediabunny/mp3-encoder':
+        specifier: ^1.61.3
+        version: 1.61.3(mediabunny@1.56.1)
       '@remotion/bundler':
         specifier: ^4.0.533
         version: 4.0.533(@swc/helpers@0.5.23)(lightningcss@1.32.0)(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -583,6 +589,11 @@ packages:
     peerDependencies:
       mediabunny: ^1.0.0
 
+  '@mediabunny/aac-encoder@1.61.3':
+    resolution: {integrity: sha512-SH4DdqqUJRqIErXbuxIze0ACbSyi3Rau90skDwp8YbwopFYm2dgPidLPbwqdmTd/sESHwq7Nf3nDbczAxtcVmA==}
+    peerDependencies:
+      mediabunny: ^1.0.0
+
   '@mediabunny/flac-encoder@1.56.1':
     resolution: {integrity: sha512-zbmorMVlF1izwtlz5mWnu7A1rJLM+V26I0pEFr9Td1EDTwE5uAGRSW+/UZlnjwj1t00Woe3Zonfh9kb7lRRBqg==}
     peerDependencies:
@@ -590,6 +601,11 @@ packages:
 
   '@mediabunny/mp3-encoder@1.56.1':
     resolution: {integrity: sha512-p66ovEq6mZt3ejje45NOju84hIJI4v8rHfsmc1D2J34ziV0USE8AdJBzmiwqxl6nZkIAQLNB19HzbVRcQfc51g==}
+    peerDependencies:
+      mediabunny: ^1.0.0
+
+  '@mediabunny/mp3-encoder@1.61.3':
+    resolution: {integrity: sha512-Qmegig3hXp8dhbJnze1fumsC7GXkMp6NH5mGgvl5o4zzp2cYgmjjbWps5mPyRq3VHcxLbDdiXDNVcl4Mv7c1tQ==}
     peerDependencies:
       mediabunny: ^1.0.0
 
@@ -3462,11 +3478,19 @@ snapshots:
     dependencies:
       mediabunny: 1.56.1
 
+  '@mediabunny/aac-encoder@1.61.3(mediabunny@1.56.1)':
+    dependencies:
+      mediabunny: 1.56.1
+
   '@mediabunny/flac-encoder@1.56.1(mediabunny@1.56.1)':
     dependencies:
       mediabunny: 1.56.1
 
   '@mediabunny/mp3-encoder@1.56.1(mediabunny@1.56.1)':
+    dependencies:
+      mediabunny: 1.56.1
+
+  '@mediabunny/mp3-encoder@1.61.3(mediabunny@1.56.1)':
     dependencies:
       mediabunny: 1.56.1
 

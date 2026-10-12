@@ -683,25 +683,35 @@ export default function CreateVideoPage() {
         formData.append('storyboard', JSON.stringify(analysisResult.storyboard))
       }
 
-      // Attach all gallery images: both uploaded files and external URLs
-      const imageFiles = product.assets
-        .filter((a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && a.file)
-        .map((a) => a.file!)
+      // Attach all gallery images: both uploaded files and URL blobs pre-fetched by browser
+      const candidateAssets = product.assets.filter(
+        (a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && (a.file || a.url)
+      )
 
-      for (const f of imageFiles) {
-        formData.append('images', f)
+      for (let idx = 0; idx < candidateAssets.length; idx++) {
+        const a = candidateAssets[idx]
+        if (a.file) {
+          formData.append('images', a.file)
+        } else if (a.url) {
+          try {
+            const imgRes = await fetch(a.url)
+            if (imgRes.ok) {
+              const blob = await imgRes.blob()
+              formData.append('images', blob, `product_asset_${idx}.jpg`)
+            }
+          } catch (imgErr) {
+            console.warn('[handleStartGeneratingVideo] Could not pre-fetch asset blob:', a.url, imgErr)
+          }
+        }
       }
 
-      const imageUrls = product.assets
-        .filter((a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && a.url && !a.file)
-        .map((a) => a.url)
-
+      const imageUrls = candidateAssets.filter((a) => a.url).map((a) => a.url!)
       if (imageUrls.length > 0) {
         formData.append('imageUrls', JSON.stringify(imageUrls))
       }
 
       // Single image fallback
-      const primaryAsset = product.assets.find((a) => a.isPrimary) || product.assets[0]
+      const primaryAsset = product.assets.find((a) => a.isPrimary) || candidateAssets[0]
       if (primaryAsset?.file) {
         formData.append('image', primaryAsset.file)
       }
@@ -786,6 +796,13 @@ export default function CreateVideoPage() {
           return
         } catch (clientErr) {
           console.warn('[handleStartGeneratingVideo] Client-side render failed, falling back to server:', clientErr)
+          setGenerationProgress((p) => ({
+            ...p,
+            logs: [
+              ...p.logs,
+              `Chuyển tiếp Server Render: ${(clientErr as Error)?.message || 'WebCodecs fallback'}`,
+            ],
+          }))
         }
       }
 
