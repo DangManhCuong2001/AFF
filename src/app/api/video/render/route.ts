@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { renderProductVideo } from '@/lib/video/generator'
+import { renderWithRemotion } from '@/lib/video/remotion-renderer'
 import { StoryboardScene } from '@/engines/core/types'
 
 export const dynamic = 'force-dynamic'
@@ -133,17 +134,41 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Render video using high-performance FFmpeg engine
-    const result = await renderProductVideo({
-      productName,
-      price,
-      category,
-      scenes,
-      imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
-      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-      voicePreset,
-      masterAudioBuffer,
-    })
+    // Render video: Use Remotion Engine first for 100% exact fidelity with Remotion 60FPS Live,
+    // falling back to high-performance FFmpeg engine if headless browser environment is unavailable.
+    let result: {
+      filePath: string
+      fileName: string
+      duration: number
+      fileSizeBytes: number
+    }
+
+    try {
+      console.log('[VideoRenderAPI] Rendering with Remotion Engine for exact 100% visual match...')
+      result = await renderWithRemotion({
+        productName,
+        price,
+        category,
+        scenes,
+        imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
+        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+        voicePreset,
+        masterAudioBuffer,
+      })
+      console.log(`[VideoRenderAPI] Remotion render success: ${result.fileName} (${result.fileSizeBytes} bytes)`)
+    } catch (remotionErr) {
+      console.warn('[VideoRenderAPI] Remotion rendering failed, falling back to FFmpeg generator:', remotionErr)
+      result = await renderProductVideo({
+        productName,
+        price,
+        category,
+        scenes,
+        imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
+        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+        voicePreset,
+        masterAudioBuffer,
+      })
+    }
 
     // Also persist into public/renders for immediate direct URL access
     try {
