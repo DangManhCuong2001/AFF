@@ -17,6 +17,9 @@ importers:
       '@remotion/renderer':
         specifier: ^4.0.533
         version: 4.0.533(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@remotion/web-renderer':
+        specifier: 4.0.533
+        version: 4.0.533(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1

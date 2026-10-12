@@ -47,6 +47,7 @@ import { VoicePersonality } from '@/engines/speech/types'
 import { InfographicDeckViewer } from '@/components/infographic/InfographicDeckViewer'
 import { CABLE_ORGANIZER_SEED_PRODUCT } from '@/engines/home/seed'
 import { RemotionPlayerPreview } from '@/components/video/RemotionPlayerPreview'
+import { renderVideoOnClient, isClientExportSupported } from '@/lib/video/client-renderer'
 
 interface CategoryTab {
   id: ProductCategory
@@ -731,6 +732,62 @@ export default function CreateVideoPage() {
           `Lời thoại cảnh 1: "${analysisResult?.storyboard.scenes[0]?.voice || analysisResult?.strategy.hook}"`,
         ],
       }))
+
+      // 1. Prioritize Client-side Remotion WebCodecs Renderer (100% exact match with Live on both Local & Production)
+      let renderedLocally = false
+      const canClientRender = await isClientExportSupported()
+
+      if (canClientRender && analysisResult?.storyboard?.scenes) {
+        try {
+          console.log('[handleStartGeneratingVideo] Launching Client-side Remotion WebCodecs Engine...')
+          setGenerationProgress((prev) => ({
+            stage: '3/4. Render Remotion WebCodecs 1080x1920 (Khớp 100% với Live)...',
+            percent: 50,
+            logs: [
+              ...prev.logs,
+              'Kích hoạt Remotion Client Web-Renderer: Trực tiếp xuất video 1080x1920 từ trình duyệt',
+              'Đồng bộ hoàn hảo toàn bộ đồ họa, font chữ, sticker và âm thanh',
+            ],
+          }))
+
+          const clientResult = await renderVideoOnClient({
+            productName: product.name,
+            price: product.price ? Number(product.price) : undefined,
+            category: product.category,
+            scenes: analysisResult.storyboard.scenes,
+            imageUrls: product.assets
+              .filter((a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && a.url)
+              .map((a) => a.url!),
+            voiceAudioUrl: storyboardVoiceUrl || voicePreviewUrl || undefined,
+            bgmAudioUrl: '/music/lofi-beat.mp3',
+            fps: 30,
+            onProgress: (pct, msg) => {
+              setGenerationProgress((p) => ({
+                ...p,
+                percent: pct,
+                logs: [...p.logs.slice(-4), msg],
+              }))
+            },
+          })
+
+          setRenderedVideoUrl(clientResult.blobUrl)
+          setRenderedVideoFile(clientResult.file)
+          renderedLocally = true
+
+          setGenerationProgress((prev) => ({
+            stage: `4/4. Hoàn tất video ${selectedDuration}s chuẩn TikTok!`,
+            percent: 100,
+            logs: [
+              ...prev.logs,
+              `Xuất thành công: ${clientResult.fileName} (${(clientResult.blob.size / 1024).toFixed(1)} KB)`,
+              'Video MP4 khớp 100% với Remotion Live, sẵn sàng xem trước và đăng trực tiếp lên TikTok!',
+            ],
+          }))
+          return
+        } catch (clientErr) {
+          console.warn('[handleStartGeneratingVideo] Client-side render failed, falling back to server:', clientErr)
+        }
+      }
 
       setGenerationProgress((prev) => ({
         stage: '3/4. Render Remotion Studio 1080x1920 (Khớp 100% với Preview)...',
