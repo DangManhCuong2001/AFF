@@ -15,13 +15,16 @@ importers:
         specifier: ^1.61.3
         version: 1.61.3(mediabunny@1.56.1)
       '@remotion/bundler':
-        specifier: ^4.0.533
+        specifier: 4.0.533
         version: 4.0.533(@swc/helpers@0.5.23)(lightningcss@1.32.0)(postcss@8.5.28)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@remotion/media':
+        specifier: 4.0.533
+        version: 4.0.533(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@remotion/player':
-        specifier: ^4.0.533
+        specifier: 4.0.533
         version: 4.0.533(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@remotion/renderer':
-        specifier: ^4.0.533
+        specifier: 4.0.533
         version: 4.0.533(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@remotion/web-renderer':
         specifier: 4.0.533
@@ -51,7 +54,7 @@ importers:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
       remotion:
-        specifier: ^4.0.533
+        specifier: 4.0.533
         version: 4.0.533(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       tailwind-merge:
         specifier: ^3.7.0

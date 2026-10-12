@@ -1,5 +1,6 @@
 import React from 'react'
-import { AbsoluteFill, Audio, Sequence, staticFile } from 'remotion'
+import { AbsoluteFill, Sequence, staticFile } from 'remotion'
+import { Audio } from '@remotion/media'
 import { RemotionVideoProps } from './types'
 import { DynamicScene } from './DynamicScene'
 

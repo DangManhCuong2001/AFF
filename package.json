@@ -12,9 +12,10 @@
   "dependencies": {
     "@mediabunny/aac-encoder": "^1.61.3",
     "@mediabunny/mp3-encoder": "^1.61.3",
-    "@remotion/bundler": "^4.0.533",
-    "@remotion/player": "^4.0.533",
-    "@remotion/renderer": "^4.0.533",
+    "@remotion/bundler": "4.0.533",
+    "@remotion/media": "4.0.533",
+    "@remotion/player": "4.0.533",
+    "@remotion/renderer": "4.0.533",
     "@remotion/web-renderer": "4.0.533",
     "clsx": "^2.1.1",
     "ffmpeg-static": "^5.3.0",
@@ -24,7 +25,7 @@
     "node-edge-tts": "^1.2.10",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "remotion": "^4.0.533",
+    "remotion": "4.0.533",
     "tailwind-merge": "^3.7.0",
     "zod": "^4.6.5"
   },
