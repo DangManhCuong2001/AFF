@@ -170,7 +170,7 @@ export default function CreateVideoPage() {
   const [caption, setCaption] = useState('')
   const [hashtags, setHashtags] = useState<string[]>([])
   const [privacyLevel, setPrivacyLevel] = useState<'SELF_ONLY' | 'PUBLIC_TO_EVERYONE'>('SELF_ONLY')
-  const [isAigc, setIsAigc] = useState(true)
+  const [isAigc, setIsAigc] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishResult, setPublishResult] = useState<{
     success: boolean
@@ -2260,14 +2260,16 @@ export default function CreateVideoPage() {
 
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-neutral-300">Gắn nhãn nội dung do AI tạo (is_aigc):</span>
-                        <label className="flex items-center gap-2 cursor-pointer text-emerald-400 font-medium">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-medium">
                           <input
                             type="checkbox"
                             checked={isAigc}
                             onChange={(e) => setIsAigc(e.target.checked)}
                             className="rounded border-neutral-700 text-rose-600 focus:ring-0"
                           />
-                          Bật (Tuân thủ chính sách TikTok)
+                          <span className={isAigc ? 'text-rose-400' : 'text-neutral-400'}>
+                            {isAigc ? 'Bật (Gắn nhãn do AI tạo)' : 'Tắt (Không gắn nhãn AI)'}
+                          </span>
                         </label>
                       </div>
                     </div>
