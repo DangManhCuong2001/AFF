@@ -317,18 +317,32 @@ export class VipeeTTSProvider implements TTSProvider {
         const cleanText = sanitizeTextForTTS(seg.ttsScript || seg.text)
         let success = false
 
-        // Attempt 1-2: Fast Sequential EdgeTTS with identical voice and rate
-        for (let attempt = 1; attempt <= 2; attempt++) {
+        // Tier 0: Ultra-realistic Human Speech via ElevenLabs (Primary when ELEVENLABS_API_KEY is configured)
+        if (process.env.ELEVENLABS_API_KEY?.trim()) {
           try {
-            const tts = new EdgeTTS({ voice, lang: 'vi-VN', rate, timeout: 6000 })
-            await tts.ttsPromise(cleanText, rawSegPath)
-            if (fs.existsSync(rawSegPath) && fs.statSync(rawSegPath).size > 300) {
-              success = true
-              break
+            success = await this.synthesizeElevenLabs(cleanText, rawSegPath, plan.voicePreset)
+            if (success) {
+              console.log(`[VipeeTTSProvider] Segment ${idx} synthesized with ElevenLabs human voice`)
             }
-          } catch (e) {
-            console.warn(`[VipeeTTSProvider] Segment ${idx} EdgeTTS attempt ${attempt} failed:`, e)
-            await new Promise((r) => setTimeout(r, 400 * attempt))
+          } catch (elevenErr) {
+            console.warn(`[VipeeTTSProvider] Segment ${idx} ElevenLabs failed, falling back:`, elevenErr)
+          }
+        }
+
+        // Tier 1: Fast Sequential EdgeTTS (if ElevenLabs not active or quota exhausted)
+        if (!success) {
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+              const tts = new EdgeTTS({ voice, lang: 'vi-VN', rate, timeout: 6000 })
+              await tts.ttsPromise(cleanText, rawSegPath)
+              if (fs.existsSync(rawSegPath) && fs.statSync(rawSegPath).size > 300) {
+                success = true
+                break
+              }
+            } catch (e) {
+              console.warn(`[VipeeTTSProvider] Segment ${idx} EdgeTTS attempt ${attempt} failed:`, e)
+              await new Promise((r) => setTimeout(r, 400 * attempt))
+            }
           }
         }
 
@@ -461,6 +475,64 @@ export class VipeeTTSProvider implements TTSProvider {
       } catch (e) {
         console.warn('[VipeeTTSProvider] Cleanup error:', e)
       }
+    }
+  }
+
+  /**
+   * Ultra-realistic Human Speech Synthesis via ElevenLabs
+   * Uses eleven_flash_v2_5 (50% cheaper credits, < 1s latency, native Vietnamese)
+   */
+  private async synthesizeElevenLabs(
+    text: string,
+    outputPath: string,
+    preset: VoicePersonality
+  ): Promise<boolean> {
+    const apiKey = process.env.ELEVENLABS_API_KEY?.trim()
+    if (!apiKey) return false
+
+    // Map presets to verified premade voices (accessible on Free tier)
+    // Male: George (JBFqnCBsd6RMkjVDRZzb)
+    // Female energetic: Alice (Xb7hH8MSUJpSbSDYk0k2)
+    // Female natural/friendly: Jessica (cgSgspJ2msm6clMCkdW9)
+    let voiceId = 'cgSgspJ2msm6clMCkdW9'
+    if (preset === 'Warm Reviewer' || preset === 'Calm Explainer') {
+      voiceId = 'JBFqnCBsd6RMkjVDRZzb'
+    } else if (preset === 'Energetic Seller') {
+      voiceId = 'Xb7hH8MSUJpSbSDYk0k2'
+    }
+
+    try {
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: {
+          'xi-api-key': apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_flash_v2_5',
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+          },
+        }),
+      })
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '')
+        console.warn(`[VipeeTTSProvider] ElevenLabs HTTP ${res.status}:`, errText)
+        return false
+      }
+
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.length > 500) {
+        fs.writeFileSync(outputPath, buf)
+        return true
+      }
+      return false
+    } catch (err) {
+      console.warn('[VipeeTTSProvider] ElevenLabs synthesis failed:', err)
+      return false
     }
   }
 

@@ -88,6 +88,32 @@ export async function generateVietnameseTTS(
   const voice: VietnameseVoice = options?.voice || 'vi-VN-HoaiMyNeural'
   const rate = options?.rate || '+10%'
 
+  // 0. Ultra-realistic Human Speech Engine: ElevenLabs (if configured)
+  const elevenKey = process.env.ELEVENLABS_API_KEY?.trim()
+  if (elevenKey) {
+    try {
+      const voiceId = voice.includes('NamMinh') ? 'JBFqnCBsd6RMkjVDRZzb' : 'cgSgspJ2msm6clMCkdW9'
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: {
+          'xi-api-key': elevenKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: cleanText,
+          model_id: 'eleven_flash_v2_5',
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+        }),
+      })
+      if (res.ok) {
+        const buf = Buffer.from(await res.arrayBuffer())
+        if (buf.length > 500) return buf
+      }
+    } catch (elevenErr) {
+      console.warn('[TTS] ElevenLabs primary attempt failed:', elevenErr)
+    }
+  }
+
   // 1. Primary Engine: Pure Node.js EdgeTTS (runs everywhere including Vercel serverless without Python)
   try {
     const tempFile = path.join(
