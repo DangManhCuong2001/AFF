@@ -65,9 +65,9 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
         <Audio
           src={resolvedMasterAudio}
           volume={(f) => {
-            // Smooth ramp 0→1.2 over first 4 frames (≈133ms @ 30fps)
+            // Smooth ramp 0→1.0 over first 4 frames (≈133ms @ 30fps)
             const ramp = Math.min(1, f / 4)
-            return ramp * 1.2
+            return ramp * 1.0
           }}
         />
       )}

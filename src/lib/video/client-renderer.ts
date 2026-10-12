@@ -116,16 +116,9 @@ export async function renderVideoOnClient(
   const rawImages = opts.imageUrls.length > 0 ? opts.imageUrls : ['/backgrounds/minimal_lifestyle.png']
   const validImages = await Promise.all(rawImages.map(prepareAssetUrl))
 
-  // Prepare Audio URLs with absolute origin
-  let resolvedVoiceUrl = opts.voiceAudioUrl
-  if (resolvedVoiceUrl && resolvedVoiceUrl.startsWith('/') && typeof window !== 'undefined') {
-    resolvedVoiceUrl = `${window.location.origin}${resolvedVoiceUrl}`
-  }
-
-  let resolvedBgmUrl = opts.bgmAudioUrl || '/music/lofi-beat.mp3'
-  if (resolvedBgmUrl.startsWith('/') && typeof window !== 'undefined') {
-    resolvedBgmUrl = `${window.location.origin}${resolvedBgmUrl}`
-  }
+  // Prepare Audio URLs with pre-fetched blob URLs to avoid playback hiccups or CORS during render
+  let resolvedVoiceUrl = opts.voiceAudioUrl ? await prepareAssetUrl(opts.voiceAudioUrl) : ''
+  let resolvedBgmUrl = await prepareAssetUrl(opts.bgmAudioUrl || '/music/lofi-beat.mp3')
 
   // 1. Build Exact Speech Timings matching RemotionPlayerPreview
   const speechTimings = opts.scenes.reduce<{

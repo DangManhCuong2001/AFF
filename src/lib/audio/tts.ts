@@ -165,30 +165,57 @@ export async function generateVietnameseTTS(
     }
   }
 
-  // 4. Fallback to Google TTS if allowed
-  if (options?.allowRobotFallback) {
-    return fetchGoogleTTSFallback(cleanText.slice(0, 200))
+  // 4. Resilient Fallback: Google Translate Vietnamese TTS (Guaranteed to work in cloud environments)
+  try {
+    return await fetchGoogleTTSFallback(cleanText)
+  } catch (err) {
+    console.error('[TTS] Fallback Google TTS failed:', err)
+    throw new Error(`Không thể khởi tạo giọng đọc cho nội dung này. Vui lòng thử lại.`)
   }
-
-  throw new Error(`Không thể khởi tạo giọng đọc neural ${voice}. Vui lòng thử lại.`)
 }
 
-function fetchGoogleTTSFallback(text: string): Promise<Buffer> {
-  const encoded = encodeURIComponent(text)
-  const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=vi&client=tw-ob`
+async function fetchGoogleTTSFallback(text: string): Promise<Buffer> {
+  const words = text.split(/\s+/)
+  const chunks: string[] = []
+  let cur = ''
+  for (const w of words) {
+    if ((cur + ' ' + w).trim().length > 150) {
+      if (cur) chunks.push(cur.trim())
+      cur = w
+    } else {
+      cur = (cur + ' ' + w).trim()
+    }
+  }
+  if (cur) chunks.push(cur.trim())
 
-  return new Promise<Buffer>((resolve, reject) => {
-    https
-      .get(url, (res) => {
-        if (res.statusCode !== 200) {
-          reject(new Error(`Fallback TTS service returned HTTP ${res.statusCode}`))
-          return
-        }
+  const buffers: Buffer[] = []
+  for (const chunk of chunks) {
+    if (!chunk) continue
+    const encoded = encodeURIComponent(chunk)
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=vi&client=tw-ob`
 
-        const chunks: Buffer[] = []
-        res.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
-        res.on('end', () => resolve(Buffer.concat(chunks)))
-      })
-      .on('error', (err) => reject(err))
-  })
+    const buf = await new Promise<Buffer>((resolve, reject) => {
+      https
+        .get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } }, (res) => {
+          if (res.statusCode !== 200) {
+            reject(new Error(`Fallback TTS service returned HTTP ${res.statusCode}`))
+            return
+          }
+
+          const data: Buffer[] = []
+          res.on('data', (d) => data.push(Buffer.from(d)))
+          res.on('end', () => resolve(Buffer.concat(data)))
+        })
+        .on('error', (err) => reject(err))
+    })
+    if (buf.length > 50) {
+      buffers.push(buf)
+    }
+  }
+
+  if (buffers.length === 0) {
+    throw new Error('Google TTS produced empty buffer')
+  }
+
+  return Buffer.concat(buffers)
 }

@@ -716,8 +716,31 @@ export default function CreateVideoPage() {
         formData.append('image', primaryAsset.file)
       }
 
-      // Attach pre-generated audio track if already synthesized in Preview
-      const activeVoiceUrl = storyboardVoiceUrl || voicePreviewUrl
+      // Guarantee voice audio track: reuse existing preview audio or synthesize now
+      let activeVoiceUrl = storyboardVoiceUrl || voicePreviewUrl
+      if (!activeVoiceUrl && analysisResult?.storyboard?.scenes?.length) {
+        try {
+          console.log('[handleStartGeneratingVideo] Voice audio not ready, synthesizing on-demand...')
+          const voiceRes = await fetch('/api/audio/storyboard-voice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              scenes: analysisResult.storyboard.scenes,
+              voicePreset: selectedVoicePreset,
+            }),
+          })
+          if (voiceRes.ok) {
+            const voiceBlob = await voiceRes.blob()
+            if (voiceBlob.size > 500) {
+              activeVoiceUrl = URL.createObjectURL(voiceBlob)
+              setStoryboardVoiceUrl(activeVoiceUrl)
+            }
+          }
+        } catch (voiceFetchErr) {
+          console.warn('[handleStartGeneratingVideo] On-demand voice synthesis failed:', voiceFetchErr)
+        }
+      }
+
       if (activeVoiceUrl) {
         try {
           const audioRes = await fetch(activeVoiceUrl)
@@ -768,7 +791,7 @@ export default function CreateVideoPage() {
             imageUrls: product.assets
               .filter((a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && a.url)
               .map((a) => a.url!),
-            voiceAudioUrl: storyboardVoiceUrl || voicePreviewUrl || undefined,
+            voiceAudioUrl: activeVoiceUrl || undefined,
             bgmAudioUrl: '/music/lofi-beat.mp3',
             fps: 30,
             onProgress: (pct, msg) => {
