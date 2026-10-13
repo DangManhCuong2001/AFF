@@ -92,8 +92,9 @@ export async function generateVietnameseTTS(
   const elevenKey = process.env.ELEVENLABS_API_KEY?.trim()
   if (elevenKey) {
     try {
-      const voiceId = voice.includes('NamMinh') ? 'JBFqnCBsd6RMkjVDRZzb' : 'cgSgspJ2msm6clMCkdW9'
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      const fallbackVoice = voice.includes('NamMinh') ? 'JBFqnCBsd6RMkjVDRZzb' : 'cgSgspJ2msm6clMCkdW9'
+      const voiceId = process.env.ELEVENLABS_DEFAULT_VOICE_ID?.trim() || fallbackVoice
+      let res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: 'POST',
         headers: {
           'xi-api-key': elevenKey,
@@ -105,6 +106,25 @@ export async function generateVietnameseTTS(
           voice_settings: { stability: 0.5, similarity_boost: 0.75 },
         }),
       })
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '')
+        if (errText.includes('cannot use library voices') || res.status === 402) {
+          res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${fallbackVoice}`, {
+            method: 'POST',
+            headers: {
+              'xi-api-key': elevenKey,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              text: cleanText,
+              model_id: 'eleven_flash_v2_5',
+              voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+            }),
+          })
+        }
+      }
+
       if (res.ok) {
         const buf = Buffer.from(await res.arrayBuffer())
         if (buf.length > 500) return buf

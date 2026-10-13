@@ -490,19 +490,21 @@ export class VipeeTTSProvider implements TTSProvider {
     const apiKey = process.env.ELEVENLABS_API_KEY?.trim()
     if (!apiKey) return false
 
-    // Map presets to verified premade voices (accessible on Free tier)
-    // Male: George (JBFqnCBsd6RMkjVDRZzb)
-    // Female energetic: Alice (Xb7hH8MSUJpSbSDYk0k2)
-    // Female natural/friendly: Jessica (cgSgspJ2msm6clMCkdW9)
-    let voiceId = 'cgSgspJ2msm6clMCkdW9'
+    // Priority: Default Voice ID configured by user (default: s6W2NupNY6TykGJoDtWy)
+    const configuredVoiceId = process.env.ELEVENLABS_DEFAULT_VOICE_ID?.trim() || 's6W2NupNY6TykGJoDtWy'
+
+    // Preset mapping for premade voices (fallback if user is on Free tier without library voice permissions)
+    let fallbackVoiceId = 'cgSgspJ2msm6clMCkdW9' // Jessica (Female)
     if (preset === 'Warm Reviewer' || preset === 'Calm Explainer') {
-      voiceId = 'JBFqnCBsd6RMkjVDRZzb'
+      fallbackVoiceId = 'JBFqnCBsd6RMkjVDRZzb' // George (Male)
     } else if (preset === 'Energetic Seller') {
-      voiceId = 'Xb7hH8MSUJpSbSDYk0k2'
+      fallbackVoiceId = 'Xb7hH8MSUJpSbSDYk0k2' // Alice (Female)
     }
 
+    const voiceId = configuredVoiceId || fallbackVoiceId
+
     try {
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      let res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: 'POST',
         headers: {
           'xi-api-key': apiKey,
@@ -518,10 +520,31 @@ export class VipeeTTSProvider implements TTSProvider {
         }),
       })
 
+      // If library voice is restricted on current ElevenLabs plan (HTTP 402 paid plan required), retry with premade voice
       if (!res.ok) {
         const errText = await res.text().catch(() => '')
-        console.warn(`[VipeeTTSProvider] ElevenLabs HTTP ${res.status}:`, errText)
-        return false
+        console.warn(`[VipeeTTSProvider] ElevenLabs voice ${voiceId} HTTP ${res.status}:`, errText)
+
+        if (errText.includes('cannot use library voices') || res.status === 402) {
+          console.warn(`[VipeeTTSProvider] Voice ${voiceId} requires paid plan. Automatically falling back to premade voice ${fallbackVoiceId}...`)
+          res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${fallbackVoiceId}`, {
+            method: 'POST',
+            headers: {
+              'xi-api-key': apiKey,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              text,
+              model_id: 'eleven_flash_v2_5',
+              voice_settings: {
+                stability: 0.5,
+                similarity_boost: 0.75,
+              },
+            }),
+          })
+        }
+
+        if (!res.ok) return false
       }
 
       const buf = Buffer.from(await res.arrayBuffer())
