@@ -1,103 +1,29 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { ProductInput } from '@/engines/core/types'
-import { VipeeCreativeDirector } from '@/engines/creative/VipeeCreativeDirector'
-import { VipeeSpeechDirector } from '@/engines/speech/VipeeSpeechDirector'
-import { StoryApproach } from '@/engines/creative/types'
-import { VoicePersonality } from '@/engines/speech/types'
+import {NextRequest, NextResponse} from 'next/server'
+import {z} from 'zod'
+import {ProductInputSchema, ProductAssetSchema} from '@/engines/core/contracts'
+import {analyzeProductWithGemini} from '@/lib/ai/gemini'
+import {VipeeSpeechDirector} from '@/engines/speech/VipeeSpeechDirector'
 
 export const dynamic = 'force-dynamic'
-
-interface PlanRequestBody extends ProductInput {
-  targetDuration?: 15 | 30 | 45
-  approach?: StoryApproach
-  voicePreset?: VoicePersonality
-  geminiApiKey?: string
-}
+export const maxDuration = 60
+const requestSchema = ProductInputSchema.extend({
+  assets: ProductAssetSchema.array().max(30),
+  targetDuration: z.union([z.literal(15), z.literal(22), z.literal(30), z.literal(45)]).default(22),
+  angle: z.enum(['design', 'features', 'fit']).optional(),
+  geminiApiKey: z.string().optional(),
+  analysisImages: z.array(z.object({assetId: z.string(), dataUrl: z.string().max(900_000)})).max(3).optional(),
+  voicePreset: z.enum(['Natural Friend', 'Warm Reviewer', 'Curious Tester', 'Energetic Seller', 'Calm Explainer']).default('Natural Friend'),
+})
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as PlanRequestBody
-
-    if (!body || !body.name) {
-      return NextResponse.json(
-        { error: 'Tên sản phẩm là bắt buộc để lập Creative Plan' },
-        { status: 400 }
-      )
-    }
-
-    const { targetDuration, approach, voicePreset, geminiApiKey, ...product } = body
-    const effectiveApiKey = geminiApiKey || process.env.GEMINI_API_KEY
-
-    // 1. Creative Director Layer
-    const director = new VipeeCreativeDirector()
-    const creativePlan = await director.createCreativePlan(
-      product,
-      {
-        productType: product.name,
-        mainProblem: product.problemSolved || 'Bừa bộn và bất tiện thường ngày',
-        mainBenefit: product.benefits?.[0] || 'Gọn gàng và tiện lợi tức thì',
-        secondaryBenefits: product.benefits?.slice(1) || [],
-        targetAudience: product.targetAudience || 'Gia đình, người đi làm',
-        sellingMechanism: 'PROBLEM_SOLVE_DEMO',
-        visualDemoPotential: 'high',
-        recommendedFormat: approach || 'micro-story',
-        reasoningSummary: 'Phù hợp nhất với tâm lý khách hàng TikTok UGC',
-        claimsAllowed: [],
-        claimsToAvoid: [],
-      },
-      {
-        targetDuration: targetDuration || 15,
-        approach,
-        geminiApiKey: effectiveApiKey,
-      }
-    )
-
-    // 2. Speech Director Layer
-    const speechDirector = new VipeeSpeechDirector()
-    const speechPlan = speechDirector.createSpeechPlan(
-      {
-        scenes: [
-          {
-            id: 'scene-1',
-            storyBeat: 'hook',
-            voice: creativePlan.selectedHook?.text || creativePlan.hook,
-          },
-          {
-            id: 'scene-2',
-            storyBeat: 'problem',
-            voice: creativePlan.viewerInsight,
-          },
-          {
-            id: 'scene-3',
-            storyBeat: 'reveal',
-            voice: `Cho đến khi mình thử dùng ${product.name} này.`,
-          },
-          {
-            id: 'scene-4',
-            storyBeat: 'payoff',
-            voice: creativePlan.payoff,
-          },
-          {
-            id: 'scene-5',
-            storyBeat: 'cta',
-            voice: creativePlan.cta || 'Bấm ngay giỏ hàng góc trái bên dưới để săn deal ưu đãi nhé!',
-          },
-        ],
-      },
-      {
-        voicePreset: voicePreset || 'Natural Friend',
-      }
-    )
-
-    return NextResponse.json({
-      success: true,
-      creativePlan,
-      speechPlan,
-    })
-  } catch (err: unknown) {
-    return NextResponse.json(
-      { error: (err as Error)?.message || 'Lỗi khi lập Creative Plan' },
-      { status: 500 }
-    )
+    const body = requestSchema.safeParse(await request.json())
+    if (!body.success) return NextResponse.json({error: 'Thông tin sản phẩm hoặc lựa chọn video không hợp lệ'}, {status: 400})
+    const {targetDuration, angle, geminiApiKey, analysisImages, voicePreset, ...product} = body.data
+    const result = await analyzeProductWithGemini(product, geminiApiKey, targetDuration, {angle, images: analysisImages})
+    const speechPlan = new VipeeSpeechDirector().createSpeechPlan({scenes: result.storyboard.scenes.map((scene) => ({id: scene.id, storyBeat: scene.type, voice: scene.voice}))}, {voicePreset})
+    return NextResponse.json({success: true, ...result, speechPlan})
+  } catch {
+    return NextResponse.json({error: 'Không thể lập kế hoạch video. Vui lòng thử lại.'}, {status: 500})
   }
 }

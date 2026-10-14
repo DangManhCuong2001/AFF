@@ -1,3 +1,5 @@
+import type { VoiceProvider } from '@/lib/audio/provider'
+import { applySceneAudioTimings } from '@/lib/video/scene-timing'
 import path from 'path'
 import os from 'os'
 import fs from 'fs'
@@ -16,6 +18,7 @@ export interface RenderRemotionOptions {
   imageBuffers?: Buffer[]
   imageUrls?: string[]
   masterAudioBuffer?: Buffer
+  voiceProvider?: VoiceProvider
   voicePreset?: 'Natural Friend' | 'Warm Reviewer' | 'Curious Tester' | 'Energetic Seller' | 'Calm Explainer'
 }
 
@@ -93,6 +96,7 @@ export async function renderWithRemotion(
   }
 
   // 2. Prepare master audio
+  let renderedScenes = opts.scenes
   let masterAudioBase64 = ''
   if (opts.masterAudioBuffer && opts.masterAudioBuffer.length > 0) {
     masterAudioBase64 = `data:audio/mp3;base64,${opts.masterAudioBuffer.toString('base64')}`
@@ -113,8 +117,9 @@ export async function renderWithRemotion(
         }
       )
       const ttsProvider = new VipeeTTSProvider()
-      const speechAudioResult = await ttsProvider.generateSpeech(speechPlan)
+      const speechAudioResult = await ttsProvider.generateSpeech(speechPlan, { provider: opts.voiceProvider })
       masterAudioBase64 = `data:audio/mp3;base64,${speechAudioResult.audioBuffer.toString('base64')}`
+      renderedScenes = applySceneAudioTimings(opts.scenes, speechAudioResult.segmentTimings)
     } catch (ttsErr) {
       console.warn('[RemotionRenderer] Speech synthesis warning:', ttsErr)
     }
@@ -134,7 +139,7 @@ export async function renderWithRemotion(
     productName: opts.productName,
     price: opts.price,
     category: opts.category,
-    scenes: opts.scenes,
+    scenes: renderedScenes,
     images: base64Images,
     masterAudioBase64,
     bgmAudioBase64,
@@ -144,12 +149,12 @@ export async function renderWithRemotion(
   const payloadPath = path.join(tempDir, 'remotion_payload.json')
   fs.writeFileSync(payloadPath, JSON.stringify(payload))
 
-  const cliScriptPath = path.resolve(process.cwd(), 'scripts', 'render-remotion-cli.ts')
+  const cliScriptPath = path.resolve(process.cwd(), 'scripts', 'render-remotion-worker.cjs')
 
-  // Spawn standalone tsx CLI process
+  // Use installed TypeScript in an isolated worker; no npx dependency download.
   const { stdout } = await execFilePromise(
-    'npx',
-    ['tsx', cliScriptPath, payloadPath],
+    process.execPath,
+    [cliScriptPath, payloadPath],
     {
       cwd: process.cwd(),
       timeout: 120000,

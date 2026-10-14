@@ -18,6 +18,7 @@ async function getRemotionBundleLocation(): Promise<string> {
   const bundleLoc = await bundle({
     entryPoint: path.resolve(process.cwd(), 'src/remotion/index.ts'),
     publicDir: path.resolve(process.cwd(), 'public'),
+    enableCaching: false,
   })
 
   cachedBundleLocation = bundleLoc
@@ -86,6 +87,7 @@ async function main() {
   // 4. Generate Storyplan & Commercial Infographic Deck
   const visualDirector = new VipeeVisualDirector()
   const storyplan = visualDirector.createVisualStoryplan({
+    scenes,
     speechTimings,
     productImages: validImages,
     productName,

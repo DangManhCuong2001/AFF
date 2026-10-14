@@ -30,6 +30,7 @@ export interface VisualLayerTransform {
 }
 
 export interface VisualBeat {
+  plannedScene?: import('../core/types').StoryboardScene
   id: string
   segmentId: string
   shotType: ShotType
@@ -91,6 +92,7 @@ export interface VisualStoryplan {
 
 export interface VisualDirector {
   createVisualStoryplan(params: {
+    scenes?: import('../core/types').StoryboardScene[]
     speechTimings: Array<{
       segmentId: string
       text: string

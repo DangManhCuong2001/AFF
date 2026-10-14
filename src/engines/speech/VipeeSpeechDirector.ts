@@ -8,15 +8,14 @@ import {
   TTSProviderCapabilities,
   VoicePersonality,
 } from './types'
-import https from 'https'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { exec, execFile } from 'child_process'
 import { promisify } from 'util'
 import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
-import { sanitizeTextForTTS } from '@/lib/audio/tts'
-import { EdgeTTS } from 'node-edge-tts'
+import { generateVietnameseTTS, sanitizeTextForTTS } from '@/lib/audio/tts'
+import { parseVoiceProvider, VoiceProvider } from '@/lib/audio/provider'
 
 const execPromise = promisify(exec)
 
@@ -262,15 +261,7 @@ async function measureAudioDurationSec(filePath: string, ffmpegBin: string): Pro
 }
 
 /**
- * Segmented, Humanized Audio Engine with Micro-Pauses and Concatenation
- *
- * Key fixes:
- *   1. Each segment gets its OWN EdgeTTS instance – node-edge-tts is not
- *      re-entrant; sharing one instance across parallel calls causes
- *      file-write conflicts and produces corrupt/empty segments.
- *   2. Duration is measured via execFile+stderr (not execPromise+2>&1).
- *   3. Concat re-encodes to uniform 44100 Hz stereo 192k MP3 instead
- *      of -c copy to eliminate pops/silence at segment boundaries.
+ * Segmented speech with one selected provider, measured timing and uniform MP3 output.
  */
 export class VipeeTTSProvider implements TTSProvider {
   readonly capabilities: TTSProviderCapabilities = {
@@ -285,7 +276,8 @@ export class VipeeTTSProvider implements TTSProvider {
   /**
    * Generates natural speech segmented with realistic breath/pauses
    */
-  async generateSpeech(plan: SpeechPlan): Promise<AudioResult> {
+  async generateSpeech(plan: SpeechPlan, options?: { provider?: VoiceProvider }): Promise<AudioResult> {
+    const provider = parseVoiceProvider(options?.provider)
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vipee-speech-'))
     const segmentAudioFiles: string[] = []
     const segmentTimings: AudioResult['segmentTimings'] = []
@@ -294,96 +286,23 @@ export class VipeeTTSProvider implements TTSProvider {
     try {
       const ffmpeg = getFfmpegBinaryPath()
 
-      const voice =
-        plan.voicePreset === 'Warm Reviewer' || plan.voicePreset === 'Calm Explainer'
-          ? 'vi-VN-NamMinhNeural'
-          : 'vi-VN-HoaiMyNeural'
-      const rate =
-        plan.voicePreset === 'Energetic Seller'
-          ? '+12%'
-          : plan.voicePreset === 'Natural Friend'
-          ? '+10%'
-          : plan.voicePreset === 'Curious Tester'
-          ? '+8%'
-          : '+5%'
-
-      // ── Step 1: Synthesize raw segments sequentially with STRICT UNIFIED VOICE ──
-      // Parallel Promise.all causes WebSocket connection collisions & timeouts on Microsoft Edge TTS,
-      // which previously forced individual segments to fall back to Google Robot TTS, mixing voices!
-      // Sequential processing with gentle pacing ensures 100% of segments use the EXACT SAME CHOSEN VOICE.
+      // Use one explicitly selected provider for every segment.
       for (let idx = 0; idx < plan.segments.length; idx++) {
         const seg = plan.segments[idx]
         const rawSegPath = path.join(tempDir, `raw_seg_${idx}.mp3`)
         const cleanText = sanitizeTextForTTS(seg.ttsScript || seg.text)
         let success = false
 
-        // Tier 0: Ultra-realistic Human Speech via ElevenLabs (Primary when ELEVENLABS_API_KEY is configured)
-        if (process.env.ELEVENLABS_API_KEY?.trim()) {
-          try {
-            success = await this.synthesizeElevenLabs(cleanText, rawSegPath, plan.voicePreset)
-            if (success) {
-              console.log(`[VipeeTTSProvider] Segment ${idx} synthesized with ElevenLabs human voice`)
-            }
-          } catch (elevenErr) {
-            console.warn(`[VipeeTTSProvider] Segment ${idx} ElevenLabs failed, falling back:`, elevenErr)
-          }
-        }
-
-        // Tier 1: Fast Sequential EdgeTTS (if ElevenLabs not active or quota exhausted)
-        if (!success) {
-          for (let attempt = 1; attempt <= 2; attempt++) {
-            try {
-              const tts = new EdgeTTS({ voice, lang: 'vi-VN', rate, timeout: 6000 })
-              await tts.ttsPromise(cleanText, rawSegPath)
-              if (fs.existsSync(rawSegPath) && fs.statSync(rawSegPath).size > 300) {
-                success = true
-                break
-              }
-            } catch (e) {
-              console.warn(`[VipeeTTSProvider] Segment ${idx} EdgeTTS attempt ${attempt} failed:`, e)
-              await new Promise((r) => setTimeout(r, 400 * attempt))
-            }
-          }
-        }
-
-        // Tier 2: Python helper fallback with STRICT SAME VOICE (no robot voices!)
-        if (!success) {
-          const helperScript = path.join(process.cwd(), 'src', 'lib', 'audio', 'tts_helper.py')
-          if (fs.existsSync(helperScript)) {
-            try {
-              console.warn(`[VipeeTTSProvider] Segment ${idx} trying local python edge-tts with voice ${voice}`)
-              await new Promise<void>((resolve, reject) => {
-                execFile(
-                  'python3',
-                  [helperScript, cleanText, voice, rawSegPath, rate],
-                  { timeout: 25000 },
-                  (err) => {
-                    if (err) reject(err)
-                    else resolve()
-                  }
-                )
-              })
-              if (fs.existsSync(rawSegPath) && fs.statSync(rawSegPath).size > 300) {
-                success = true
-              }
-            } catch (pyErr) {
-              console.warn(`[VipeeTTSProvider] Segment ${idx} python edge_tts failed:`, pyErr)
-            }
-          }
-        }
-
-        // Tier 3: Resilient Vietnamese Speech Fallback (Guaranteed to work on Vercel Cloud Serverless)
-        if (!success) {
-          console.warn(`[VipeeTTSProvider] Segment ${idx} EdgeTTS unavailable on cloud IP, using resilient Vietnamese TTS engine...`)
+        if (provider === 'google') {
           success = await this.synthesizeGoogleTTS(cleanText, rawSegPath)
+        } else {
+          if (!process.env.ELEVENLABS_API_KEY?.trim()) {
+            throw new Error('Chưa cấu hình ELEVENLABS_API_KEY')
+          }
+          success = await this.synthesizeElevenLabs(cleanText, rawSegPath, plan.voicePreset)
         }
-
-        // Tier 4: Absolute fallback if network connection failed completely
         if (!success) {
-          console.error(
-            `[VipeeTTSProvider] Segment ${idx} failed all synthesis attempts. Writing silence to preserve audio structure.`
-          )
-          await this.writeSilenceFile(ffmpeg, rawSegPath, seg.estimatedDurationSec || 2.5)
+          throw new Error(`Không thể tạo giọng ${provider === 'google' ? 'Google' : 'ElevenLabs'} cho cảnh ${idx + 1}. Vui lòng thử lại.`)
         }
 
         // Pacing delay between segments to prevent socket rate limits
@@ -559,54 +478,10 @@ export class VipeeTTSProvider implements TTSProvider {
     }
   }
 
-  /**
-   * Resilient Vietnamese TTS fallback (Google Translate TTS with phrase chunking)
-   * Guaranteed to work in serverless cloud environments (Vercel) where Microsoft blocks datacenter IPs.
-   */
   private async synthesizeGoogleTTS(text: string, outputPath: string): Promise<boolean> {
-    try {
-      const words = text.split(/\s+/)
-      const chunks: string[] = []
-      let cur = ''
-      for (const w of words) {
-        if ((cur + ' ' + w).trim().length > 150) {
-          if (cur) chunks.push(cur.trim())
-          cur = w
-        } else {
-          cur = (cur + ' ' + w).trim()
-        }
-      }
-      if (cur) chunks.push(cur.trim())
-
-      const audioBuffers: Buffer[] = []
-      for (const chunk of chunks) {
-        if (!chunk) continue
-        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`
-        const buf = await new Promise<Buffer>((resolve, reject) => {
-          https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } }, (res) => {
-            if (res.statusCode !== 200) {
-              return reject(new Error(`Google TTS status ${res.statusCode}`))
-            }
-            const data: Buffer[] = []
-            res.on('data', (d) => data.push(d))
-            res.on('end', () => resolve(Buffer.concat(data)))
-          }).on('error', reject)
-        })
-        if (buf.length > 100) {
-          audioBuffers.push(buf)
-        }
-      }
-
-      if (audioBuffers.length > 0) {
-        const fullBuf = Buffer.concat(audioBuffers)
-        fs.writeFileSync(outputPath, fullBuf)
-        return true
-      }
-      return false
-    } catch (err) {
-      console.warn('[VipeeTTSProvider] Google TTS fallback error:', err)
-      return false
-    }
+    const buffer = await generateVietnameseTTS(text, { provider: 'google' })
+    fs.writeFileSync(outputPath, buffer)
+    return true
   }
 
   /**

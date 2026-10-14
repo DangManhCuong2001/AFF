@@ -1,3 +1,4 @@
+import { parseVoiceProvider } from '@/lib/audio/provider'
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
@@ -11,6 +12,7 @@ export const maxDuration = 60
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
+    const voiceProvider = parseVoiceProvider(formData.get('voiceProvider'))
     const productName = (formData.get('productName') as string) || 'Sản phẩm gia dụng thông minh'
     const priceStr = formData.get('price') as string
     const price = priceStr ? Number(priceStr) : undefined
@@ -153,10 +155,14 @@ export async function POST(request: NextRequest) {
         imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
         imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
         voicePreset,
+        voiceProvider,
         masterAudioBuffer,
       })
       console.log(`[VideoRenderAPI] Remotion render success: ${result.fileName} (${result.fileSizeBytes} bytes)`)
     } catch (remotionErr) {
+      if (scenes.some((scene) => scene.renderPlan?.contextImageUrl)) {
+        throw new Error('Không xuất được video bối cảnh bằng Remotion. Vui lòng thử lại; app giữ nguyên ảnh preview thay vì đổi sang bản dựng khác.')
+      }
       console.warn('[VideoRenderAPI] Remotion rendering failed, falling back to FFmpeg generator:', remotionErr)
       result = await renderProductVideo({
         productName,
@@ -166,6 +172,7 @@ export async function POST(request: NextRequest) {
         imageBuffers: imageBuffers.length > 0 ? imageBuffers : undefined,
         imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
         voicePreset,
+        voiceProvider,
         masterAudioBuffer,
       })
     }

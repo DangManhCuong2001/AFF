@@ -1,3 +1,4 @@
+import { parseVoiceProvider } from '@/lib/audio/provider'
 import { NextRequest, NextResponse } from 'next/server'
 import { VipeeSpeechDirector, VipeeTTSProvider } from '@/engines/speech/VipeeSpeechDirector'
 import { StoryboardScene } from '@/engines/core/types'
@@ -9,6 +10,7 @@ export const maxDuration = 60
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    const provider = parseVoiceProvider(body.voiceProvider)
     const scenes: StoryboardScene[] = body.scenes || []
     const voicePreset: VoicePersonality = body.voicePreset || 'Natural Friend'
 
@@ -30,7 +32,7 @@ export async function POST(request: NextRequest) {
     )
 
     const ttsProvider = new VipeeTTSProvider()
-    const result = await ttsProvider.generateSpeech(speechPlan)
+    const result = await ttsProvider.generateSpeech(speechPlan, { provider })
 
     return new NextResponse(result.audioBuffer as unknown as BodyInit, {
       status: 200,

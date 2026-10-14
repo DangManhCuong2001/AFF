@@ -1,3 +1,4 @@
+import type { VoiceProvider } from '@/lib/audio/provider'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -21,6 +22,7 @@ export interface RenderVideoParams {
   imageBuffers?: Buffer[]
   imageUrls?: string[]
   imageMimeType?: string
+  voiceProvider?: VoiceProvider
   voicePreset?: 'Natural Friend' | 'Warm Reviewer' | 'Curious Tester' | 'Energetic Seller' | 'Calm Explainer'
   masterAudioBuffer?: Buffer
 }
@@ -166,7 +168,7 @@ export async function renderProductVideo(
       )
 
       const ttsProvider = new VipeeTTSProvider()
-      const speechAudioResult = await ttsProvider.generateSpeech(speechPlan)
+      const speechAudioResult = await ttsProvider.generateSpeech(speechPlan, { provider: params.voiceProvider })
       fs.writeFileSync(masterVoicePath, speechAudioResult.audioBuffer)
       masterAudioDuration = speechAudioResult.durationSec
       segmentTimings = speechAudioResult.segmentTimings
@@ -207,7 +209,7 @@ export async function renderProductVideo(
       const segPath = path.join(tempDir, `segment_${i}.mp4`)
       segmentFiles.push(segPath)
 
-      const sceneImgPath = availableImagePaths[i % availableImagePaths.length]
+      const sceneImgPath = availableImagePaths[scene.renderPlan?.assetIndex ?? (i % availableImagePaths.length)] || availableImagePaths[0]
       const isFirstScene = i === 0
       const isLastScene = i === params.scenes.length - 1
 

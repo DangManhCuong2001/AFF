@@ -1,6 +1,7 @@
 import React from 'react'
 import { DynamicCommerceScene } from './DynamicCommerceScene'
 import { InfographicMotionScene } from './InfographicMotionScene'
+import { PlannedCommerceScene } from './PlannedCommerceScene'
 import { StoryplanBeat, LayoutVariant, ProductPresentation, VisualBeat } from './remotion-types'
 
 interface DynamicSceneProps {
@@ -16,6 +17,9 @@ export const DynamicScene: React.FC<DynamicSceneProps> = ({
   priceText,
   isLastScene,
 }) => {
+  if (beat.plannedScene?.renderPlan) {
+    return <PlannedCommerceScene scene={beat.plannedScene} imageUrl={beat.layers.product.url} durationSec={beat.durationSec} />
+  }
   // Priority: If beat has an Infographic Card from Commercial Infographic Deck, render InfographicMotionScene!
   if (beat.infographicCard && beat.theme) {
     return (

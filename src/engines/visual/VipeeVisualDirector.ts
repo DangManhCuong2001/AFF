@@ -8,6 +8,7 @@ import {
 
 export class VipeeVisualDirector implements VisualDirector {
   createVisualStoryplan(params: {
+    scenes?: import('../core/types').StoryboardScene[]
     speechTimings: Array<{
       segmentId: string
       text: string
@@ -28,6 +29,20 @@ export class VipeeVisualDirector implements VisualDirector {
     const totalDuration = speechTimings.reduce((sum, s) => sum + s.durationSec, 0)
 
     const beats: VisualBeat[] = speechTimings.map((seg, idx) => {
+      const planned = params.scenes?.find((scene) => scene.id === seg.segmentId)
+      if (planned?.renderPlan) {
+        const asset = productImages[planned.renderPlan.assetIndex] || primaryImg
+        const transform = {scaleStart: 1, scaleEnd: 1.04, translateXStart: 0, translateXEnd: 0, translateYStart: 0, translateYEnd: 0}
+        return {
+          id: `beat-${idx + 1}`, segmentId: seg.segmentId, plannedScene: planned,
+          shotType: planned.type === 'cta' ? 'CTAShot' : planned.renderPlan.framing === 'detail' ? 'DetailShot' : 'ProductRevealShot',
+          startTimeSec: seg.startSec, durationSec: seg.durationSec, visualIntent: planned.renderPlan.purpose,
+          cameraMotion: 'camera_push', productVisible: true, productRevealDelaySec: 0,
+          headline: planned.headline, supportText: planned.subheadline, benefitChips: [],
+          layers: {background: {type: 'ambient_gradient', gradientColors: ['#f5f2eb', '#ffffff'], transform}, product: {url: asset, shadow: true, hasContactShadow: true, motion: 'smooth_scale', transform}, typography: {subtitleText: planned.voice}},
+          sfxCue: 'none', sfxDelaySec: 0,
+        }
+      }
       const isHook = idx === 0
       const isProblem = idx === 1
       const isReveal = idx === 2

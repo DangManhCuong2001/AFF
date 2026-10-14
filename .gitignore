@@ -42,3 +42,6 @@ public/renders/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local video demos, AI samples and Remotion build artifacts
+/output/

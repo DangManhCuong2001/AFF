@@ -1,3 +1,4 @@
+import type { VoiceProvider } from '@/lib/audio/provider'
 import { EmotionalTone } from '@/engines/creative/types'
 import { SpeechIntent } from '@/engines/core/contracts'
 export type { SpeechIntent }
@@ -55,7 +56,7 @@ export interface AudioResult {
 
 export interface TTSProvider {
   capabilities: TTSProviderCapabilities
-  generateSpeech(plan: SpeechPlan): Promise<AudioResult>
+  generateSpeech(plan: SpeechPlan, options?: { provider?: VoiceProvider }): Promise<AudioResult>
 }
 
 export interface SpeechDirector {

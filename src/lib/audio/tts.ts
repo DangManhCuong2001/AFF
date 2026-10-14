@@ -1,13 +1,10 @@
-import { execFile } from 'child_process'
-import fs from 'fs'
 import https from 'https'
-import os from 'os'
-import path from 'path'
-import { EdgeTTS } from 'node-edge-tts'
+import { parseVoiceProvider, VoiceProvider } from './provider'
 
 export type VietnameseVoice = 'vi-VN-HoaiMyNeural' | 'vi-VN-NamMinhNeural'
 
 export interface TTSOptions {
+  provider?: VoiceProvider
   voice?: VietnameseVoice
   rate?: string // e.g. "+10%" or "+12%"
   allowRobotFallback?: boolean
@@ -53,7 +50,7 @@ export function normalizeVietnameseNumbers(text: string): string {
 }
 
 /**
- * Sanitizes text to ensure 100% compatibility with Microsoft Edge Neural TTS.
+ * Sanitizes Vietnamese text before speech synthesis.
  */
 export function sanitizeTextForTTS(raw: string): string {
   if (!raw) return ''
@@ -74,7 +71,7 @@ export function sanitizeTextForTTS(raw: string): string {
 
 /**
  * Generates natural Vietnamese neural speech audio buffer (MP3) from text.
- * Uses pure Node.js EdgeTTS with zero Python dependency for Vercel serverless compatibility.
+ * Uses the explicitly selected provider; defaults to Google for testing.
  */
 export async function generateVietnameseTTS(
   text: string,
@@ -86,10 +83,12 @@ export async function generateVietnameseTTS(
   }
 
   const voice: VietnameseVoice = options?.voice || 'vi-VN-HoaiMyNeural'
-  const rate = options?.rate || '+10%'
+  const provider = parseVoiceProvider(options?.provider)
+  if (provider === 'google') return fetchGoogleTTSFallback(cleanText)
 
   // 0. Ultra-realistic Human Speech Engine: ElevenLabs (if configured)
   const elevenKey = process.env.ELEVENLABS_API_KEY?.trim()
+  if (!elevenKey) throw new Error('Chưa cấu hình ELEVENLABS_API_KEY')
   if (elevenKey) {
     try {
       const fallbackVoice = voice.includes('NamMinh') ? 'JBFqnCBsd6RMkjVDRZzb' : 'cgSgspJ2msm6clMCkdW9'
@@ -134,90 +133,7 @@ export async function generateVietnameseTTS(
     }
   }
 
-  // 1. Primary Engine: Pure Node.js EdgeTTS (runs everywhere including Vercel serverless without Python)
-  try {
-    const tempFile = path.join(
-      os.tmpdir(),
-      `edge_tts_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`
-    )
-    const tts = new EdgeTTS({ voice, lang: 'vi-VN', rate, timeout: 25000 })
-    await tts.ttsPromise(cleanText, tempFile)
-
-    if (fs.existsSync(tempFile)) {
-      const buffer = fs.readFileSync(tempFile)
-      try {
-        fs.unlinkSync(tempFile)
-      } catch {}
-      if (buffer.length > 300) {
-        return buffer
-      }
-    }
-  } catch (nodeError) {
-    console.warn('[TTS] Node EdgeTTS primary attempt failed:', nodeError)
-  }
-
-  // 2. Retry with standard rate (+0%)
-  try {
-    const tempFile = path.join(
-      os.tmpdir(),
-      `edge_tts_retry_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`
-    )
-    const ttsRetry = new EdgeTTS({ voice, lang: 'vi-VN', rate: '+0%', timeout: 25000 })
-    await ttsRetry.ttsPromise(cleanText, tempFile)
-
-    if (fs.existsSync(tempFile)) {
-      const buffer = fs.readFileSync(tempFile)
-      try {
-        fs.unlinkSync(tempFile)
-      } catch {}
-      if (buffer.length > 300) {
-        return buffer
-      }
-    }
-  } catch (retryError) {
-    console.warn('[TTS] Node EdgeTTS retry failed:', retryError)
-  }
-
-  // 3. Optional local Python fallback (if running on a machine with python3 installed)
-  const helperScript = path.join(process.cwd(), 'src', 'lib', 'audio', 'tts_helper.py')
-  if (fs.existsSync(helperScript)) {
-    try {
-      const tempFile = path.join(
-        os.tmpdir(),
-        `edge_tts_py_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`
-      )
-      await new Promise<void>((resolve, reject) => {
-        execFile(
-          'python3',
-          [helperScript, cleanText, voice, tempFile, rate],
-          { timeout: 30000 },
-          (error) => {
-            if (error) reject(error)
-            else resolve()
-          }
-        )
-      })
-      if (fs.existsSync(tempFile)) {
-        const buffer = fs.readFileSync(tempFile)
-        try {
-          fs.unlinkSync(tempFile)
-        } catch {}
-        if (buffer.length > 300) {
-          return buffer
-        }
-      }
-    } catch {
-      // Python not available (e.g. on Vercel), continue
-    }
-  }
-
-  // 4. Resilient Fallback: Google Translate Vietnamese TTS (Guaranteed to work in cloud environments)
-  try {
-    return await fetchGoogleTTSFallback(cleanText)
-  } catch (err) {
-    console.error('[TTS] Fallback Google TTS failed:', err)
-    throw new Error(`Không thể khởi tạo giọng đọc cho nội dung này. Vui lòng thử lại.`)
-  }
+  throw new Error('Không thể tạo giọng ElevenLabs. Vui lòng thử lại hoặc chọn Google.')
 }
 
 async function fetchGoogleTTSFallback(text: string): Promise<Buffer> {

@@ -20,18 +20,13 @@ import {
   Download,
   Key,
   X,
-  ShoppingBag,
   Volume2,
   VolumeX,
   Play,
-  Pause,
-  Wand2,
   RotateCcw,
   Check,
   ShieldCheck,
   Flame,
-  Award,
-  ExternalLink,
 } from 'lucide-react'
 import {
   ProductInput,
@@ -41,9 +36,18 @@ import {
   ProductAnalysis,
   VideoStrategy,
   VideoStoryboard,
+  StoryboardScene,
 } from '@/engines/core/types'
 import { CreativePlan, HookCandidate, StoryApproach } from '@/engines/creative/types'
 import { VoicePersonality } from '@/engines/speech/types'
+import type { VoiceProvider } from '@/lib/audio/provider'
+import type { ContentPlan, ContentAngle } from '@/engines/planning/types'
+import { ContentPlanSummary } from '@/components/video/ContentPlanSummary'
+import { prepareAnalysisImages } from '@/lib/ai/prepare-images'
+import type { AnalysisImage } from '@/lib/ai/gemini'
+import { attachContextImage, getContextImage } from '@/lib/ai/context-scenes'
+import { isProductImage, distributeSceneDurations } from '@/engines/planning/AdaptiveVideoPlanner'
+import { applySceneAudioTimings, parseSceneAudioTimings, SceneAudioTiming } from '@/lib/video/scene-timing'
 import { InfographicDeckViewer } from '@/components/infographic/InfographicDeckViewer'
 import { CABLE_ORGANIZER_SEED_PRODUCT } from '@/engines/home/seed'
 import { RemotionPlayerPreview } from '@/components/video/RemotionPlayerPreview'
@@ -69,36 +73,36 @@ const CATEGORY_TABS: CategoryTab[] = [
     id: 'fashion',
     name: 'Fashion',
     icon: '👗',
-    isActive: false,
-    description: 'Quần áo, trang phục, dáng người, chất liệu (Coming soon)',
+    isActive: true,
+    description: 'Quần áo, trang phục, dáng người, chất liệu',
   },
   {
     id: 'accessories',
     name: 'Accessories',
     icon: '👜',
-    isActive: false,
-    description: 'Túi xách, trang sức, đồng hồ, phụ kiện mang theo (Coming soon)',
+    isActive: true,
+    description: 'Túi xách, trang sức, đồng hồ, phụ kiện mang theo',
   },
   {
     id: 'beauty',
     name: 'Beauty & Skincare',
     icon: '💄',
-    isActive: false,
-    description: 'Mỹ phẩm, dưỡng da, chất kem, liệu trình (Coming soon)',
+    isActive: true,
+    description: 'Mỹ phẩm, dưỡng da, chất kem, liệu trình',
   },
   {
     id: 'perfume',
     name: 'Perfume',
     icon: '🌸',
-    isActive: false,
-    description: 'Nước hoa, tông mùi, phong cách, độ lưu hương (Coming soon)',
+    isActive: true,
+    description: 'Nước hoa, tông mùi, phong cách, độ lưu hương',
   },
   {
     id: 'tech',
     name: 'Tech Gadget',
     icon: '⚡',
-    isActive: false,
-    description: 'Thiết bị công nghệ, phụ kiện thông minh, bàn làm việc (Coming soon)',
+    isActive: true,
+    description: 'Thiết bị công nghệ, phụ kiện thông minh, bàn làm việc',
   },
 ]
 
@@ -131,14 +135,27 @@ export default function CreateVideoPage() {
 
   // Analysis & Engine State
   const [analyzing, setAnalyzing] = useState(false)
+  const [analysisStage, setAnalysisStage] = useState('Đang đọc ảnh & chọn cách kể chuyện...')
+  const [useAIContext, setUseAIContext] = useState(true)
+  const [isGeneratingContext, setIsGeneratingContext] = useState(false)
+  const [contextError, setContextError] = useState<string | null>(null)
+  const [contextRequiresSetup, setContextRequiresSetup] = useState(false)
+  const contextCacheRef = React.useRef<{signature: string; imageUrl: string} | null>(null)
   const [analysisResult, setAnalysisResult] = useState<{
     analysis: ProductAnalysis
     strategy: VideoStrategy
     storyboard: VideoStoryboard
     creativePlan?: CreativePlan
+    contentPlan?: ContentPlan
   } | null>(null)
 
   // Creative Director Engine State
+  const [voiceError, setVoiceError] = useState<string | null>(null)
+  const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>('google')
+  const previewRequestRef = React.useRef<AbortController | null>(null)
+  useEffect(() => {
+    if (localStorage.getItem('voice_provider') === 'elevenlabs') setVoiceProvider('elevenlabs')
+  }, [])
   const [selectedVoicePreset, setSelectedVoicePreset] = useState<VoicePersonality>('Natural Friend')
   const [selectedHookId, setSelectedHookId] = useState<string>('')
   const [selectedApproach, setSelectedApproach] = useState<StoryApproach>('micro-story')
@@ -152,8 +169,8 @@ export default function CreateVideoPage() {
   const [storyboardVoiceUrl, setStoryboardVoiceUrl] = useState<string | null>(null)
   const [isGeneratingVoice, setIsGeneratingVoice] = useState(false)
 
-  // Video duration state (15s, 30s, 45s)
-  const [selectedDuration, setSelectedDuration] = useState<15 | 30 | 45>(15)
+  // Target video duration in seconds
+  const [selectedDuration, setSelectedDuration] = useState<15 | 22 | 30 | 45>(22)
 
   // Strict 3-step linear flow: 1: Nhập thông tin & Thời lượng | 2: Phân tích & Kế hoạch | 3: Tạo Layout & Video Studio
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1)
@@ -207,33 +224,61 @@ export default function CreateVideoPage() {
   const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null)
   const [renderedVideoFile, setRenderedVideoFile] = useState<File | null>(null)
 
+  const [voiceTimings, setVoiceTimings] = useState<SceneAudioTiming[]>([])
+  const playbackScenes = React.useMemo(() => applySceneAudioTimings(analysisResult?.storyboard.scenes || [], voiceTimings), [analysisResult?.storyboard.scenes, voiceTimings])
+  const playbackDuration = playbackScenes.reduce((sum, scene) => sum + scene.duration, 0)
+
+  const voiceScript = JSON.stringify(analysisResult?.storyboard.scenes.map(({id, voice, headline, type, keywords}) => ({id, voice, headline, type, keywords})) || [])
+  const speechScenes = React.useMemo<StoryboardScene[]>(() => JSON.parse(voiceScript), [voiceScript])
+  useEffect(() => {
+    setRenderedVideoUrl(null)
+    setRenderedVideoFile(null)
+  }, [analysisResult?.storyboard.scenes])
+
   // Automatically generate full Vietnamese voiceover for Storyboard scenes
   useEffect(() => {
-    const scenes = analysisResult?.storyboard?.scenes
+    const scenes = speechScenes
     if (!scenes || scenes.length === 0) return
 
+    setVoiceTimings([])
+    setRenderedVideoUrl(null)
+    setRenderedVideoFile(null)
+    setStoryboardVoiceUrl((previous) => {
+      if (previous) URL.revokeObjectURL(previous)
+      return null
+    })
     let isSubscribed = true
+    const controller = new AbortController()
     const fetchStoryboardVoice = async () => {
       try {
+        setVoiceError(null)
         setIsGeneratingVoice(true)
         const res = await fetch('/api/audio/storyboard-voice', {
+          signal: controller.signal,
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             scenes,
             voicePreset: selectedVoicePreset,
+            voiceProvider,
           }),
         })
-        if (!res.ok) throw new Error('Không thể tải giọng đọc')
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({}))
+          throw new Error(error.error || 'Không thể tải giọng đọc')
+        }
+        const timings = parseSceneAudioTimings(res.headers.get('X-Segment-Timings'))
         const blob = await res.blob()
         if (isSubscribed) {
           const url = URL.createObjectURL(blob)
+          setVoiceTimings(timings)
           setStoryboardVoiceUrl((prev) => {
             if (prev) URL.revokeObjectURL(prev)
             return url
           })
         }
       } catch (err) {
+        if (isSubscribed) setVoiceError(err instanceof Error ? err.message : 'Không thể tạo giọng đọc')
         console.warn('[AutoVoice] Failed to synthesize storyboard audio:', err)
       } finally {
         if (isSubscribed) setIsGeneratingVoice(false)
@@ -244,11 +289,13 @@ export default function CreateVideoPage() {
 
     return () => {
       isSubscribed = false
+      controller.abort()
     }
-  }, [analysisResult?.storyboard?.scenes, selectedVoicePreset])
+  }, [speechScenes, selectedVoicePreset, voiceProvider])
 
   // Load Seed Product
   const handleLoadSeed = () => {
+    setSelectedCategory('home')
     setProduct({
       ...CABLE_ORGANIZER_SEED_PRODUCT,
       id: 'prod-seed',
@@ -421,6 +468,60 @@ export default function CreateVideoPage() {
     return () => window.removeEventListener('paste', handlePaste)
   }, [])
 
+  const addContextToResult = async (result: NonNullable<typeof analysisResult>, images: AnalysisImage[]) => {
+    if (!useAIContext) {setContextError(null); setIsGeneratingContext(false); return result}
+    setIsGeneratingContext(true)
+    setContextError(null)
+    setContextRequiresSetup(false)
+    setAnalysisStage('Đang tạo bối cảnh từ ảnh sản phẩm...')
+    try {
+      const primaryId = product.assets.find((asset) => asset.isPrimary && isProductImage(asset))?.id
+      const reference = images.find((image) => image.assetId === primaryId) || images[0]
+      if (!reference) throw new Error('Chưa đọc được ảnh để tạo bối cảnh. Hãy tải ảnh sản phẩm lên trực tiếp rồi thử lại.')
+      const signature = `${product.name}|${product.category}|${reference.dataUrl}`
+      let imageUrl = contextCacheRef.current?.signature === signature ? contextCacheRef.current.imageUrl : undefined
+      if (!imageUrl) {
+        const response = await fetch('/api/assets/context', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: product.name, category: product.category, reference})})
+        const data = await response.json()
+        if (!response.ok || !data.imageUrl) {
+          setContextRequiresSetup(data.code === 'CONFIGURATION_REQUIRED')
+          throw new Error(data.error || 'Không thể tạo ảnh bối cảnh')
+        }
+        imageUrl = data.imageUrl as string
+        contextCacheRef.current = {signature, imageUrl}
+      }
+      return {...result, storyboard: {...result.storyboard, scenes: attachContextImage(result.storyboard.scenes, imageUrl)}}
+    } catch (error) {
+      setContextError(error instanceof Error ? error.message : 'Không thể tạo ảnh bối cảnh')
+      return result
+    } finally {setIsGeneratingContext(false)}
+  }
+
+  const handleRetryContext = async () => {
+    if (!analysisResult) return
+    setIsGeneratingContext(true)
+    const images = await prepareAnalysisImages(product.assets)
+    setAnalysisResult(await addContextToResult(analysisResult, images))
+  }
+
+  const handleUploadContext = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file || !analysisResult) return
+    setIsGeneratingContext(true)
+    try {
+      const images = await prepareAnalysisImages([{id: 'context-upload', type: 'PRODUCT_IMAGE', url: '', file}])
+      if (!images[0]) throw new Error('Không đọc được ảnh bối cảnh đã tải lên')
+      const sourceImages = await prepareAnalysisImages(product.assets)
+      const primaryId = product.assets.find((asset) => asset.isPrimary && isProductImage(asset))?.id
+      const reference = sourceImages.find((image) => image.assetId === primaryId) || sourceImages[0]
+      if (reference) contextCacheRef.current = {signature: `${product.name}|${product.category}|${reference.dataUrl}`, imageUrl: images[0].dataUrl}
+      setAnalysisResult((previous) => previous ? {...previous, storyboard: {...previous.storyboard, scenes: attachContextImage(previous.storyboard.scenes, images[0].dataUrl)}} : previous)
+      setContextError(null)
+      setContextRequiresSetup(false)
+    } catch (error) {setContextError(error instanceof Error ? error.message : 'Không tải được ảnh bối cảnh')}
+    finally {setIsGeneratingContext(false); event.target.value = ''}
+  }
+
   // Execute AI Product Analysis (Gemini API with Algorithmic Fallback)
   const handleAnalyzeProduct = async () => {
     if (!product.name.trim()) {
@@ -429,13 +530,16 @@ export default function CreateVideoPage() {
     }
 
     setAnalyzing(true)
+    setAnalysisStage('Đang đọc ảnh & chọn cách kể chuyện...')
     try {
+      const analysisImages = await prepareAnalysisImages(product.assets)
       const res = await fetch('/api/engines/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...product,
           targetDuration: selectedDuration,
+          analysisImages,
           geminiApiKey: geminiApiKey.trim() || undefined,
         }),
       })
@@ -446,12 +550,8 @@ export default function CreateVideoPage() {
         return
       }
 
-      setAnalysisResult({
-        analysis: data.analysis,
-        strategy: data.strategy,
-        storyboard: data.storyboard,
-        creativePlan: data.creativePlan,
-      })
+      const result = await addContextToResult({analysis: data.analysis, strategy: data.strategy, storyboard: data.storyboard, creativePlan: data.creativePlan, contentPlan: data.contentPlan}, analysisImages)
+      setAnalysisResult(result)
       if (data.creativePlan?.selectedHook?.id) {
         setSelectedHookId(data.creativePlan.selectedHook.id)
       }
@@ -491,6 +591,7 @@ export default function CreateVideoPage() {
         updatedScenes[0] = {
           ...updatedScenes[0],
           voice: candidate.text,
+          tts: candidate.text,
           headline: candidate.text,
         }
       }
@@ -502,7 +603,7 @@ export default function CreateVideoPage() {
         },
         storyboard: {
           ...prev.storyboard,
-          scenes: updatedScenes,
+          scenes: distributeSceneDurations(updatedScenes, prev.strategy.targetDuration),
         },
         creativePlan: prev.creativePlan
           ? {
@@ -514,95 +615,29 @@ export default function CreateVideoPage() {
       }
     })
 
-    setCaption(`${candidate.text} 😅 ${analysisResult.analysis.mainBenefit}. Nhỏ mà tiện hơn mình nghĩ nhiều!`)
+    setCaption(`${candidate.text} Xem chi tiết và lựa chọn trong giỏ hàng.`)
   }
 
-  // Story approach rotation list
-  const STORY_APPROACH_ROTATION: StoryApproach[] = [
-    'micro-story',
-    'daily-frustration',
-    'relatable-moment',
-    'curiosity-test',
-    'before-after',
-    'mini-review',
-    'pov',
-    'three-reasons',
-    'satisfying',
-  ]
-
-  // Generate another angle / story approach
   const handleGenerateAnotherAngle = async () => {
     if (!product.name.trim()) return
     setIsRegeneratingAngle(true)
-
     try {
-      const currentIndex = STORY_APPROACH_ROTATION.indexOf(selectedApproach)
-      const nextApproach = STORY_APPROACH_ROTATION[(currentIndex + 1) % STORY_APPROACH_ROTATION.length]
-      setSelectedApproach(nextApproach)
-
-      const res = await fetch('/api/creative/plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...product,
-          targetDuration: selectedDuration,
-          approach: nextApproach,
-          voicePreset: selectedVoicePreset,
-          geminiApiKey: geminiApiKey.trim() || undefined,
-        }),
+      const angles: ContentAngle[] = ['design', 'features', 'fit']
+      const current = analysisResult?.contentPlan?.angle || 'design'
+      const angle = angles[(angles.indexOf(current) + 1) % angles.length]
+      const analysisImages = await prepareAnalysisImages(product.assets)
+      const res = await fetch('/api/engines/analyze', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({...product, targetDuration: selectedDuration, angle, analysisImages, geminiApiKey: geminiApiKey.trim() || undefined}),
       })
-
       const data = await res.json()
-      if (!res.ok || data.error) {
-        alert(data.error || 'Đổi góc tiếp cận thất bại')
-        return
-      }
-
-      if (data.creativePlan) {
-        const plan: CreativePlan = data.creativePlan
-        setSelectedHookId(plan.selectedHook.id)
-
-        setAnalysisResult((prev) => {
-          if (!prev) return prev
-          const newScenes = prev.storyboard.scenes.map((sc, i) => {
-            if (plan.spokenScenes && plan.spokenScenes[i]) {
-              const sp = plan.spokenScenes[i]
-              return {
-                ...sc,
-                voice: sp.voice,
-                headline: sp.headline,
-                keywords: sp.keywords || sc.keywords,
-              }
-            }
-            if (i === 0) return { ...sc, voice: plan.selectedHook.text, headline: plan.selectedHook.text }
-            if (i === 1) return { ...sc, voice: 'Bình thường mỗi lần gặp phiền toái như này vừa mất thời gian vừa bực mình ghê!', headline: 'Vấn đề khó chịu' }
-            if (i === 2) return { ...sc, voice: `May mà mình tậu được ${product.name} này, nhỏ xíu mà tiện dã man luôn á!`, headline: 'Giải pháp cứu tinh' }
-            if (i === 3) return { ...sc, voice: 'Dùng một cái là ưng cái bụng liền, gọn gàng 10 điểm không có nhưng luôn!', headline: 'Trải nghiệm 10/10' }
-            if (i === 4) return { ...sc, voice: plan.cta || 'Bấm ngay giỏ hàng góc trái bên dưới để săn deal ưu đãi nhé!', headline: 'Giỏ hàng góc trái' }
-            return sc
-          })
-
-          return {
-            ...prev,
-            creativePlan: plan,
-            strategy: {
-              ...prev.strategy,
-              hook: plan.selectedHook.text,
-            },
-            storyboard: {
-              ...prev.storyboard,
-              scenes: newScenes,
-            },
-          }
-        })
-
-        setCaption(`${plan.selectedHook.text} 😅 ${product.problemSolved || 'Gọn gàng tức thì'}. Xem ở giỏ hàng nhé!`)
-      }
-    } catch (e: unknown) {
-      alert('Lỗi: ' + (e instanceof Error ? e.message : String(e)))
-    } finally {
-      setIsRegeneratingAngle(false)
-    }
+      if (!res.ok || data.error) throw new Error(data.error || 'Không thể đổi góc nội dung')
+      setAnalysisResult(await addContextToResult({analysis: data.analysis, strategy: data.strategy, storyboard: data.storyboard, creativePlan: data.creativePlan, contentPlan: data.contentPlan}, analysisImages))
+      setSelectedHookId(data.creativePlan?.selectedHook?.id || '')
+      setCaption(data.suggestedCaption)
+      setHashtags(data.suggestedHashtags)
+    } catch (error) { alert(error instanceof Error ? error.message : 'Không thể đổi góc nội dung') }
+    finally { setIsRegeneratingAngle(false) }
   }
 
   // Voice Preview player with Audio Blob fetching for universal browser compatibility
@@ -625,13 +660,16 @@ export default function CreateVideoPage() {
       'Chào bạn, đây là bản xem trước giọng đọc thuyết minh tiếng Việt tự nhiên.'
 
     setIsVoiceLoading(true)
+    const controller = new AbortController()
+    previewRequestRef.current = controller
 
     try {
-      const audioUrl = `/api/audio/tts?text=${encodeURIComponent(text)}&preset=${encodeURIComponent(selectedVoicePreset)}`
-      const res = await fetch(audioUrl)
+      const audioUrl = `/api/audio/tts?text=${encodeURIComponent(text)}&preset=${encodeURIComponent(selectedVoicePreset)}&provider=${voiceProvider}`
+      const res = await fetch(audioUrl, { signal: controller.signal })
       if (!res.ok) throw new Error('Không thể tải giọng đọc')
 
       const blob = await res.blob()
+      if (controller.signal.aborted) return
       const objectUrl = URL.createObjectURL(blob)
       setVoicePreviewUrl(objectUrl)
       const audio = new Audio(objectUrl)
@@ -655,6 +693,7 @@ export default function CreateVideoPage() {
       setIsVoiceLoading(false)
       setIsVoicePlaying(true)
     } catch (e) {
+      if (controller.signal.aborted) return
       console.warn('[handlePreviewVoice] Error:', e)
       setIsVoiceLoading(false)
       setIsVoicePlaying(false)
@@ -666,6 +705,10 @@ export default function CreateVideoPage() {
 
   // Start Step 3: Video Generation Flow (Real FFmpeg + Vietnamese TTS Rendering)
   const handleStartGeneratingVideo = async () => {
+    if (useAIContext && analysisResult && !getContextImage(analysisResult.storyboard.scenes)) {
+      alert('Chưa có ảnh bối cảnh. Quay lại bước 2 để thử tạo hoặc tải ảnh lên; có thể tắt bối cảnh AI ở bước 1 nếu muốn xuất từ ảnh gốc.')
+      return
+    }
     setIsRenderingVideo(true)
     setGenerationProgress({
       stage: `1/4. Khởi tạo & nạp kịch bản Storyboard ${selectedDuration}s...`,
@@ -674,18 +717,20 @@ export default function CreateVideoPage() {
     })
 
     try {
+      let renderScenes = playbackScenes
       const formData = new FormData()
       formData.append('productName', product.name)
       if (product.price) formData.append('price', String(product.price))
       if (product.category) formData.append('category', product.category)
       formData.append('voicePreset', selectedVoicePreset)
+      formData.append('voiceProvider', voiceProvider)
       if (analysisResult?.storyboard) {
         formData.append('storyboard', JSON.stringify(analysisResult.storyboard))
       }
 
       // Attach all gallery images: both uploaded files and URL blobs pre-fetched by browser
       const candidateAssets = product.assets.filter(
-        (a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && (a.file || a.url)
+        (a) => isProductImage(a) && (a.file || a.url)
       )
 
       for (let idx = 0; idx < candidateAssets.length; idx++) {
@@ -695,12 +740,14 @@ export default function CreateVideoPage() {
         } else if (a.url) {
           try {
             const imgRes = await fetch(a.url)
+            if (!imgRes.ok) throw new Error('Image unavailable')
             if (imgRes.ok) {
               const blob = await imgRes.blob()
               formData.append('images', blob, `product_asset_${idx}.jpg`)
             }
           } catch (imgErr) {
-            console.warn('[handleStartGeneratingVideo] Could not pre-fetch asset blob:', a.url, imgErr)
+            console.warn('[VideoAssets] Could not load image:', imgErr)
+            throw new Error(`Không tải được ảnh sản phẩm ${idx + 1}. Vui lòng tải ảnh lên hoặc thử lại.`)
           }
         }
       }
@@ -717,7 +764,7 @@ export default function CreateVideoPage() {
       }
 
       // Guarantee voice audio track: reuse existing preview audio or synthesize now
-      let activeVoiceUrl = storyboardVoiceUrl || voicePreviewUrl
+      let activeVoiceUrl = storyboardVoiceUrl
       if (!activeVoiceUrl && analysisResult?.storyboard?.scenes?.length) {
         try {
           console.log('[handleStartGeneratingVideo] Voice audio not ready, synthesizing on-demand...')
@@ -725,11 +772,15 @@ export default function CreateVideoPage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              scenes: analysisResult.storyboard.scenes,
+              scenes: renderScenes,
               voicePreset: selectedVoicePreset,
+              voiceProvider,
             }),
           })
           if (voiceRes.ok) {
+            const timings = parseSceneAudioTimings(voiceRes.headers.get('X-Segment-Timings'))
+            renderScenes = applySceneAudioTimings(renderScenes, timings)
+            setVoiceTimings(timings)
             const voiceBlob = await voiceRes.blob()
             if (voiceBlob.size > 500) {
               activeVoiceUrl = URL.createObjectURL(voiceBlob)
@@ -740,6 +791,9 @@ export default function CreateVideoPage() {
           console.warn('[handleStartGeneratingVideo] On-demand voice synthesis failed:', voiceFetchErr)
         }
       }
+
+      formData.set('storyboard', JSON.stringify({scenes: renderScenes, totalDuration: renderScenes.reduce((sum, scene) => sum + scene.duration, 0)}))
+      if (!activeVoiceUrl) throw new Error('Chưa tạo được giọng thuyết minh. Vui lòng thử lại hoặc đổi nhà cung cấp giọng đọc.')
 
       if (activeVoiceUrl) {
         try {
@@ -767,14 +821,13 @@ export default function CreateVideoPage() {
       }))
 
       // 1. Prioritize Client-side Remotion WebCodecs Renderer (100% exact match with Live on both Local & Production)
-      let renderedLocally = false
       const canClientRender = await isClientExportSupported()
 
       if (canClientRender && analysisResult?.storyboard?.scenes) {
         try {
           console.log('[handleStartGeneratingVideo] Launching Client-side Remotion WebCodecs Engine...')
           setGenerationProgress((prev) => ({
-            stage: '3/4. Render Remotion WebCodecs 1080x1920 (Khớp 100% với Live)...',
+            stage: '3/4. Render Remotion WebCodecs 1080x1920 (Theo kế hoạch cảnh)...',
             percent: 50,
             logs: [
               ...prev.logs,
@@ -787,9 +840,9 @@ export default function CreateVideoPage() {
             productName: product.name,
             price: product.price ? Number(product.price) : undefined,
             category: product.category,
-            scenes: analysisResult.storyboard.scenes,
+            scenes: renderScenes,
             imageUrls: product.assets
-              .filter((a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && a.url)
+              .filter((a) => isProductImage(a) && a.url)
               .map((a) => a.url!),
             voiceAudioUrl: activeVoiceUrl || undefined,
             bgmAudioUrl: '/music/lofi-beat.mp3',
@@ -805,7 +858,6 @@ export default function CreateVideoPage() {
 
           setRenderedVideoUrl(clientResult.blobUrl)
           setRenderedVideoFile(clientResult.file)
-          renderedLocally = true
 
           setGenerationProgress((prev) => ({
             stage: `4/4. Hoàn tất video ${selectedDuration}s chuẩn TikTok!`,
@@ -813,7 +865,7 @@ export default function CreateVideoPage() {
             logs: [
               ...prev.logs,
               `Xuất thành công: ${clientResult.fileName} (${(clientResult.blob.size / 1024).toFixed(1)} KB)`,
-              'Video MP4 khớp 100% với Remotion Live, sẵn sàng xem trước và đăng trực tiếp lên TikTok!',
+              'Video đã xuất, sẵn sàng xem lại và đăng lên TikTok.',
             ],
           }))
           return
@@ -830,7 +882,7 @@ export default function CreateVideoPage() {
       }
 
       setGenerationProgress((prev) => ({
-        stage: '3/4. Render Remotion Studio 1080x1920 (Khớp 100% với Preview)...',
+        stage: '3/4. Render Remotion Studio 1080x1920 (Theo kế hoạch cảnh)...',
         percent: 70,
         logs: [
           ...prev.logs,
@@ -1039,7 +1091,7 @@ export default function CreateVideoPage() {
                 <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
                   Vipee Studio
                   <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono font-medium">
-                    Home Engine Active
+                    Adaptive Planner Active
                   </span>
                 </h1>
                 <p className="text-sm text-neutral-400 mt-0.5">
@@ -1164,10 +1216,10 @@ export default function CreateVideoPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
-              Chọn Ngành Hàng (Category Engine)
+              Chọn ngành hàng
             </span>
             <span className="text-xs text-neutral-500 font-mono">
-              Architecture Ready for 6 Vertical Engines
+              Lập kế hoạch theo dữ liệu từng sản phẩm
             </span>
           </div>
 
@@ -1177,7 +1229,12 @@ export default function CreateVideoPage() {
                 key={cat.id}
                 type="button"
                 onClick={() => {
-                  if (cat.isActive) setSelectedCategory(cat.id)
+                  if (cat.isActive) {
+                    setSelectedCategory(cat.id)
+                    setProduct((previous) => ({...previous, category: cat.id}))
+                    setAnalysisResult(null)
+                    setCurrentStep(1)
+                  }
                 }}
                 className={`p-3.5 rounded-2xl border text-left transition relative flex flex-col justify-between ${
                   cat.isActive && selectedCategory === cat.id
@@ -1631,6 +1688,14 @@ export default function CreateVideoPage() {
               )}
             </div>
 
+            <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-2">
+              <label className="flex items-center gap-3 text-sm text-white font-semibold">
+                <input type="checkbox" checked={useAIContext} onChange={(event) => setUseAIContext(event.target.checked)} className="accent-emerald-500" />
+                Tạo bối cảnh sản phẩm bằng AI
+              </label>
+              <p className="text-xs text-neutral-400">Tạo một ảnh có sản phẩm trong bối cảnh phù hợp, dùng ở cảnh mở đầu và kết thúc. Dùng Cloudflare Workers AI. Giữ tài khoản Workers Free để dùng trong hạn mức miễn phí; ảnh được tái sử dụng khi đổi góc kể chuyện.</p>
+            </div>
+
             {/* Video Duration Selector (15s, 30s, 45s) */}
             <div className="p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-3">
               <div className="flex items-center justify-between">
@@ -1643,7 +1708,8 @@ export default function CreateVideoPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                <button type="button" onClick={() => setSelectedDuration(22)} className={`p-3 rounded-xl border text-left ${selectedDuration === 22 ? 'border-emerald-500 bg-emerald-500/10' : 'border-neutral-800 bg-neutral-950/60'}`}><p className="font-bold text-sm text-white">22 Giây</p><p className="text-[11px] text-emerald-300 mt-2">Đề xuất cho video từ ảnh</p></button>
                 {/* 15s Option */}
                 <button
                   type="button"
@@ -1657,11 +1723,11 @@ export default function CreateVideoPage() {
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="font-bold text-sm text-white">15 Giây</span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold font-mono">
-                      5 cảnh
+                      Ngắn gọn
                     </span>
                   </div>
                   <p className="text-[11px] text-neutral-400 leading-snug">
-                    Hook nhanh, giữ chân cao, thuật toán TikTok đề xuất mạnh nhất.
+                    Một ý chính, phù hợp khi ít ảnh và thông tin.
                   </p>
                 </button>
 
@@ -1678,11 +1744,11 @@ export default function CreateVideoPage() {
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="font-bold text-sm text-white">30 Giây</span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-semibold font-mono">
-                      6 cảnh
+                      Nhiều thông tin
                     </span>
                   </div>
                   <p className="text-[11px] text-neutral-400 leading-snug">
-                    Review chi tiết, đi sâu tính năng, giải quyết vấn đề trọn vẹn.
+                    Thêm chi tiết khi có đủ ảnh và thông tin có nguồn.
                   </p>
                 </button>
 
@@ -1699,11 +1765,11 @@ export default function CreateVideoPage() {
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="font-bold text-sm text-white">45 Giây</span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-semibold font-mono">
-                      9 cảnh
+                      Chuyên sâu
                     </span>
                   </div>
                   <p className="text-[11px] text-neutral-400 leading-snug">
-                    Chuyên sâu, so sánh chi tiết, dẫn chứng đánh giá thuyết phục cao.
+                    Chỉ dùng khi dữ liệu đủ; app có thể đề xuất bản ngắn hơn.
                   </p>
                 </button>
               </div>
@@ -1724,7 +1790,7 @@ export default function CreateVideoPage() {
               {analyzing ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  Đang phân tích cấu trúc sản phẩm với Home Engine...
+                  {analysisStage}
                 </>
               ) : (
                 <>
@@ -1754,10 +1820,30 @@ export default function CreateVideoPage() {
               <div className="text-right">
                 <span className="text-xs text-neutral-400">Thời lượng kịch bản:</span>{' '}
                 <span className="text-xs font-bold text-amber-400 font-mono">
-                  {selectedDuration}s • {analysisResult.storyboard.scenes.length} phân cảnh
+                  {playbackDuration.toFixed(1)}s • {analysisResult.storyboard.scenes.length} phân cảnh
                 </span>
               </div>
             </div>
+
+            {analysisResult.contentPlan && <ContentPlanSummary plan={analysisResult.contentPlan} />}
+            {contextError && <div role="alert" className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs text-amber-200 space-y-2">
+              <p>Chưa có ảnh bối cảnh: {contextError}</p>
+              {contextRequiresSetup && <div className="space-y-2">
+                <p>Cấu hình Account ID và API token Cloudflare trong .env.local, sau đó khởi động lại app. Gemini API key chỉ dùng cho phân tích và kịch bản.</p>
+                <div className="flex flex-wrap gap-3">
+                  <a href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer" className="underline">Mở Cloudflare Workers AI</a>
+                  <a href="https://developers.cloudflare.com/workers-ai/get-started/rest-api/" target="_blank" rel="noreferrer" className="underline">Hướng dẫn cấu hình Cloudflare</a>
+                </div>
+              </div>}
+              <button type="button" disabled={isGeneratingContext || isRegeneratingAngle || analyzing} onClick={handleRetryContext} className="px-3 py-2 rounded-lg bg-neutral-800 text-white disabled:opacity-50">{isGeneratingContext ? 'Đang tạo...' : contextRequiresSetup ? 'Đã cấu hình Cloudflare — kiểm tra lại' : 'Thử tạo bối cảnh lại'}</button>
+            </div>}
+            <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 space-y-2">
+              <label className="block font-semibold">Dùng ảnh bối cảnh có sẵn
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleUploadContext} disabled={isGeneratingContext || isRegeneratingAngle || isRenderingVideo || analyzing} className="mt-2 block w-full text-neutral-400" />
+              </label>
+              <p className="text-neutral-500">Tải ảnh dọc có đúng sản phẩm để dùng cho cảnh mở đầu và kết thúc. Thay ảnh bối cảnh không tạo lại voice.</p>
+            </div>
+            {getContextImage(analysisResult.storyboard.scenes) && <p className="text-xs text-emerald-300">Đã có ảnh bối cảnh. Cảnh mở đầu và kết thúc trong preview và bản xuất dùng cùng ảnh này.</p>}
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               {/* Left Column: VIPEE CREATIVE DIRECTOR (6 cols) */}
@@ -1775,7 +1861,7 @@ export default function CreateVideoPage() {
                           VIPEE CREATIVE DIRECTOR
                         </h3>
                         <p className="text-[10px] text-rose-400 font-mono">
-                          Direct-Response Story Engine • UGC TikTok
+                          Nội dung theo ảnh và thông tin sản phẩm
                         </p>
                       </div>
                     </div>
@@ -1783,7 +1869,7 @@ export default function CreateVideoPage() {
                     <button
                       type="button"
                       onClick={handleGenerateAnotherAngle}
-                      disabled={isRegeneratingAngle}
+                      disabled={isRegeneratingAngle || isGeneratingContext}
                       className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 text-amber-300 border border-amber-500/30 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                       title="Chuyển sang góc tiếp cận kịch bản khác (POV, Daily Frustration, Skeptical Test...)"
                     >
@@ -1799,7 +1885,7 @@ export default function CreateVideoPage() {
                         💡 Creative Concept:
                       </span>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/20 font-bold uppercase">
-                        {analysisResult.creativePlan?.storyType || selectedApproach}
+                        {analysisResult.contentPlan?.format || selectedApproach}
                       </span>
                     </div>
                     <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800/90">
@@ -1836,7 +1922,7 @@ export default function CreateVideoPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
                         <Flame className="w-3.5 h-3.5 text-amber-400" />
-                        Hook Engine: 5 Đề xuất giữ chân 3s đầu
+                        Câu mở đầu theo góc nội dung
                       </span>
                       <span className="text-[10px] text-neutral-400 font-mono">
                         Chọn hook bạn thích nhất
@@ -1860,8 +1946,7 @@ export default function CreateVideoPage() {
                           reasoning: 'Gợi mở sự tò mò và cảm giác thân quen',
                         },
                       ]).map((candidate) => {
-                        const scoreVal = candidate.scores?.total || 90
-                        const isSelected = selectedHookId === candidate.id || (!selectedHookId && scoreVal >= 90)
+                        const isSelected = selectedHookId === candidate.id || (!selectedHookId && candidate.id === analysisResult.creativePlan?.selectedHook?.id)
                         return (
                           <div
                             key={candidate.id}
@@ -1877,9 +1962,7 @@ export default function CreateVideoPage() {
                                 {candidate.type}
                               </span>
                               <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] font-mono font-bold text-amber-400">
-                                  {scoreVal}/100đ
-                                </span>
+
                                 {isSelected && (
                                   <span className="w-4 h-4 rounded-full bg-rose-500 flex items-center justify-center text-white">
                                     <Check className="w-2.5 h-2.5" />
@@ -1898,40 +1981,6 @@ export default function CreateVideoPage() {
                           </div>
                         )
                       })}
-                    </div>
-                  </div>
-
-                  {/* 3. Creative Quality Score */}
-                  <div className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800/80 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                        <Award className="w-3.5 h-3.5" />
-                        Creative Score (Đánh giá chất lượng)
-                      </span>
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-                        {analysisResult.creativePlan?.creativeScore?.overallQuality || 88}/100 • ĐẠT TIÊU CHUẨN ✅
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="p-2 rounded-lg bg-neutral-900/60 border border-neutral-800">
-                        <p className="text-[10px] text-neutral-400">Hook &amp; Tò mò</p>
-                        <p className="text-xs font-bold text-white font-mono mt-0.5">
-                          {analysisResult.creativePlan?.creativeScore?.hookScore || 92}%
-                        </p>
-                      </div>
-                      <div className="p-2 rounded-lg bg-neutral-900/60 border border-neutral-800">
-                        <p className="text-[10px] text-neutral-400">Độ đồng cảm</p>
-                        <p className="text-xs font-bold text-white font-mono mt-0.5">
-                          {analysisResult.creativePlan?.creativeScore?.relatabilityScore || 88}%
-                        </p>
-                      </div>
-                      <div className="p-2 rounded-lg bg-neutral-900/60 border border-neutral-800">
-                        <p className="text-[10px] text-neutral-400">Story &amp; Payoff</p>
-                        <p className="text-xs font-bold text-white font-mono mt-0.5">
-                          {analysisResult.creativePlan?.creativeScore?.storyScore || 89}%
-                        </p>
-                      </div>
                     </div>
                   </div>
 
@@ -1967,6 +2016,45 @@ export default function CreateVideoPage() {
                       </button>
                     </div>
 
+                    <label className="block space-y-2 text-xs text-neutral-300">
+                      <span>Nhà cung cấp giọng đọc</span>
+                      <select
+                        value={voiceProvider}
+                        disabled={isRenderingVideo || publishing}
+                        onChange={(event) => {
+                          const nextProvider = event.target.value as VoiceProvider
+                          previewRequestRef.current?.abort()
+                          previewAudioRef.current?.pause()
+                          previewAudioRef.current = null
+                          setIsVoicePlaying(false)
+                          setIsVoiceLoading(false)
+                          setVoicePreviewUrl((previous) => {
+                            if (previous) URL.revokeObjectURL(previous)
+                            return null
+                          })
+                          setStoryboardVoiceUrl((previous) => {
+                            if (previous) URL.revokeObjectURL(previous)
+                            return null
+                          })
+                          setRenderedVideoUrl(null)
+                          setRenderedVideoFile(null)
+                          localStorage.setItem('voice_provider', nextProvider)
+                          setVoiceProvider(nextProvider)
+                        }}
+                        className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-white disabled:opacity-50"
+                      >
+                        <option value="google">Google — Test video</option>
+                        <option value="elevenlabs">ElevenLabs — Video chính thức</option>
+                      </select>
+                      <p className="text-[11px] text-neutral-500">
+                        {voiceProvider === 'google'
+                          ? 'Giọng Google Translate tiếng Việt. Không sử dụng credits ElevenLabs; các preset phong cách không đổi giọng Google.'
+                          : 'Giọng ElevenLabs, sử dụng credits khi nghe thử và tạo thuyết minh.'}
+                      </p>
+                    </label>
+
+                    {voiceError && <p role="alert" className="text-xs text-red-400">{voiceError}</p>}
+
                     {/* Presets */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                       {[
@@ -1992,7 +2080,7 @@ export default function CreateVideoPage() {
                     </div>
 
                     <p className="text-[10px] text-neutral-400 leading-relaxed">
-                      💡 Tự động chèn micro-pause 300ms giữa các câu nói, đọc chuẩn phiên âm tên sản phẩm (không đọc như robot).
+                      Giọng đọc được tạo theo từng cảnh; thời lượng preview được cập nhật theo âm thanh thực tế.
                     </p>
                   </div>
 
@@ -2021,12 +2109,12 @@ export default function CreateVideoPage() {
                       Storyboard Phân Cảnh (Audio-First Sync)
                     </h3>
                     <span className="text-xs text-neutral-500 font-mono">
-                      {analysisResult.storyboard.scenes.length} Scenes • {selectedDuration}s
+                      {analysisResult.storyboard.scenes.length} cảnh • {playbackDuration.toFixed(1)}s
                     </span>
                   </div>
 
                   <div className="space-y-2.5">
-                    {analysisResult.storyboard.scenes.map((scene, idx) => (
+                    {playbackScenes.map((scene, idx) => (
                       <div
                         key={scene.id}
                         className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 text-xs space-y-2"
@@ -2036,7 +2124,7 @@ export default function CreateVideoPage() {
                             Scene {idx + 1} • {scene.type.toUpperCase()}
                           </span>
                           <span className="text-[10px] px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400 font-mono">
-                            {scene.duration}s
+                            {scene.duration.toFixed(1)}s
                           </span>
                         </div>
 
@@ -2050,6 +2138,11 @@ export default function CreateVideoPage() {
                         <div className="pt-1.5 border-t border-neutral-900 text-[11px] text-neutral-400 italic">
                           🗣️ Lời thoại: &quot;{scene.voice}&quot;
                         </div>
+                        {scene.renderPlan && <div className="space-y-1 text-[11px] text-neutral-400">
+                          <p>Mục đích: {scene.renderPlan.purpose}</p>
+                          <p>Ảnh: {product.assets.filter(isProductImage)[scene.renderPlan.assetIndex]?.name || `Ảnh ${scene.renderPlan.assetIndex + 1}`} · {scene.renderPlan.framing === 'detail' ? 'Cận chi tiết' : 'Toàn ảnh'}</p>
+                          {scene.renderPlan.evidenceIds.length > 0 && <p>Nguồn: {scene.renderPlan.evidenceIds.map((id) => analysisResult.contentPlan?.facts.find((fact) => fact.id === id)?.source === 'image' ? 'Quan sát ảnh' : 'Thông tin bạn nhập').join(' · ')}</p>}
+                        </div>}
                       </div>
                     ))}
                   </div>
@@ -2079,6 +2172,10 @@ export default function CreateVideoPage() {
         {/* ======================================================== */}
         {currentStep === 3 && analysisResult && (
           <div className="space-y-8">
+            {useAIContext && !getContextImage(analysisResult.storyboard.scenes) && <div role="alert" className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 space-y-2">
+              <p>Chưa có ảnh bối cảnh: {contextError || 'Ảnh chưa được tạo hoặc tải lên.'}</p>
+              <button type="button" onClick={() => setCurrentStep(2)} className="px-3 py-2 rounded-lg bg-neutral-800 text-white">Quay lại tạo / tải ảnh bối cảnh</button>
+            </div>}
             {/* Part 1: Infographic Layout Deck ({N} Layouts matching {N} scenes) */}
             <InfographicDeckViewer
               productName={product.name || 'Sản phẩm tiện ích'}
@@ -2090,7 +2187,7 @@ export default function CreateVideoPage() {
               }
               secondaryImageUrl={product.assets[1]?.url}
               galleryImages={product.assets.map((a) => a.url)}
-              scenes={analysisResult.storyboard.scenes}
+              scenes={playbackScenes}
               duration={selectedDuration}
             />
 
@@ -2106,6 +2203,7 @@ export default function CreateVideoPage() {
                     <p className="text-xs text-neutral-400">
                       Đồng bộ hoàn hảo giữa {analysisResult.storyboard.scenes.length} layout thương mại, hình ảnh sản phẩm và thuyết minh tiếng Việt.
                     </p>
+
                   </div>
                 </div>
               </div>
@@ -2117,9 +2215,9 @@ export default function CreateVideoPage() {
                     productName={product.name}
                     price={product.price ? Number(product.price) : undefined}
                     category={product.category}
-                    scenes={analysisResult.storyboard.scenes}
+                    scenes={playbackScenes}
                     imageUrls={product.assets
-                      .filter((a) => (a.type === 'PRODUCT_IMAGE' || a.type === 'DETAIL_IMAGE') && a.url)
+                      .filter((a) => isProductImage(a) && a.url)
                       .map((a) => a.url)}
                     voiceAudioUrl={storyboardVoiceUrl || voicePreviewUrl || undefined}
                     renderedVideoUrl={renderedVideoUrl}
@@ -2132,12 +2230,12 @@ export default function CreateVideoPage() {
                       className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs uppercase tracking-wide transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40"
                     >
                       <Download className="w-4 h-4" />
-                      Tải video MP4 về máy (Chuẩn 100% khớp Preview)
+                      Tải video MP4 về máy
                     </a>
                   ) : (
                     <button
                       type="button"
-                      disabled={isRenderingVideo}
+                      disabled={isRenderingVideo || isGeneratingVoice || isGeneratingContext || !product.assets.some(isProductImage) || (useAIContext && !getContextImage(analysisResult.storyboard.scenes))}
                       onClick={handleStartGeneratingVideo}
                       className="w-full py-3 px-4 rounded-2xl bg-neutral-900 border border-neutral-700 hover:border-emerald-500/50 hover:bg-neutral-800 text-neutral-200 hover:text-white font-semibold text-xs transition flex items-center justify-center gap-2 shadow cursor-pointer disabled:opacity-50"
                     >
@@ -2157,7 +2255,7 @@ export default function CreateVideoPage() {
                         <p className="text-xs text-neutral-400 mt-0.5">Dựng video chất lượng cao qua Remotion Studio Engine với đầy đủ âm thanh thuyết minh và nhạc nền TikTok.</p>
                       </div>
                       <span className="text-xs font-mono px-2 py-0.5 rounded bg-neutral-800 text-neutral-300">
-                        {selectedDuration}s • {analysisResult.storyboard.scenes.length} scenes
+                        {playbackDuration.toFixed(1)}s • {analysisResult.storyboard.scenes.length} scenes
                       </span>
                     </div>
 
@@ -2186,7 +2284,7 @@ export default function CreateVideoPage() {
                         className="w-full py-3.5 px-5 rounded-xl font-bold text-xs uppercase tracking-wide bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-lg shadow-rose-900/30 transition flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <Film className="w-4 h-4" />
-                        {renderedVideoUrl ? 'Render lại Video MP4 khác' : 'Bắt đầu Render Video MP4 (Chuẩn 100% Khớp Preview)'}
+                        {renderedVideoUrl ? 'Render lại Video MP4 khác' : 'Bắt đầu Render Video MP4 '}
                       </button>
                     )}
                   </div>
@@ -2301,7 +2399,7 @@ export default function CreateVideoPage() {
                         ) : !renderedVideoUrl ? (
                           <>
                             <Sparkles className="w-4 h-4" />
-                            Render &amp; Đăng lên TikTok (Chuẩn 100% Khớp Preview)
+                            Render &amp; Đăng lên TikTok
                           </>
                         ) : (
                           <>

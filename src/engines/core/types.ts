@@ -41,6 +41,7 @@ export type StoryboardSceneType =
   | 'cta'
 
 export interface StoryboardScene {
+  renderPlan?: import('../planning/types').SceneRenderPlan
   id: string
   type: StoryboardSceneType
   duration: number

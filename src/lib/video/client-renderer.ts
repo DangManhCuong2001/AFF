@@ -155,6 +155,7 @@ export async function renderVideoOnClient(
   // 2. Build Storyplan
   const visualDirector = new VipeeVisualDirector()
   const storyplan = visualDirector.createVisualStoryplan({
+    scenes: opts.scenes,
     speechTimings,
     productImages: validImages,
     productName: opts.productName || 'Sản phẩm thông minh',

@@ -1,3 +1,4 @@
+import type { VoiceProvider } from '@/lib/audio/provider'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
@@ -18,6 +19,7 @@ export interface RenderRemotionParams {
   scenes: StoryboardScene[]
   imageBuffers?: Buffer[]
   imageUrls?: string[]
+  voiceProvider?: VoiceProvider
   voicePreset?: VoicePersonality
   masterAudioBuffer?: Buffer
   fps?: number
@@ -134,7 +136,7 @@ export async function renderRemotionVideo(
       )
 
       const ttsProvider = new VipeeTTSProvider()
-      const speechResult = await ttsProvider.generateSpeech(speechPlan)
+      const speechResult = await ttsProvider.generateSpeech(speechPlan, { provider: params.voiceProvider })
       masterAudioBuffer = speechResult.audioBuffer
 
       let curStart = 0
@@ -180,6 +182,7 @@ export async function renderRemotionVideo(
   // 3. Build Visual Storyplan with VipeeVisualDirector (identical to Preview)
   const visualDirector = new VipeeVisualDirector()
   const storyplan = visualDirector.createVisualStoryplan({
+    scenes: params.scenes,
     speechTimings,
     productImages: validImages,
     productName: params.productName || 'Sản phẩm thông minh',

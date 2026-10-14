@@ -228,6 +228,14 @@ export class InfographicEngine {
 
     // DYNAMIC CASE: If scenes are provided from storyboard planning, map each scene to an Infographic layout!
     if (scenes && scenes.length > 0) {
+      if (scenes.every((scene) => scene.renderPlan)) {
+        return {productName, category, theme, cards: scenes.map((scene, index) => ({
+          stepNumber: index + 1, stepLabel: scene.type === 'cta' ? 'XEM THÊM' : scene.renderPlan!.framing === 'detail' ? 'CHI TIẾT' : 'SẢN PHẨM',
+          headline: scene.headline, subtitle: scene.subheadline || '', layoutVariant: 'solution_chips_top' as const,
+          productImageUrl: galleryImages?.[scene.renderPlan!.assetIndex] || primaryImageUrl,
+          featureChips: [], accentEffect: 'none' as const, hasHandInteraction: false,
+        }))}
+      }
       const cards: InfographicCardData[] = scenes.map((scene, idx) => {
         const isFirst = idx === 0
         const isLast = idx === scenes.length - 1

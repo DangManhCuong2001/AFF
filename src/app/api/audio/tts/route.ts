@@ -1,3 +1,4 @@
+import { parseVoiceProvider } from '@/lib/audio/provider'
 import { NextRequest, NextResponse } from 'next/server'
 import { generateVietnameseTTS, VietnameseVoice } from '@/lib/audio/tts'
 
@@ -12,6 +13,7 @@ export async function GET(request: NextRequest) {
 
     const text = rawText.trim()
     const voiceParam = request.nextUrl.searchParams.get('voice') as VietnameseVoice | null
+    const provider = parseVoiceProvider(request.nextUrl.searchParams.get('provider'))
     const presetParam = request.nextUrl.searchParams.get('preset')
 
     let voice: VietnameseVoice = voiceParam || 'vi-VN-HoaiMyNeural'
@@ -28,7 +30,7 @@ export async function GET(request: NextRequest) {
       rate = '+10%'
     }
 
-    const audioBuffer = await generateVietnameseTTS(text, { voice, rate })
+    const audioBuffer = await generateVietnameseTTS(text, { voice, rate, provider })
 
     return new NextResponse(audioBuffer as unknown as BodyInit, {
       status: 200,

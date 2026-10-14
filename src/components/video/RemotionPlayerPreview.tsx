@@ -80,6 +80,7 @@ export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
     ).timings
 
     const storyplan = visualDirector.createVisualStoryplan({
+      scenes,
       speechTimings,
       productImages: validImages,
       productName: productName || 'Sản phẩm thông minh',
