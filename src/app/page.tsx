@@ -305,7 +305,7 @@ export default function Home() {
                   <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />
                 </Link>
                 <Link
-                  href="/privacy#deletion"
+                  href="/data-deletion"
                   className="px-4 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition inline-flex items-center gap-1.5"
                 >
                   User Data Deletion Instructions
@@ -454,7 +454,7 @@ export default function Home() {
                 </Link>
               </li>
               <li>
-                <Link href="/privacy" className="hover:text-white transition">
+                <Link href="/data-deletion" className="hover:text-white transition">
                   User Data Deletion
                 </Link>
               </li>
