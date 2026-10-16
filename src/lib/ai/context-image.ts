@@ -1,9 +1,7 @@
 import {createHash} from 'node:crypto'
-import {createRequire} from 'node:module'
-import {join} from 'node:path'
-import {realpathSync} from 'node:fs'
 import type {AnalysisImage} from './gemini'
 import {ContextImageError, contextQuotaError} from './context-errors'
+import sharp from 'sharp'
 
 const cache = new Map<string, string>()
 const pending = new Map<string, Promise<string>>()
@@ -14,9 +12,6 @@ Choose a believable everyday environment appropriate to this product's actual fo
 }
 
 async function compressImage(buffer: Buffer): Promise<Buffer> {
-  // Use a real absolute filesystem path: Turbopack rewrites require.resolve
-  // into a virtual [project]/... path, which node:createRequire rejects.
-  const sharp = createRequire(realpathSync(join(process.cwd(), 'node_modules/next/package.json')))('sharp')
   for (const quality of [85, 70, 55]) {
     const result: Buffer = await sharp(buffer).rotate().resize({width: 1080, height: 1920, fit: 'inside', withoutEnlargement: true}).jpeg({quality}).toBuffer()
     if (result.length < 450_000) return result
@@ -39,7 +34,6 @@ export async function generateContextImage(name: string, category: string, refer
   if (cache.has(key)) return cache.get(key)!
   if (pending.has(key)) return pending.get(key)!
   const task = (async () => {
-    const sharp = createRequire(realpathSync(join(process.cwd(), 'node_modules/next/package.json')))('sharp')
     // Workers AI requires reference images smaller than 512 x 512.
     const input: Buffer = await sharp(Buffer.from(match[2], 'base64')).rotate().resize({width: 511, height: 511, fit: 'inside', withoutEnlargement: true}).jpeg({quality: 90}).toBuffer()
     const form = new FormData()

@@ -27,6 +27,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "remotion": "4.0.533",
+    "sharp": "^0.35.5",
     "tailwind-merge": "^3.7.0",
     "zod": "^4.6.5"
   },
@@ -43,6 +44,7 @@
   "packageManager": "pnpm@11.20.0",
   "onlyBuiltDependencies": [
     "ffmpeg-static",
-    "esbuild"
+    "esbuild",
+    "sharp"
   ]
 }
