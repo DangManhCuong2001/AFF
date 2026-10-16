@@ -74,36 +74,36 @@ const CATEGORY_TABS: CategoryTab[] = [
     id: 'fashion',
     name: 'Fashion',
     icon: '👗',
-    isActive: true,
-    description: 'Quần áo, trang phục, dáng người, chất liệu',
+    isActive: false,
+    description: 'Quần áo, trang phục, dáng người, chất liệu (Sắp ra mắt)',
   },
   {
     id: 'accessories',
     name: 'Accessories',
     icon: '👜',
-    isActive: true,
-    description: 'Túi xách, trang sức, đồng hồ, phụ kiện mang theo',
+    isActive: false,
+    description: 'Túi xách, trang sức, đồng hồ, phụ kiện mang theo (Sắp ra mắt)',
   },
   {
     id: 'beauty',
     name: 'Beauty & Skincare',
     icon: '💄',
-    isActive: true,
-    description: 'Mỹ phẩm, dưỡng da, chất kem, liệu trình',
+    isActive: false,
+    description: 'Mỹ phẩm, dưỡng da, chất kem, liệu trình (Sắp ra mắt)',
   },
   {
     id: 'perfume',
     name: 'Perfume',
     icon: '🌸',
-    isActive: true,
-    description: 'Nước hoa, tông mùi, phong cách, độ lưu hương',
+    isActive: false,
+    description: 'Nước hoa, tông mùi, phong cách, độ lưu hương (Sắp ra mắt)',
   },
   {
     id: 'tech',
     name: 'Tech Gadget',
     icon: '⚡',
-    isActive: true,
-    description: 'Thiết bị công nghệ, phụ kiện thông minh, bàn làm việc',
+    isActive: false,
+    description: 'Thiết bị công nghệ, phụ kiện thông minh, bàn làm việc (Sắp ra mắt)',
   },
 ]
 
@@ -1277,6 +1277,11 @@ export default function CreateVideoPage() {
                     setProduct((previous) => ({...previous, category: cat.id}))
                     setAnalysisResult(null)
                     setCurrentStep(1)
+                  } else {
+                    toast.info(
+                      `${cat.name} Engine - Sắp ra mắt`,
+                      'Engine kịch bản và animation chuyên sâu cho ngành hàng này đang được phát triển và sẽ ra mắt ở phiên bản tiếp theo!'
+                    )
                   }
                 }}
                 className={`p-3.5 rounded-2xl border text-left transition relative flex flex-col justify-between ${
