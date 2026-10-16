@@ -1119,7 +1119,7 @@ export default function CreateVideoPage() {
             </button>
 
             <a
-              href="/api/tiktok/auth"
+              href="/api/tiktok/auth?returnTo=/create"
               className={`px-3.5 py-2 rounded-xl text-xs font-medium border transition flex items-center gap-1.5 cursor-pointer ${
                 tiktokConnected
                   ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300 hover:border-emerald-500/60'

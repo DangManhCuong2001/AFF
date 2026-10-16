@@ -11,6 +11,13 @@ export async function GET(request: NextRequest) {
       customScope = 'user.info.basic'
     }
 
+    // Determine return destination after authorization
+    const requestedReturn = request.nextUrl.searchParams.get('returnTo')
+    let returnPath = '/create'
+    if (requestedReturn && requestedReturn.startsWith('/')) {
+      returnPath = requestedReturn
+    }
+
     const state = generateOAuthState()
     const url = getAuthorizationUrl(state, customScope)
 
@@ -23,6 +30,15 @@ export async function GET(request: NextRequest) {
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 10, // 10 minutes
+    })
+
+    // Store return path
+    response.cookies.set('tiktok_oauth_return_to', returnPath, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 10,
     })
 
     return response
