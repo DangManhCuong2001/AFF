@@ -236,6 +236,20 @@ export default function CreateVideoPage() {
       .catch(() => setTiktokConnected(false))
   }, [])
 
+  const handleDisconnectTikTok = async () => {
+    try {
+      const res = await fetch('/api/tiktok/status', { method: 'DELETE' })
+      if (res.ok) {
+        setTiktokConnected(false)
+        toast.info('Đã ngắt kết nối TikTok', 'Bạn có thể bấm nút "Kết nối TikTok" để bắt đầu quay video demo.')
+      } else {
+        toast.error('Lỗi ngắt kết nối', 'Không thể ngắt kết nối tài khoản.')
+      }
+    } catch {
+      toast.error('Lỗi ngắt kết nối', 'Vui lòng thử lại.')
+    }
+  }
+
   // Rendered video state
   const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null)
   const [renderedVideoFile, setRenderedVideoFile] = useState<File | null>(null)
@@ -1139,18 +1153,30 @@ export default function CreateVideoPage() {
               {geminiApiKey ? 'Gemini API Connected' : 'Cài đặt Gemini API Key'}
             </button>
 
-            <a
-              href="/api/tiktok/auth?returnTo=/create"
-              className={`px-3.5 py-2 rounded-xl text-xs font-medium border transition flex items-center gap-1.5 cursor-pointer ${
-                tiktokConnected
-                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300 hover:border-emerald-500/60'
-                  : 'bg-rose-950/30 border-rose-500/30 text-rose-300 hover:bg-rose-900/40 hover:border-rose-500/50'
-              }`}
-              title={tiktokConnected ? 'TikTok đã kết nối - Bấm để kết nối lại' : 'Bấm để kết nối tài khoản TikTok'}
-            >
-              <Film className="w-3.5 h-3.5 text-rose-400" />
-              {tiktokConnected ? 'TikTok Connected' : 'Kết nối TikTok'}
-            </a>
+            {tiktokConnected ? (
+              <div className="flex items-center gap-1.5 p-1 rounded-xl bg-neutral-900 border border-neutral-800">
+                <span className="px-2.5 py-1 text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  TikTok Connected
+                </span>
+                <button
+                  type="button"
+                  onClick={handleDisconnectTikTok}
+                  className="px-2 py-1 text-xs font-medium text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
+                  title="Ngắt kết nối tài khoản để kết nối lại"
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <a
+                href="/api/tiktok/auth?returnTo=/create"
+                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-rose-600 to-pink-600 hover:opacity-90 text-white shadow-lg shadow-rose-600/20 transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Film className="w-3.5 h-3.5" />
+                Kết nối TikTok
+              </a>
+            )}
 
             <Link
               href="/integrations"
