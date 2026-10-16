@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.APP_URL || 'https://affapp-teal.vercel.app'),
+  metadataBase: new URL(process.env.APP_URL || 'https://vipee.io.vn'),
   title: "Vipee - AI Video Studio for TikTok & TikTok Shop",
   description: "Automated TikTok Direct Post & AI-powered eCommerce Video Creation Platform",
   icons: {

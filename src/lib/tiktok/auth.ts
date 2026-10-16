@@ -18,7 +18,7 @@ export function getTikTokConfig() {
         ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
         : process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
-        : 'https://affapp-teal.vercel.app')
+        : 'https://vipee.io.vn')
     redirectUri = `${appUrl.replace(/\/$/, '')}/api/tiktok/callback`
   }
 
