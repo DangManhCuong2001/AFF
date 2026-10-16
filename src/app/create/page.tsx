@@ -137,7 +137,7 @@ export default function CreateVideoPage() {
   // Analysis & Engine State
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisStage, setAnalysisStage] = useState('Đang đọc ảnh & chọn cách kể chuyện...')
-  const [useAIContext, setUseAIContext] = useState(true)
+  const [useAIContext, setUseAIContext] = useState(false)
   const [isGeneratingContext, setIsGeneratingContext] = useState(false)
   const [contextError, setContextError] = useState<string | null>(null)
   const [contextRequiresSetup, setContextRequiresSetup] = useState(false)
@@ -736,10 +736,6 @@ export default function CreateVideoPage() {
 
   // Start Step 3: Video Generation Flow (Real FFmpeg + Vietnamese TTS Rendering)
   const handleStartGeneratingVideo = async () => {
-    if (useAIContext && analysisResult && !getContextImage(analysisResult.storyboard.scenes)) {
-      alert('Chưa có ảnh bối cảnh. Quay lại bước 2 để thử tạo hoặc tải ảnh lên; có thể tắt bối cảnh AI ở bước 1 nếu muốn xuất từ ảnh gốc.')
-      return
-    }
     setIsRenderingVideo(true)
     setGenerationProgress({
       stage: `1/4. Khởi tạo & nạp kịch bản Storyboard ${selectedDuration}s...`,
@@ -2282,7 +2278,7 @@ export default function CreateVideoPage() {
                   ) : (
                     <button
                       type="button"
-                      disabled={isRenderingVideo || isGeneratingVoice || isGeneratingContext || !product.assets.some(isProductImage) || (useAIContext && !getContextImage(analysisResult.storyboard.scenes))}
+                      disabled={isRenderingVideo || isGeneratingVoice || isGeneratingContext || !product.assets.some(isProductImage)}
                       onClick={handleStartGeneratingVideo}
                       className="w-full py-3 px-4 rounded-2xl bg-neutral-900 border border-neutral-700 hover:border-emerald-500/50 hover:bg-neutral-800 text-neutral-200 hover:text-white font-semibold text-xs transition flex items-center justify-center gap-2 shadow cursor-pointer disabled:opacity-50"
                     >
