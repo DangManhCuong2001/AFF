@@ -30,6 +30,9 @@ export const metadata: Metadata = {
     description: "Automated TikTok Direct Post & AI-powered eCommerce Video Creation Platform",
     images: [{ url: '/vipee-icon-512.png', width: 512, height: 512, alt: 'Vipee Logo' }],
   },
+  other: {
+    'tiktok-developers-site-verification': 'bRaLnzDeQseR2M3wB2GZJzOa9XKMeyDo',
+  },
 };
 
 export default function RootLayout({
