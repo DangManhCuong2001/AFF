@@ -52,6 +52,7 @@ import { InfographicDeckViewer } from '@/components/infographic/InfographicDeckV
 import { CABLE_ORGANIZER_SEED_PRODUCT } from '@/engines/home/seed'
 import { RemotionPlayerPreview } from '@/components/video/RemotionPlayerPreview'
 import { renderVideoOnClient, isClientExportSupported } from '@/lib/video/client-renderer'
+import { useToast } from '@/components/ui/Toast'
 
 interface CategoryTab {
   id: ProductCategory
@@ -209,9 +210,24 @@ export default function CreateVideoPage() {
     return ''
   })
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
+  const toast = useToast()
 
   // TikTok Connection State
   const [tiktokConnected, setTiktokConnected] = useState<boolean | null>(null)
+
+  // Listen to OAuth redirect query params for instant notifications
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('auth') === 'success') {
+      toast.success('Kết nối TikTok thành công!', 'Tài khoản của bạn đã được liên kết với Vipee Studio.')
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (params.get('error')) {
+      const errDesc = params.get('error_description') || params.get('error') || 'Vui lòng thử lại.'
+      toast.error('Kết nối TikTok không thành công', errDesc)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [toast])
 
   React.useEffect(() => {
     fetch('/api/tiktok/status')
@@ -525,7 +541,7 @@ export default function CreateVideoPage() {
   // Execute AI Product Analysis (Gemini API with Algorithmic Fallback)
   const handleAnalyzeProduct = async () => {
     if (!product.name.trim()) {
-      alert('Vui lòng nhập tên sản phẩm trước khi phân tích.')
+      toast.warning('Thiếu thông tin', 'Vui lòng nhập tên sản phẩm trước khi phân tích.')
       return
     }
 
@@ -546,12 +562,13 @@ export default function CreateVideoPage() {
 
       const data = await res.json()
       if (!res.ok || data.error) {
-        alert(data.error || 'Phân tích sản phẩm thất bại')
+        toast.error('Phân tích thất bại', data.error || 'Không thể phân tích sản phẩm.')
         return
       }
 
       const result = await addContextToResult({analysis: data.analysis, strategy: data.strategy, storyboard: data.storyboard, creativePlan: data.creativePlan, contentPlan: data.contentPlan}, analysisImages)
       setAnalysisResult(result)
+      toast.success('Phân tích thành công!', 'Đã tạo kịch bản 9:16 và kế hoạch video.')
       if (data.creativePlan?.selectedHook?.id) {
         setSelectedHookId(data.creativePlan.selectedHook.id)
       }
@@ -573,7 +590,7 @@ export default function CreateVideoPage() {
         ]
       )
     } catch (err: unknown) {
-      alert('Lỗi: ' + (err as Error).message)
+      toast.error('Lỗi phân tích', (err as Error).message)
     } finally {
       setAnalyzing(false)
     }
@@ -949,8 +966,9 @@ export default function CreateVideoPage() {
           'Video MP4 sẵn sàng xem trước và đăng trực tiếp lên TikTok!',
         ],
       }))
+      toast.success('Render video thành công!', 'Video MP4 9:16 đã sẵn sàng để xuất bản lên TikTok.')
     } catch (err: unknown) {
-      alert('Lỗi render video: ' + (err as Error).message)
+      toast.error('Lỗi render video', (err as Error).message)
     } finally {
       setIsRenderingVideo(false)
     }
@@ -979,7 +997,7 @@ export default function CreateVideoPage() {
         if (videoAsset && videoAsset.file) {
           videoFile = videoAsset.file
         } else {
-          alert('Chưa có file video hoàn chỉnh để đăng. Vui lòng quay lại Bước 3 để tạo video trước.')
+          toast.warning('Chưa có video', 'Vui lòng tạo video hoàn chỉnh ở Bước 3 trước khi đăng.')
           setPublishing(false)
           return
         }
@@ -1060,11 +1078,14 @@ export default function CreateVideoPage() {
         publishId,
         message: 'Video đã được đăng lên TikTok thành công! Đang chờ TikTok xử lý hiển thị.',
       })
+      toast.success('Đăng TikTok thành công!', 'Video đã được gửi tới tài khoản TikTok của bạn.')
     } catch (err: unknown) {
+      const errMsg = (err as Error)?.message || 'Lỗi kết nối khi đăng video'
       setPublishResult({
         success: false,
-        message: (err as Error)?.message || 'Lỗi kết nối khi đăng video',
+        message: errMsg,
       })
+      toast.error('Đăng video thất bại', errMsg)
     } finally {
       setPublishing(false)
     }
