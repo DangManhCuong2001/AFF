@@ -168,7 +168,10 @@ export default function PrivacyPage() {
                 <a href="https://www.tiktok.com/legal/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-rose-400 underline hover:text-rose-300">
                   TikTok Privacy Policy
                 </a>{' '}
-                and TikTok Developer Terms.
+                and the{' '}
+                <a href="https://www.tiktok.com/legal/page/global/tik-tok-developer-terms-of-service/en" target="_blank" rel="noopener noreferrer" className="text-rose-400 underline hover:text-rose-300">
+                  TikTok Developer Terms of Service
+                </a>.
               </p>
             </div>
             <div className="p-4 rounded-xl bg-neutral-900/60 border border-neutral-800">

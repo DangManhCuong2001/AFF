@@ -127,6 +127,16 @@ export default function TermsPage() {
               and must not create or post content that is deceptive, misleading, infringing, hateful, or harmful.
             </li>
             <li>
+              You agree to be bound by the{' '}
+              <a href="https://www.tiktok.com/legal/page/global/tik-tok-developer-terms-of-service/en" target="_blank" rel="noopener noreferrer" className="text-rose-400 underline hover:text-rose-300">
+                TikTok Developer Terms of Service
+              </a>{' '}
+              and the general{' '}
+              <a href="https://www.tiktok.com/legal/terms-of-service" target="_blank" rel="noopener noreferrer" className="text-rose-400 underline hover:text-rose-300">
+                TikTok Terms of Service
+              </a>.
+            </li>
+            <li>
               You must adhere to the{' '}
               <a href="https://ads.tiktok.com/help/article/commercial-content-policy" target="_blank" rel="noopener noreferrer" className="text-rose-400 underline hover:text-rose-300">
                 TikTok Commercial Content &amp; Branded Content Policies
