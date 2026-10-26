@@ -18,3 +18,4 @@ require.extensions['.ts'] = (module, filename) => {
   module._compile(outputText, filename)
 }
 require('../tests/adaptive-planner.test.ts')
+require('../tests/speech-timing.test.ts')

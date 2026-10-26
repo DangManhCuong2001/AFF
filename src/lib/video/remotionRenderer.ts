@@ -10,6 +10,7 @@ import { StoryboardScene } from '@/engines/core/types'
 import { VoicePersonality } from '@/engines/speech/types'
 import { RemotionVideoProps } from '@/remotion/types'
 import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
+import { applySceneAudioTimings } from './scene-timing'
 import { InfographicEngine } from '@/engines/infographic/InfographicEngine'
 
 export interface RenderRemotionParams {
@@ -106,6 +107,7 @@ export async function renderRemotionVideo(
   }
 
   // 2. Synthesize Master Speech Audio if not provided
+  let renderedScenes = params.scenes
   let masterAudioBuffer = params.masterAudioBuffer
   let speechTimings: Array<{
     segmentId: string
@@ -138,6 +140,7 @@ export async function renderRemotionVideo(
       const ttsProvider = new VipeeTTSProvider()
       const speechResult = await ttsProvider.generateSpeech(speechPlan, { provider: params.voiceProvider })
       masterAudioBuffer = speechResult.audioBuffer
+      renderedScenes = applySceneAudioTimings(params.scenes, speechResult.segmentTimings)
 
       let curStart = 0
       speechTimings = params.scenes.map((s, idx) => {
@@ -182,7 +185,7 @@ export async function renderRemotionVideo(
   // 3. Build Visual Storyplan with VipeeVisualDirector (identical to Preview)
   const visualDirector = new VipeeVisualDirector()
   const storyplan = visualDirector.createVisualStoryplan({
-    scenes: params.scenes,
+    scenes: renderedScenes,
     speechTimings,
     productImages: validImages,
     productName: params.productName || 'Sản phẩm thông minh',
@@ -197,7 +200,7 @@ export async function renderRemotionVideo(
     primaryImageUrl: validImages[0] || '',
     secondaryImageUrl: validImages[1],
     galleryImages: validImages,
-    scenes: params.scenes,
+    scenes: renderedScenes,
   })
 
   // 5. Convert Backgrounds and Product Assets to Base64 to ensure 100% reliable rendering in Chromium

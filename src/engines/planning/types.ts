@@ -11,6 +11,7 @@ export interface ImageInsight {
 }
 export interface ProductFact { id: string; text: string; source: 'user_input' | 'image'; assetId?: string }
 export interface SceneRenderPlan {
+  speechTiming?: {offsetSec: number; durationSec: number}
   contextImageUrl?: string
   ctaLabel?: string
   factLabel?: string

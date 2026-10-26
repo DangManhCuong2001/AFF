@@ -1,15 +1,24 @@
 import type {StoryboardScene} from '@/engines/core/types'
-export interface SceneAudioTiming {segmentId: string; durationSec: number}
+export interface SceneAudioTiming {segmentId: string; durationSec: number; speechOffsetSec?: number; speechDurationSec?: number}
+
+function speechWindow(timing: SceneAudioTiming) {
+  const {speechOffsetSec: offset, speechDurationSec: duration} = timing
+  return typeof offset === 'number' && Number.isFinite(offset) && offset >= 0 && offset < timing.durationSec && typeof duration === 'number' && Number.isFinite(duration) && duration > 0 && offset + duration <= timing.durationSec + 0.01
+    ? {offsetSec: offset, durationSec: Math.min(duration, timing.durationSec - offset)} : undefined
+}
 export function parseSceneAudioTimings(header: string | null): SceneAudioTiming[] {
   try {
     const value: unknown = JSON.parse(header || '[]')
     if (!Array.isArray(value)) return []
-    return value.filter((item): item is SceneAudioTiming => !!item && typeof item.segmentId === 'string' && Number.isFinite(item.durationSec) && item.durationSec > 0 && item.durationSec < 120)
+    return value.filter((item): item is SceneAudioTiming => !!item && typeof item.segmentId === 'string' && Number.isFinite(item.durationSec) && item.durationSec > 0 && item.durationSec < 120).map((item) => {
+      const window = speechWindow(item)
+      return {segmentId: item.segmentId, durationSec: item.durationSec, ...(window ? {speechOffsetSec: window.offsetSec, speechDurationSec: window.durationSec} : {})}
+    })
   } catch { return [] }
 }
 export function applySceneAudioTimings(scenes: StoryboardScene[], timings: SceneAudioTiming[]): StoryboardScene[] {
   return scenes.map((scene) => {
     const timing = timings.find((item) => item.segmentId === scene.id)
-    return timing ? {...scene, duration: timing.durationSec} : scene
+    return timing ? {...scene, duration: timing.durationSec, ...(scene.renderPlan ? {renderPlan: {...scene.renderPlan, speechTiming: speechWindow(timing)}} : {})} : scene
   })
 }

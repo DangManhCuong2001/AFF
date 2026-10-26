@@ -24,6 +24,7 @@ export interface SpeechSegment {
   emotion?: EmotionalTone
   emphasis?: string[] // Key words to stress (legacy)
   estimatedDurationSec?: number
+  minimumDurationSec?: number
 }
 
 export interface SpeechPlan {
@@ -51,6 +52,8 @@ export interface AudioResult {
     startSec: number
     endSec: number
     durationSec: number
+    speechOffsetSec?: number
+    speechDurationSec?: number
   }[]
 }
 

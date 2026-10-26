@@ -15,7 +15,12 @@ export interface TTSOptions {
  */
 export function normalizeVietnameseNumbers(text: string): string {
   if (!text) return ''
-  let result = text
+  // Vietnamese thousands separators must not become decimal pronunciation.
+  let result = text.replace(/\b\d{1,3}(?:\.\d{3})+(?!\d)/g, (number) => number.replace(/\./g, ''))
+  // Expand measurements before number conversion. Keep the 3M brand case-sensitive.
+  const measurementUnits: Record<string, string> = {mm: 'mi li mét', cm: 'xen ti mét', m: 'mét', ml: 'mi li lít', l: 'lít', kg: 'ki lô gam', g: 'gam', W: 'oát', GB: 'ghi ga bai'}
+  result = result.replace(/(\d+(?:[.,]\d+)?)\s*(mm|cm|ml|kg|GB|m|l|g|W)(?![\p{L}\d])/gu, (_match, number: string, unit: string) => `${number} ${measurementUnits[unit]}`)
+  result = result.replace(/(\d+)[.,](\d+)/g, (_match, whole: string, fraction: string) => `${whole} phẩy ${fraction.split('').join(' ')}`)
   // 1. Percentages: 100% -> 100 phần trăm
   result = result.replace(/(\d+)\s*%/g, '$1 phần trăm')
   // 2. Fractions: 10/10 -> 10 trên 10
@@ -61,7 +66,6 @@ export function sanitizeTextForTTS(raw: string): string {
   t = t.replace(/[<>&]/g, '')
   // Strip emojis
   t = t.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '')
-  t = t.replace(/vị\s+thông\s+minh/gi, 'vị rất thông minh')
   t = t.replace(/\s+/g, ' ').trim()
   if (t && !/[.!?]$/.test(t)) {
     t += '.'

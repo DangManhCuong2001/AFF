@@ -2,7 +2,7 @@ import React, {useState} from 'react'
 import {AbsoluteFill, Img, cancelRender, continueRender, delayRender, spring, useCurrentFrame, useVideoConfig} from 'remotion'
 import type {StoryboardScene} from '../engines/core/types'
 import {COMMERCE_LAYOUT as layout, fitCommerceText} from './tiktok-layout'
-import {captionAtProgress} from './scene-captions'
+import {captionAtProgress, speechProgressAtTime} from './scene-captions'
 
 /** One shared safe layout for browser preview, client export and server rendering. */
 export const PlannedCommerceScene: React.FC<{scene: StoryboardScene; imageUrl: string; durationSec: number}> = ({scene, imageUrl, durationSec}) => {
@@ -15,18 +15,19 @@ export const PlannedCommerceScene: React.FC<{scene: StoryboardScene; imageUrl: s
   const plan = scene.renderPlan!
   const contextImage = plan.contextImageUrl
   const cta = scene.type === 'cta'
-  const contextForeground = !!contextImage && !cta
-  const displayedImage = contextForeground ? contextImage! : imageUrl
-  // Contexts show the complete generated photo; only source detail scenes use a planned crop.
-  const crop = (!contextForeground && plan.crop) || {x: 0, y: 0, width: 100, height: 100}
+  // Source bounds are valid only on the source photo, never on a generated context.
+  // Keep the exact product large in front; the context establishes the environment.
+  const displayedImage = imageUrl
+  const crop = plan.crop || {x: 0, y: 0, width: 100, height: 100}
+  const speakingProgress = speechProgressAtTime(frame / fps, durationSec, plan.speechTiming)
   const cropWidth = size.width * crop.width / 100
   const cropHeight = size.height * crop.height / 100
   const cardWidth = layout.width
   const hasSubheadline = !!scene.subheadline && scene.subheadline !== scene.headline
-  const imageSlot = cta ? {top: 480, height: 440} : contextForeground ? {top: 280, height: 820} : hasSubheadline ? layout.image : {top: 420, height: 604}
+  const imageSlot = cta ? {top: 480, height: 440} : hasSubheadline ? layout.image : {top: 420, height: 604}
   const cardHeight = imageSlot.height
-  const scale = Math.min((cardWidth - 32) / cropWidth, (cardHeight - 32) / cropHeight) * (0.96 + progress * 0.04)
-  const caption = captionAtProgress(scene.voice || scene.headline, progress)
+  const scale = Math.min((cardWidth - 32) / cropWidth, (cardHeight - 32) / cropHeight) * (plan.framing === 'detail' ? 0.98 + speakingProgress * 0.02 : 0.95 + speakingProgress * 0.05)
+  const caption = captionAtProgress(scene.voice || scene.headline, speakingProgress)
   const emphasis = new Set((scene.keywords || []).flatMap((keyword) => keyword.toLocaleLowerCase('vi').split(/\s+/)))
   const detail = plan.framing === 'detail'
   const subheadline = scene.subheadline !== scene.headline ? scene.subheadline : undefined
@@ -37,8 +38,8 @@ export const PlannedCommerceScene: React.FC<{scene: StoryboardScene; imageUrl: s
   return <AbsoluteFill style={{background: '#f5f2eb', color: '#252922', fontFamily: 'Arial, sans-serif'}}>
     <AbsoluteFill style={{background: 'radial-gradient(ellipse at 65% 45%, #ffffff 0%, #f5f2eb 72%)'}} />
     {contextImage && <>
-      <Img src={contextImage} style={{width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(24px)', transform: 'scale(1.1)'}} />
-      <AbsoluteFill style={{background: 'linear-gradient(180deg, #f5f2ebf5, #f5f2ebdb 50%, #f5f2ebf5)'}} />
+      <Img src={contextImage} style={{width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(8px)', transform: 'scale(1.1)'}} />
+      <AbsoluteFill style={{background: 'linear-gradient(180deg, #f5f2ebf5 12%, #f5f2ebb0 32%, #f5f2eb80 52%, #f5f2ebf5 70%)'}} />
     </>}
     <div style={{...box(layout.label), zIndex: 2, display: 'flex', justifyContent: 'space-between', fontSize: 20, letterSpacing: 2, color: '#8c664a'}}>
       <span>{cta ? 'CHỌN MUA' : detail ? 'CẬN CẢNH' : 'SẢN PHẨM'}</span><span>{detail ? 'GÓC NHÌN CHI TIẾT' : cta ? 'CHỌN MẪU PHÙ HỢP' : 'KHÁM PHÁ SẢN PHẨM'}</span>
@@ -46,14 +47,12 @@ export const PlannedCommerceScene: React.FC<{scene: StoryboardScene; imageUrl: s
     <div style={{...box(layout.headline), zIndex: 2, display: 'flex', alignItems: 'center', opacity: enter, transform: `translateY(${(1 - enter) * 10}px)`}}>
       <div style={{...copyStyle(scene.headline, layout.headline.height, 52), fontWeight: 800, letterSpacing: -0.8}}>{scene.headline}</div>
     </div>
-    {subheadline && <div style={{...box(layout.subheadline), zIndex: 2, ...copyStyle(subheadline, layout.subheadline.height, 27, layout.width - 32), color: '#6e665b', background: !contextForeground && plan.evidenceIds.length ? '#eee6d8' : undefined, borderRadius: 12, padding: !contextForeground && plan.evidenceIds.length ? '0 16px' : undefined, boxSizing: 'border-box', display: 'flex', alignItems: 'center'}}>{subheadline}</div>}
-    <div style={{...box(imageSlot), borderRadius: 28, overflow: 'hidden', background: '#fff', boxShadow: '0 16px 50px #3a291b12', border: '1px solid #ffffffbb'}}>
-      {contextForeground && <><Img src={contextImage!} style={{width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(30px)', opacity: 0.22, transform: 'scale(1.15)'}} /><AbsoluteFill style={{background: '#ffffff55'}} /></>}
-      <div style={{position: 'absolute', left: (cardWidth - cropWidth * scale) / 2, top: (cardHeight - cropHeight * scale) / 2, width: cropWidth * scale, height: cropHeight * scale, overflow: 'hidden', borderRadius: contextForeground ? 12 : 0}}>
+    {subheadline && <div style={{...box(layout.subheadline), zIndex: 2, ...copyStyle(subheadline, layout.subheadline.height, 27, layout.width - 32), color: '#6e665b', background: plan.evidenceIds.length ? '#eee6d8' : undefined, borderRadius: 12, padding: plan.evidenceIds.length ? '0 16px' : undefined, boxSizing: 'border-box', display: 'flex', alignItems: 'center'}}>{subheadline}</div>}
+    <div style={{...box(imageSlot), borderRadius: 28, overflow: 'hidden', background: '#fff', boxShadow: '0 18px 50px #3a291b24', transform: `translateY(${(1 - enter) * 16}px)`, border: '1px solid #ffffffbb'}}>
+      <div style={{position: 'absolute', left: (cardWidth - cropWidth * scale) / 2, top: (cardHeight - cropHeight * scale) / 2, width: cropWidth * scale, height: cropHeight * scale, overflow: 'hidden', borderRadius: 8}}>
         <Img src={displayedImage} onLoad={imageLoaded} onError={() => cancelRender(new Error('Không tải được ảnh sản phẩm cho cảnh này'))}
           style={{position: 'absolute', maxWidth: 'none', width: size.width * scale, height: size.height * scale, left: -size.width * crop.x / 100 * scale, top: -size.height * crop.y / 100 * scale}} />
       </div>
-      {contextForeground && <div style={{position: 'absolute', inset: '0 0 auto', height: 200, background: 'linear-gradient(180deg, #f5f2ebf5, #f5f2ebbb 65%, transparent)'}} />}
     </div>
     {annotation && <div style={{...box(layout.annotation), display: 'flex', gap: 12, alignItems: 'center', color: '#8c664a'}}><span style={{width: 8, height: 8, borderRadius: 8, background: '#ca7739', flexShrink: 0}} /><span style={copyStyle(annotation, layout.annotation.height, 23, layout.width - 20)}>{annotation}</span></div>}
     {cta && plan.decisionPrompt && <div style={{...box({top: 944, height: 136}), borderRadius: 18, background: '#eee6d8', padding: '12px 18px', boxSizing: 'border-box'}}>

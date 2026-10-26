@@ -14,7 +14,7 @@ import os from 'os'
 import { exec, execFile } from 'child_process'
 import { promisify } from 'util'
 import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
-import { generateVietnameseTTS, sanitizeTextForTTS } from '@/lib/audio/tts'
+import { generateVietnameseTTS, normalizeVietnameseNumbers, sanitizeTextForTTS } from '@/lib/audio/tts'
 import { parseVoiceProvider, VoiceProvider } from '@/lib/audio/provider'
 
 const execPromise = promisify(exec)
@@ -24,7 +24,7 @@ export class VipeeSpeechDirector implements SpeechDirector {
    * Phonetic mapping dictionary for natural spoken Vietnamese
    */
   private static PHONETIC_MAP: Record<string, string> = {
-    '3m': 'ba mờ',
+    'usb-c': 'u ét bê xi',
     '3k': 'ba nghìn',
     '39k': 'ba mươi chín nghìn',
     '50k': 'năm mươi nghìn',
@@ -120,12 +120,13 @@ export class VipeeSpeechDirector implements SpeechDirector {
       const ttsScript = this.generateTTSScript(spokenText)
 
       // Calculate natural breath pauses
-      const pauseBeforeMs = i === 0 ? 50 : beat === 'reveal' ? 250 : 100
-      const pauseAfterMs = beat === 'hook' ? 350 : beat === 'reveal' ? 300 : beat === 'payoff' ? 400 : 250
+      const pauseBeforeMs = i === 0 ? 50 : beat === 'cta' ? 180 : 100
+      const pauseAfterMs = beat === 'cta' ? 450 : beat === 'hook' ? 250 : 300
+      const minimumDurationSec = beat === 'cta' ? 3.4 : beat === 'product_hero' || beat === 'reveal' ? 2.8 : 2.6
 
       // Word count estimated duration (Vietnamese average: ~3.5 to 4.2 words per second at normal pace)
       const wordCount = spokenText.split(/\s+/).filter(Boolean).length
-      const estimatedSec = Math.max(2.0, (wordCount / (3.8 * pace)) + (pauseAfterMs / 1000))
+      const estimatedSec = Math.max(minimumDurationSec, (wordCount / (3.8 * pace)) + ((pauseBeforeMs + pauseAfterMs) / 1000))
       totalEstimatedDuration += estimatedSec
 
       const emphasisWords = s.emphasisWords || this.extractKeyEmphasisWords(spokenText)
@@ -144,6 +145,7 @@ export class VipeeSpeechDirector implements SpeechDirector {
         emphasisWords,
         emphasis: emphasisWords,
         estimatedDurationSec: Number(estimatedSec.toFixed(2)),
+        minimumDurationSec,
       })
     }
 
@@ -154,38 +156,16 @@ export class VipeeSpeechDirector implements SpeechDirector {
     }
   }
 
-  /**
-   * Humanizes sentences into natural spoken Vietnamese phrasing with emotional particles
-   */
+  /** Preserve sourced copy: speech processing must not introduce claims or reviews. */
   private humanizeSpokenVietnamese(text: string): string {
-    let t = text.trim()
-    // Replace rigid presentation/catalog phrases with authentic spoken phrases
-    t = t.replace(/Sản phẩm sở hữu thiết kế/gi, 'Nhìn thiết kế')
-    t = t.replace(/giúp tối ưu không gian/gi, 'góc nhà gọn hơn hẳn luôn')
-    t = t.replace(/được trang bị/gi, 'có sẵn')
-    t = t.replace(/phù hợp với nhiều không gian/gi, 'để ở đâu cũng tiện')
-    t = t.replace(/kích thước nhỏ gọn/gi, 'nhỏ xíu mà tiện cực kỳ')
-    t = t.replace(/mang lại cảm giác/gi, 'thấy')
-    t = t.replace(/đây là giải pháp/gi, 'may mà mình kiếm được cái này')
-    t = t.replace(/sau khi sử dụng/gi, 'dùng xong cái là')
-    t = t.replace(/mang lại hiệu quả/gi, 'đỡ bực hẳn')
-    t = t.replace(/giúp bạn tiết kiệm thời gian/gi, 'đỡ mất công mò mẫm')
-    t = t.replace(/hãy bấm vào/gi, 'mọi người xem ở')
-    t = t.replace(/được thiết kế để/gi, 'dùng để')
-    t = t.replace(/đảm bảo chất lượng/gi, 'dùng ưng cái bụng luôn')
-
-    // Ensure ending with lively punctuation rather than flat period
-    if (t.endsWith('.')) {
-      t = t.slice(0, -1) + '!'
-    }
-    return t
+    return text.replace(/\s+/g, ' ').trim()
   }
 
   /**
    * Converts display text into pronunciation-friendly script for Vietnamese TTS
    */
   private generateTTSScript(text: string): string {
-    let tts = text.toLowerCase()
+    let tts = normalizeVietnameseNumbers(text).replace(/\b3M\b/g, 'ba mờ').toLowerCase()
 
     for (const [key, val] of Object.entries(VipeeSpeechDirector.PHONETIC_MAP)) {
       const regex = new RegExp(`\\b${key}\\b`, 'gi')
@@ -316,26 +296,32 @@ export class VipeeTTSProvider implements TTSProvider {
         const seg = plan.segments[i]
         const rawSegPath = path.join(tempDir, `raw_seg_${i}.mp3`)
         const paddedSegPath = path.join(tempDir, `padded_seg_${i}.mp3`)
-        const pauseSec = (seg.pauseAfterMs || 200) / 1000
-
-        // Studio Broadcast Vocal Processing (Warmth EQ + Presence EQ + Compand + Breath micro-pause)
+        const pace = Math.max(0.85, Math.min(1.1, seg.pace || 1))
+        const rawDuration = await measureAudioDurationSec(rawSegPath, ffmpeg)
+        if (rawDuration <= 0) throw new Error(`Không đo được thời lượng giọng đọc cảnh ${i + 1}`)
+        const speechDurationSec = rawDuration / pace
+        const speechOffsetSec = Math.max(0, seg.pauseBeforeMs) / 1000
+        const pauseSec = Math.max(
+          Math.max(0, seg.pauseAfterMs) / 1000,
+          (seg.minimumDurationSec || 0) - speechOffsetSec - speechDurationSec,
+        )
+        // Tempo preserves pitch; pad locally so short lines leave time to view the product.
+        const pacingFilters = [`atempo=${pace}`, `adelay=${Math.round(speechOffsetSec * 1000)}:all=1`, `apad=pad_dur=${pauseSec}`]
         const filterStr = [
           `equalizer=f=250:t=q:w=1:g=2.0`,
           `equalizer=f=3500:t=q:w=1.2:g=2.5`,
           `compand=attacks=0.02:decays=0.05:points=-60/-60|-24/-10|0/-2:soft-knee=6`,
-          `apad=pad_dur=${pauseSec}`,
+          ...pacingFilters,
         ].join(',')
-
-        // Force 44100 Hz stereo 192k so all segments are identical before concat
+        const encodeSegment = (filters: string) => promisify(execFile)(ffmpeg, [
+          '-y', '-i', rawSegPath, '-af', filters,
+          '-c:a', 'libmp3lame', '-b:a', '192k', '-ar', '44100', '-ac', '2', paddedSegPath,
+        ])
         try {
-          await execPromise(
-            `"${ffmpeg}" -y -i "${rawSegPath}" -af "${filterStr}" -c:a libmp3lame -b:a 192k -ar 44100 -ac 2 "${paddedSegPath}"`
-          )
+          await encodeSegment(filterStr)
         } catch (filterErr) {
-          console.warn(`[VipeeTTSProvider] Segment ${i} vocal filter error, falling back to basic padding:`, filterErr)
-          await execPromise(
-            `"${ffmpeg}" -y -i "${rawSegPath}" -af "apad=pad_dur=${pauseSec}" -c:a libmp3lame -b:a 192k -ar 44100 -ac 2 "${paddedSegPath}"`
-          )
+          console.warn(`[VipeeTTSProvider] Segment ${i} vocal filter error, retaining pacing:`, filterErr)
+          await encodeSegment(pacingFilters.join(','))
         }
 
         // FIX: measure duration via execFile so we always get stderr content
@@ -353,6 +339,8 @@ export class VipeeTTSProvider implements TTSProvider {
           startSec: Number(currentTimelineSec.toFixed(3)),
           endSec: Number((currentTimelineSec + segDurationSec).toFixed(3)),
           durationSec: Number(segDurationSec.toFixed(3)),
+          speechOffsetSec,
+          speechDurationSec: Number(Math.min(speechDurationSec, segDurationSec - speechOffsetSec).toFixed(3)),
         })
         currentTimelineSec += segDurationSec
       }

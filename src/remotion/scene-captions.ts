@@ -25,3 +25,10 @@ export function captionAtProgress(text: string, progress: number): string {
   const cues = buildCaptionCues(text)
   return cues.find((cue) => Math.max(0, progress) < cue.end)?.text || cues.at(-1)?.text || ''
 }
+
+/** Phrase timing is estimated within the measured speaking window, excluding holds. */
+export function speechProgressAtTime(timeSec: number, sceneDuration: number, timing?: {offsetSec: number; durationSec: number}): number {
+  const offset = timing?.offsetSec ?? 0
+  const duration = timing?.durationSec ?? sceneDuration
+  return Math.max(0, Math.min(1, (timeSec - offset) / Math.max(0.01, duration)))
+}

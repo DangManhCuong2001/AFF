@@ -40,7 +40,9 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
       {/* 1. Visual Scenes Sequence */}
       {beats.map((beat, idx) => {
         const fromFrame = Math.round(beat.startTimeSec * fps)
-        const durationFrames = Math.max(1, Math.round(beat.durationSec * fps))
+        // Shared boundaries prevent one-frame gaps from rounding individual durations.
+        const endFrame = Math.round((beats[idx + 1]?.startTimeSec ?? (beat.startTimeSec + beat.durationSec)) * fps)
+        const durationFrames = Math.max(1, endFrame - fromFrame)
         const isLastScene = idx === beats.length - 1
 
         return (
@@ -77,12 +79,12 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
         <Audio
           src={resolvedBgmAudio}
           volume={(f) => {
-            const totalFrames = beats.reduce((sum, b) => sum + Math.round(b.durationSec * fps), 0)
-            const isNearEnd = f > totalFrames - fps * 1.5
-            const target = isNearEnd ? Math.min(0.25, bgmVolume * 1.8) : bgmVolume
+            const last = beats.at(-1)
+            const totalFrames = last ? Math.round((last.startTimeSec + last.durationSec) * fps) : 0
+            const fadeOut = Math.max(0, Math.min(1, (totalFrames - f) / (fps * 0.5)))
             // Fade in BGM over first 15 frames to prevent hard-start pop
             const fadeIn = Math.min(1, f / 15)
-            return fadeIn * target
+            return fadeIn * fadeOut * bgmVolume
           }}
           loop
         />
