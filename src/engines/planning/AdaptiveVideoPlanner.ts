@@ -1,6 +1,7 @@
 import type { ProductInput, ProductAnalysis, VideoStrategy, VideoStoryboard, StoryboardScene } from '../core/types'
 import type { CreativePlan } from '../creative/types'
 import type { ContentAngle, ContentPlan, ImageInsight, ProductFact } from './types'
+import {createCommerceCopy, factKeywords, intentForFact, visualMatch} from './commerce-copy'
 
 export const isProductImage = (asset: ProductInput['assets'][number]) => ['image', 'PRODUCT_IMAGE', 'DETAIL_IMAGE'].includes(asset.type)
 const words = (text: string) => text.trim().split(/\s+/).filter(Boolean)
@@ -26,7 +27,7 @@ export function distributeSceneDurations(scenes: StoryboardScene[], duration: nu
   })
 }
 
-export function planAdaptiveVideo(product: ProductInput, requestedDuration = 22, angle?: ContentAngle, vision: ImageInsight[] = []) {
+export function planAdaptiveVideo(product: ProductInput, requestedDuration = 22, angle?: ContentAngle, vision: ImageInsight[] = [], preferredFocusId?: string) {
   const images = (product.assets || []).filter(isProductImage)
   const primaryIndex = Math.max(0, images.findIndex((asset) => asset.isPrimary))
   const facts = collectProductFacts(product)
@@ -48,41 +49,50 @@ export function planAdaptiveVideo(product: ProductInput, requestedDuration = 22,
   const duration = Math.max(12, Math.min(requestedDuration, maxDuration))
   if (duration < requestedDuration) warnings.push(`Đề xuất ${duration}s vì dữ liệu hiện có chưa đủ cho ${requestedDuration}s.`)
   const name = short(product.name, 8)
-  const hooks = [
-    {id: 'design', text: `Bạn thích thiết kế này? Nhìn kỹ ${name}.`},
-    {id: 'features', text: `${name}: xem điểm nào trước khi chọn?`},
-    {id: 'fit', text: `Đang chọn ${name}? Kiểm tra trước khi mua.`},
-  ]
-  const hook = hooks.find((candidate) => candidate.id === selectedAngle)!.text
-  const cta = 'Nhấn sản phẩm trong giỏ hàng để xem thông số và giá hiện tại.'
+  const copy = createCommerceCopy(name, selectedAngle, facts, preferredFocusId)
+  const hooks = copy.hooks
+  const hook = hooks[0].text
+  const cta = copy.cta
   const scenes: StoryboardScene[] = []
-  const add = (type: StoryboardScene['type'], headline: string, voice: string, purpose: string, assetIndex = primaryIndex, fact?: ProductFact) => {
-    const targetIndex = fact?.assetId ? Math.max(0, images.findIndex((image) => image.id === fact.assetId)) : assetIndex
+  const add = (type: StoryboardScene['type'], headline: string, voice: string, purpose: string, fallbackIndex = primaryIndex, fact?: ProductFact) => {
+    const matches = inspected.map((image, index) => ({index, score: fact ? visualMatch(fact, image) : 0})).sort((a, b) => b.score - a.score)
+    const targetIndex = fact?.assetId ? Math.max(0, images.findIndex((image) => image.id === fact.assetId)) : matches[0]?.score > 0 ? matches[0].index : fallbackIndex
     const asset = images[targetIndex]
     const insight = inspected[targetIndex]
-    const detail = type === 'benefit' && !!insight?.focus
-    scenes.push({id: `scene-${scenes.length + 1}`, type, duration: 3, headline: short(headline, 7), voice, tts: voice,
-      productAssetIds: asset ? [asset.id] : [], backgroundType: 'color', keywords: [],
-      subheadline: fact ? short(fact.text, 12) : undefined,
+    // A crop of a USB port must not illustrate an unrelated cable-length claim.
+    const detail = type === 'benefit' && !!insight?.focus && !!fact && visualMatch(fact, insight) > 0
+    scenes.push({id: `scene-${scenes.length + 1}`, type, duration: 3, headline: short(headline, 9), voice, tts: voice,
+      productAssetIds: asset ? [asset.id] : [], backgroundType: 'color', keywords: fact ? factKeywords(fact.text) : [],
+      subheadline: fact?.text,
       renderPlan: {purpose, assetId: asset?.id || '', assetIndex: targetIndex, framing: detail ? 'detail' : 'full', crop: detail ? insight.focus : insight?.productBounds,
-        annotation: detail ? short(insight.observation || headline, 7) : undefined, evidenceIds: fact ? [fact.id] : []},
+        annotation: detail ? insight.observation : undefined, evidenceIds: fact ? [fact.id] : [],
+        factLabel: fact ? intentForFact(fact).label : undefined, ctaLabel: type === 'cta' ? copy.intent.cta : undefined,
+        copySource: 'rules', decisionPrompt: type === 'cta' ? copy.intent.clickReason : undefined},
     })
   }
-  add('hook', selectedAngle === 'fit' ? 'Hợp nhu cầu của bạn?' : selectedAngle === 'design' ? 'Nhìn kỹ thiết kế này' : 'Xem gì trước khi chọn?', hook, 'Thu hút đúng người đang cân nhắc sản phẩm')
-  add('product_hero', name, `Đây là ${name}. Xem ảnh và thông tin trước khi chọn.`, 'Cho thấy rõ sản phẩm', primaryIndex)
+  add('hook', copy.headline, hook, 'Nêu sản phẩm và một chi tiết có nguồn ngay từ đầu', primaryIndex, copy.focus)
+  const concise = copy.orderedFacts.filter((fact) => words(fact.text).length <= 18)
+  const firstFact = concise[0]
+  add('product_hero', firstFact ? intentForFact(firstFact).label : name, firstFact?.text || `Quan sát ${name} qua ảnh sản phẩm.`, 'Cho thấy sản phẩm và thông tin chính', primaryIndex, firstFact)
   const detailCount = duration <= 18 ? 1 : duration <= 25 ? 2 : 3
-  if (selectedAngle === 'fit') {
-    add('benefit', 'Kiểm tra trước khi chọn', 'Đối chiếu kích thước và thông tin tương thích với nhu cầu của bạn.', 'Giải đáp băn khoăn về độ phù hợp', images.length > 1 ? 1 : primaryIndex)
-    if (facts[0] && detailCount > 1) add('benefit', 'Thông tin cần xem', words(facts[0].text).length <= 18 ? facts[0].text : 'Đọc kỹ mô tả và thông số tại trang sản phẩm trước khi chọn.', 'Trình bày thông tin từ đầu vào', primaryIndex, facts[0])
-  } else if (facts.length) {
-    facts.slice(0, detailCount).forEach((fact, index) => add('benefit', fact.source === 'image' ? 'Chi tiết trong ảnh' : 'Thông tin sản phẩm', words(fact.text).length <= 18 ? fact.text : 'Đọc kỹ chi tiết này tại trang sản phẩm trước khi chọn.', 'Làm rõ một thông tin có nguồn', (index + 1) % Math.max(1, images.length), fact))
-  } else {
-    add('benefit', 'Xem kỹ ảnh và thông số', 'Quan sát thiết kế. Kiểm tra kích thước và phiên bản tại trang sản phẩm.', 'Giúp chọn mua khi ít thông tin', primaryIndex)
+  let hasCheck = false
+  for (let index = 0; index < detailCount; index++) {
+    const fact = concise[selectedAngle === 'fit' && index > 0 ? index : index + 1]
+    const fallbackIndex = (index + 1) % Math.max(1, images.length)
+    if (fact && selectedAngle !== 'fit') {
+      add('benefit', intentForFact(fact).label, fact.text, 'Làm rõ một chi tiết có nguồn, chọn ảnh khớp thông tin', fallbackIndex, fact)
+    } else if (fact && index > 0) {
+      add('benefit', intentForFact(fact).label, fact.text, 'Thông tin bổ sung để đối chiếu trước khi chọn', fallbackIndex, fact)
+    } else {
+      const check = !hasCheck ? copy.intent.check : 'Kiểm tra ảnh và mô tả của đúng phiên bản bạn định đặt.'
+      add('benefit', !hasCheck ? copy.intent.cta : 'Đúng phiên bản bạn cần?', check, 'Giải đáp việc cần kiểm tra trước khi đặt', fallbackIndex)
+      hasCheck = true
+    }
   }
-  add('cta', 'Xem trong giỏ hàng', cta, 'Mời xem thông tin và lựa chọn sản phẩm')
+  add('cta', copy.ctaHeadline, cta, 'Nêu rõ lý do nhấn sản phẩm trong giỏ hàng')
   const storyboard: VideoStoryboard = {scenes: distributeSceneDurations(scenes, duration), totalDuration: duration}
   const contentPlan: ContentPlan = {format, formatReason: `${images.length} ảnh, ${facts.length} thông tin có nguồn; chọn format theo dữ liệu hiện có.`, angle: selectedAngle,
-    primaryBuyingReason: facts[0]?.text || 'Thiết kế và mức độ phù hợp với nhu cầu', inputMode: !images.length ? 'details-only' : facts.length ? 'images-and-details' : 'image-only',
+    primaryBuyingReason: copy.focus?.text || 'Thiết kế và mức độ phù hợp với nhu cầu', focusFactId: copy.focus?.id, clickReason: copy.intent.clickReason, ctaLabel: copy.intent.cta, inputMode: !images.length ? 'details-only' : facts.length ? 'images-and-details' : 'image-only',
     images: inspected, facts, missingInformation, warnings, recommendedDuration: duration, source: 'rules'}
   const analysis: ProductAnalysis = {productType: product.name, mainProblem: product.problemSolved || 'Cần chọn sản phẩm phù hợp', mainBenefit: contentPlan.primaryBuyingReason,
     secondaryBenefits: (product.benefits || []).slice(1), targetAudience: product.targetAudience || 'Người đang cân nhắc sản phẩm này', sellingMechanism: format,
@@ -92,7 +102,13 @@ export function planAdaptiveVideo(product: ProductInput, requestedDuration = 22,
   const creativePlan: CreativePlan = {concept: strategy.concept, viewerInsight: analysis.mainProblem, sellingMechanism: format, storyApproach: 'three-reasons', hook,
     story: storyboard.scenes.map((scene) => scene.voice).join(' '), productRole: name, payoff: contentPlan.primaryBuyingReason, offerAngle: 'Xem thông tin hiện tại tại trang sản phẩm',
     ctaAngle: cta, tone: strategy.tone, durationTarget: duration, pacing: 'medium', soundtrackMood: 'clean-warm', emotionalArc: ['Tò mò', 'Hiểu sản phẩm', 'Cân nhắc', 'Xem thêm'], cta,
-    hookCandidates: hooks.map((candidate) => ({...candidate, type: 'curiosity', reasoning: 'Góc nội dung theo dữ liệu sản phẩm', scores: {}})),
+    hookCandidates: hooks.map((candidate) => ({...candidate, headline: copy.headline, source: 'rules', evidenceIds: copy.focus ? [copy.focus.id] : [], type: 'curiosity', scores: {}})),
     selectedHook: {id: selectedAngle, text: hook}, spokenScenes: storyboard.scenes.map((scene) => ({headline: scene.headline, voice: scene.voice})), totalScenes: storyboard.scenes.length}
-  return {analysis, strategy, storyboard, creativePlan, contentPlan, suggestedCaption: `${name} — xem chi tiết và lựa chọn phù hợp trong giỏ hàng.`, suggestedHashtags: ['#sanpham', '#chonmua']}
+  return {analysis, strategy, storyboard, creativePlan, contentPlan, suggestedCaption: `${name}${copy.focus ? ` — ${copy.focus.text}` : ''}. ${copy.intent.clickReason} Xem sản phẩm trong giỏ hàng.`, suggestedHashtags: ['#sanpham', '#chonmua']}
+}
+
+export function withOpeningHook(scenes: StoryboardScene[], hook: string, duration: number, headline = hook, copy?: {source?: 'gemini' | 'rules'; evidenceIds?: string[]}): StoryboardScene[] {
+  return distributeSceneDurations(scenes.map((scene, index) => index === 0 ? {...scene, voice: hook, tts: hook, headline,
+    renderPlan: scene.renderPlan && copy ? {...scene.renderPlan, copySource: copy.source || scene.renderPlan.copySource, evidenceIds: copy.evidenceIds || scene.renderPlan.evidenceIds} : scene.renderPlan,
+  } : scene), duration)
 }

@@ -2,6 +2,7 @@ import React, {useState} from 'react'
 import {AbsoluteFill, Img, cancelRender, continueRender, delayRender, spring, useCurrentFrame, useVideoConfig} from 'remotion'
 import type {StoryboardScene} from '../engines/core/types'
 import {COMMERCE_LAYOUT as layout, fitCommerceText} from './tiktok-layout'
+import {captionAtProgress} from './scene-captions'
 
 /** One shared safe layout for browser preview, client export and server rendering. */
 export const PlannedCommerceScene: React.FC<{scene: StoryboardScene; imageUrl: string; durationSec: number}> = ({scene, imageUrl, durationSec}) => {
@@ -13,19 +14,20 @@ export const PlannedCommerceScene: React.FC<{scene: StoryboardScene; imageUrl: s
   const enter = spring({frame, fps, config: {damping: 23}})
   const plan = scene.renderPlan!
   const contextImage = plan.contextImageUrl
-  const displayedImage = contextImage || imageUrl
+  const cta = scene.type === 'cta'
+  const contextForeground = !!contextImage && !cta
+  const displayedImage = contextForeground ? contextImage! : imageUrl
   // Contexts show the complete generated photo; only source detail scenes use a planned crop.
-  const crop = (!contextImage && plan.crop) || {x: 0, y: 0, width: 100, height: 100}
+  const crop = (!contextForeground && plan.crop) || {x: 0, y: 0, width: 100, height: 100}
   const cropWidth = size.width * crop.width / 100
   const cropHeight = size.height * crop.height / 100
   const cardWidth = layout.width
-  const imageSlot = contextImage ? {top: 280, height: 820} : layout.image
+  const hasSubheadline = !!scene.subheadline && scene.subheadline !== scene.headline
+  const imageSlot = cta ? {top: 480, height: 440} : contextForeground ? {top: 280, height: 820} : hasSubheadline ? layout.image : {top: 420, height: 604}
   const cardHeight = imageSlot.height
   const scale = Math.min((cardWidth - 32) / cropWidth, (cardHeight - 32) / cropHeight) * (0.96 + progress * 0.04)
-  const voiceWords = (scene.voice || scene.headline).trim().split(/\s+/).filter(Boolean)
-  const captions = Array.from({length: Math.ceil(voiceWords.length / 7)}, (_, index) => voiceWords.slice(index * 7, index * 7 + 7).join(' '))
-  const caption = captions[Math.min(captions.length - 1, Math.floor(progress * captions.length))] || ''
-  const cta = scene.type === 'cta'
+  const caption = captionAtProgress(scene.voice || scene.headline, progress)
+  const emphasis = new Set((scene.keywords || []).flatMap((keyword) => keyword.toLocaleLowerCase('vi').split(/\s+/)))
   const detail = plan.framing === 'detail'
   const subheadline = scene.subheadline !== scene.headline ? scene.subheadline : undefined
   const annotation = detail ? plan.annotation : undefined
@@ -39,24 +41,28 @@ export const PlannedCommerceScene: React.FC<{scene: StoryboardScene; imageUrl: s
       <AbsoluteFill style={{background: 'linear-gradient(180deg, #f5f2ebf5, #f5f2ebdb 50%, #f5f2ebf5)'}} />
     </>}
     <div style={{...box(layout.label), zIndex: 2, display: 'flex', justifyContent: 'space-between', fontSize: 20, letterSpacing: 2, color: '#8c664a'}}>
-      <span>VIPEE</span><span>{detail ? 'GÓC NHÌN CHI TIẾT' : cta ? 'CHỌN MẪU PHÙ HỢP' : 'KHÁM PHÁ SẢN PHẨM'}</span>
+      <span>{cta ? 'CHỌN MUA' : detail ? 'CẬN CẢNH' : 'SẢN PHẨM'}</span><span>{detail ? 'GÓC NHÌN CHI TIẾT' : cta ? 'CHỌN MẪU PHÙ HỢP' : 'KHÁM PHÁ SẢN PHẨM'}</span>
     </div>
     <div style={{...box(layout.headline), zIndex: 2, display: 'flex', alignItems: 'center', opacity: enter, transform: `translateY(${(1 - enter) * 10}px)`}}>
       <div style={{...copyStyle(scene.headline, layout.headline.height, 52), fontWeight: 800, letterSpacing: -0.8}}>{scene.headline}</div>
     </div>
-    {subheadline && <div style={{...box(layout.subheadline), zIndex: 2, ...copyStyle(subheadline, layout.subheadline.height, 27), color: '#6e665b', display: 'flex', alignItems: 'center'}}>{subheadline}</div>}
+    {subheadline && <div style={{...box(layout.subheadline), zIndex: 2, ...copyStyle(subheadline, layout.subheadline.height, 27, layout.width - 32), color: '#6e665b', background: !contextForeground && plan.evidenceIds.length ? '#eee6d8' : undefined, borderRadius: 12, padding: !contextForeground && plan.evidenceIds.length ? '0 16px' : undefined, boxSizing: 'border-box', display: 'flex', alignItems: 'center'}}>{subheadline}</div>}
     <div style={{...box(imageSlot), borderRadius: 28, overflow: 'hidden', background: '#fff', boxShadow: '0 16px 50px #3a291b12', border: '1px solid #ffffffbb'}}>
-      {contextImage && <><Img src={contextImage} style={{width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(30px)', opacity: 0.22, transform: 'scale(1.15)'}} /><AbsoluteFill style={{background: '#ffffff55'}} /></>}
-      <div style={{position: 'absolute', left: (cardWidth - cropWidth * scale) / 2, top: (cardHeight - cropHeight * scale) / 2, width: cropWidth * scale, height: cropHeight * scale, overflow: 'hidden', borderRadius: contextImage ? 12 : 0}}>
+      {contextForeground && <><Img src={contextImage!} style={{width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(30px)', opacity: 0.22, transform: 'scale(1.15)'}} /><AbsoluteFill style={{background: '#ffffff55'}} /></>}
+      <div style={{position: 'absolute', left: (cardWidth - cropWidth * scale) / 2, top: (cardHeight - cropHeight * scale) / 2, width: cropWidth * scale, height: cropHeight * scale, overflow: 'hidden', borderRadius: contextForeground ? 12 : 0}}>
         <Img src={displayedImage} onLoad={imageLoaded} onError={() => cancelRender(new Error('Không tải được ảnh sản phẩm cho cảnh này'))}
           style={{position: 'absolute', maxWidth: 'none', width: size.width * scale, height: size.height * scale, left: -size.width * crop.x / 100 * scale, top: -size.height * crop.y / 100 * scale}} />
       </div>
-      {contextImage && <div style={{position: 'absolute', inset: '0 0 auto', height: 200, background: 'linear-gradient(180deg, #f5f2ebf5, #f5f2ebbb 65%, transparent)'}} />}
+      {contextForeground && <div style={{position: 'absolute', inset: '0 0 auto', height: 200, background: 'linear-gradient(180deg, #f5f2ebf5, #f5f2ebbb 65%, transparent)'}} />}
     </div>
     {annotation && <div style={{...box(layout.annotation), display: 'flex', gap: 12, alignItems: 'center', color: '#8c664a'}}><span style={{width: 8, height: 8, borderRadius: 8, background: '#ca7739', flexShrink: 0}} /><span style={copyStyle(annotation, layout.annotation.height, 23, layout.width - 20)}>{annotation}</span></div>}
-    {cta && <div style={{...box(layout.cta), borderRadius: 16, padding: '10px 20px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', background: '#252922', fontSize: 25, fontWeight: 700}}>Xem lựa chọn trong giỏ hàng</div>}
+    {cta && plan.decisionPrompt && <div style={{...box({top: 944, height: 136}), borderRadius: 18, background: '#eee6d8', padding: '12px 18px', boxSizing: 'border-box'}}>
+      <div style={{fontSize: 18, fontWeight: 700, color: '#8c664a', letterSpacing: 1.5, marginBottom: 8}}>TRƯỚC KHI ĐẶT</div>
+      <div style={copyStyle(plan.decisionPrompt, 84, 29, layout.width - 36)}>{plan.decisionPrompt}</div>
+    </div>}
+    {cta && <div style={{...box(layout.cta), ...copyStyle(plan.ctaLabel || 'Xem chi tiết sản phẩm', layout.cta.height - 20, 25, layout.width - 40), borderRadius: 16, padding: '10px 20px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', background: '#252922', fontWeight: 700}}>{plan.ctaLabel || 'Xem chi tiết sản phẩm'}</div>}
     <div style={{...box(layout.caption), display: 'flex', justifyContent: 'center', alignItems: 'center', textAlign: 'center'}}>
-      <span style={{...copyStyle(caption, layout.caption.height - 16, 29, layout.width - 48), display: 'inline-block', background: '#252922', color: '#fff', borderRadius: 12, padding: '8px 16px'}}>{caption}</span>
+      <span style={{...copyStyle(caption, layout.caption.height - 16, 29, layout.width - 48), display: 'inline-block', background: '#252922', color: '#fff', borderRadius: 12, padding: '8px 16px'}}>{caption.split(/\s+/).map((word, index) => <React.Fragment key={index}>{index > 0 && ' '}<span style={emphasis.has(word.toLocaleLowerCase('vi').replace(/[.,!?;:]$/, '')) ? {color: '#ffd49d', fontWeight: 800} : undefined}>{word}</span></React.Fragment>)}</span>
     </div>
     <div style={{...box(layout.progress), background: '#25292222'}}><div style={{width: `${progress * 100}%`, height: '100%', background: '#ca7739'}} /></div>
   </AbsoluteFill>

@@ -12,6 +12,10 @@ export interface ImageInsight {
 export interface ProductFact { id: string; text: string; source: 'user_input' | 'image'; assetId?: string }
 export interface SceneRenderPlan {
   contextImageUrl?: string
+  ctaLabel?: string
+  factLabel?: string
+  copySource?: 'gemini' | 'rules'
+  decisionPrompt?: string
   purpose: string
   assetId: string
   assetIndex: number
@@ -25,6 +29,11 @@ export interface ContentPlan {
   formatReason: string
   angle: ContentAngle
   primaryBuyingReason: string
+  focusFactId?: string
+  clickReason?: string
+  ctaLabel?: string
+  buyerQuestion?: string
+  copySources?: {hooks: 'gemini' | 'mixed' | 'rules'; script: 'gemini' | 'mixed' | 'rules'; cta: 'gemini' | 'rules'}
   inputMode: 'image-only' | 'images-and-details' | 'details-only'
   images: ImageInsight[]
   facts: ProductFact[]

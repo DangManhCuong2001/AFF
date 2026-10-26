@@ -45,6 +45,16 @@ Luồng adaptive dùng canvas 1080×1920 và vùng nội dung bảo thủ: chừ
 
 Preview có **Chỉ video / Giao diện TikTok / Vùng an toàn**. Lớp mô phỏng là phần tử bên ngoài Player, không được truyền vào renderer hoặc ghi vào MP4. Vị trí giao diện thực tế có thể thay đổi theo thiết bị, caption và giỏ hàng. Video MP4 đã xuất trước đó cần render lại để áp dụng bố cục mới.
 
+## Nội dung giúp chọn mua
+
+Gemini nhận ảnh và dữ liệu sản phẩm trong lần phân tích hiện có, chọn một fact làm trọng tâm và trả ba hook, câu hỏi chọn mua, lời thoại từng cảnh và CTA. Nội dung AI hợp lệ được sử dụng thực sự; không ghi đè bằng câu mẫu. Chữ số/đơn vị, nguồn fact, asset, ngân sách lời đọc, vật liệu phổ biến và một số khẳng định/ưu đãi không có nguồn được kiểm tra. Đây là kiểm tra bằng quy tắc, không phải chứng minh ngữ nghĩa; vẫn cần xem lại trước khi đăng.
+
+Một câu/hook không hợp lệ dùng dự phòng riêng, giữ các phần AI hợp lệ. Studio hiển thị nguồn hook, lời đọc và CTA (Gemini / kết hợp dự phòng / theo dữ liệu đầu vào). Đổi hook giữ nguyên thân kịch bản và ảnh bối cảnh, không gọi API phân tích/tạo ảnh; voice cập nhật theo lời thoại mới. Một phản hồi Gemini hợp lệ chỉ cần một request; model dự phòng chỉ được thử khi phản hồi toàn bộ lỗi. Lượng token có thể tăng vì nội dung trả về nhiều hơn.
+
+Ảnh được chọn theo quan sát khớp fact; chỉ crop khi có quan sát phù hợp. Bố cục mở đầu dùng ảnh bối cảnh lớn, cảnh thông tin nhấn fact gốc để đối chiếu, cảnh chọn mua dùng ảnh gốc và câu hỏi trước khi đặt. Phụ đề chia cụm và nhấn thông số, thời điểm vẫn là ước lượng theo lời đọc. Không thêm lần gọi Cloudflare cho các cải tiến này.
+
+Hiệu quả click/mua cần số liệu video đăng thật. Chữ giỏ hàng trong video không tự gắn sản phẩm khi đăng.
+
 ## Voice
 
 Trong phần Giọng thuyết minh, chọn Google để test hoặc ElevenLabs để làm video chính thức. Google dùng Google Translate TTS hiện có, không phải Google Cloud TTS. Nhà cung cấp được chọn tường minh; Google lỗi không tự gọi ElevenLabs. ElevenLabs cần `ELEVENLABS_API_KEY` phía server.

@@ -40,7 +40,7 @@ test('Changing content angle rebuilds body and purpose, not just the hook', () =
 })
 
 test('Vision crop and evidence persist through director and infographic fallback', () => {
-  const p = planAdaptiveVideo(product, 22, 'features', [{assetId: 'detail', role: 'detail', source: 'vision', observation: 'Có cổng USB-C trong ảnh', focus: {x: 20, y: 30, width: 40, height: 40}}])
+  const p = planAdaptiveVideo({...product, features: ['Dây dài 1,2 mét', 'Kết nối USB-C']}, 22, 'features', [{assetId: 'detail', role: 'detail', source: 'vision', observation: 'Có cổng USB-C trong ảnh', focus: {x: 20, y: 30, width: 40, height: 40}}])
   const speechTimings = p.storyboard.scenes.map((scene, index) => ({segmentId: scene.id, text: scene.voice, emotion: scene.type, startSec: index * 4, endSec: (index + 1) * 4, durationSec: 4}))
   const beats = new VipeeVisualDirector().createVisualStoryplan({scenes: p.storyboard.scenes, speechTimings, productImages: ['blob:main', 'blob:detail'], productName: product.name, category: product.category}).beats
   assert.equal(beats[2].layers.product.url, 'blob:detail')
@@ -253,5 +253,172 @@ test('Cloudflare auth errors and invalid outputs do not leak token or call anoth
       globalThis.fetch = async () => new Response(JSON.stringify({success: true, result: {image: 'not-an-image'}}), {status: 200})
       await assert.rejects(generateContextImage('Test invalid Cloudflare response', 'home', reference), /chưa trả ảnh/)
     } finally {globalThis.fetch = original}
+  })
+})
+
+
+test('Product-specific focus and CTA follow supplied facts across categories', () => {
+  const cases = [
+    {name: 'Tai nghe X', category: 'tech', features: ['Kết nối USB-C'], expected: /tương thích/i},
+    {name: 'Áo linen', category: 'fashion', features: ['Kích thước vai 40 cm'], expected: /kích thước/i},
+    {name: 'Bộ dụng cụ A', category: 'home', features: ['Bộ gồm 3 món'], expected: /thành phần/i},
+    {name: 'Ốp điện thoại', category: 'tech', features: ['Màu xanh ngọc'], expected: /màu/i},
+  ]
+  for (const sample of cases) {
+    const result = planAdaptiveVideo({...product, ...sample})
+    assert.match(result.strategy.cta, sample.expected)
+    assert.match(result.storyboard.scenes.at(-1)!.renderPlan!.ctaLabel!, sample.expected)
+    assert.equal(result.contentPlan.primaryBuyingReason, sample.features[0])
+    assert.ok(result.storyboard.scenes[0].headline.includes(sample.features[0]))
+    assert.equal(result.creativePlan.hookCandidates?.length, 3)
+    assert.equal(new Set(result.creativePlan.hookCandidates?.map((hook) => hook.text)).size, 3)
+    assert.doesNotMatch(result.strategy.hook, /Xem gì trước khi chọn|Khám phá sản phẩm/i)
+  }
+})
+
+test('Mismatched detail crops cannot illustrate unrelated specifications', () => {
+  const result = planAdaptiveVideo(product, 22, 'features', [{assetId: 'detail', role: 'detail', source: 'vision', observation: 'Cổng USB-C màu đen', focus: {x: 20, y: 30, width: 40, height: 40}}])
+  const cableScene = result.storyboard.scenes.find((scene) => scene.voice === 'Dây dài 1,2 mét')!
+  assert.equal(cableScene.renderPlan?.framing, 'full')
+  assert.equal(cableScene.renderPlan?.crop, undefined)
+  const portScene = result.storyboard.scenes.find((scene) => scene.voice === 'Kết nối USB-C')!
+  assert.equal(portScene.renderPlan?.assetId, 'detail')
+})
+
+test('Hook alternatives keep evidence, scene body, CTA and existing context without an API call', async () => {
+  const {withOpeningHook} = await import('../src/engines/planning/AdaptiveVideoPlanner')
+  const {attachContextImage} = await import('../src/lib/ai/context-scenes')
+  const plan = planAdaptiveVideo(product)
+  const original = attachContextImage(plan.storyboard.scenes, 'data:image/jpeg;base64,YWJj')
+  for (const candidate of plan.creativePlan.hookCandidates!) {
+    const changed = withOpeningHook(original, candidate.text, plan.strategy.targetDuration)
+    assert.equal(changed[0].voice, candidate.text)
+    assert.deepEqual(changed[0].renderPlan, original[0].renderPlan)
+    assert.deepEqual(changed.slice(1).map((scene) => [scene.voice, scene.renderPlan]), original.slice(1).map((scene) => [scene.voice, scene.renderPlan]))
+    assert.equal(Math.round(changed.reduce((sum, scene) => sum + scene.duration, 0) * 10), plan.strategy.targetDuration * 10)
+    assert.notEqual(changed[0], original[0])
+  }
+})
+
+test('Caption phrases preserve decimals, all words and the final phrase', async () => {
+  const {buildCaptionCues, captionAtProgress} = await import('../src/remotion/scene-captions')
+  const text = 'Dây dài 1,2 mét. Kiểm tra cổng USB-C trước khi bạn chọn sản phẩm này.'
+  const cues = buildCaptionCues(text)
+  assert.equal(cues.map((cue) => cue.text).join(' '), text)
+  assert.ok(cues.every((cue) => cue.text.split(/\s+/).length <= 7))
+  assert.ok(cues.some((cue) => cue.text.includes('1,2')))
+  assert.equal(captionAtProgress(text, 0), cues[0].text)
+  assert.equal(captionAtProgress(text, 1), cues.at(-1)!.text)
+  assert.equal(captionAtProgress('', 0.5), '')
+})
+
+test('Gemini cannot replace a sourced CTA with fake urgency or a generic opening', async () => {
+  const base = planAdaptiveVideo(product)
+  const value = {images: [], scenes: base.storyboard.scenes.map((scene, index) => ({headline: index === 0 ? 'Khám phá sản phẩm' : scene.headline, voice: index === 0 ? 'Khám phá sản phẩm này nhé' : scene.voice, assetId: scene.renderPlan!.assetId, evidenceIds: scene.renderPlan!.evidenceIds}))}
+  value.scenes.at(-1)!.voice = 'Nhanh tay đặt ngay kẻo hết hàng'
+  await withMockResponse(value, async () => {
+    const result = await analyzeProductWithGemini(product, 'test-key')
+    assert.equal(result.contentPlan.source, 'gemini')
+    assert.equal(result.strategy.hook, base.strategy.hook)
+    assert.equal(result.strategy.cta, base.strategy.cta)
+    assert.doesNotMatch(result.strategy.cta, /kẻo hết hàng/)
+    assert.equal(result.creativePlan.hookCandidates![0].text, result.strategy.hook)
+  })
+})
+
+function authoredGeminiResponse() {
+  const base = planAdaptiveVideo(product)
+  const hooks = [
+    {headline: 'Tai nghe USB-C hợp nhu cầu?', text: 'Bạn đang chọn tai nghe USB-C?', evidenceIds: ['fact-1']},
+    {headline: 'Đối chiếu cổng USB-C', text: 'Cổng USB-C trên mẫu tai nghe này có hợp thiết bị?', evidenceIds: ['fact-1']},
+    {headline: 'Kiểm tra trước khi đặt', text: 'Đối chiếu cổng USB-C trước khi đặt tai nghe.', evidenceIds: ['fact-1']},
+  ]
+  const scenes = base.storyboard.scenes.map((scene) => ({headline: scene.headline, voice: scene.voice, assetId: scene.renderPlan!.assetId, evidenceIds: scene.renderPlan!.evidenceIds, ctaLabel: undefined as string | undefined}))
+  scenes[0] = {...scenes[0], headline: hooks[0].headline, voice: hooks[0].text, evidenceIds: ['fact-1']}
+  scenes[1] = {...scenes[1], headline: 'Kiểu kết nối USB-C', voice: 'Mẫu này dùng kết nối USB-C.', evidenceIds: ['fact-1']}
+  scenes[2] = {...scenes[2], headline: 'Dây 1,2 mét', voice: 'Dây có chiều dài 1,2 mét.', evidenceIds: ['fact-2']}
+  scenes[3] = {...scenes[3], headline: 'Cổng USB-C có phù hợp?', voice: 'Cổng USB-C này có phù hợp thiết bị của bạn?', evidenceIds: ['fact-1']}
+  scenes[4] = {...scenes[4], headline: 'Kiểm tra cổng USB-C', voice: 'Nhấn sản phẩm để kiểm tra kết nối USB-C trước khi đặt.', evidenceIds: ['fact-1'], ctaLabel: 'Xem cổng USB-C'}
+  return {images: [], focusFactId: 'fact-1', buyerQuestion: {text: 'Cổng USB-C có phù hợp thiết bị của bạn?', evidenceIds: ['fact-1']}, hookCandidates: hooks, scenes}
+}
+
+test('Gemini-authored hooks, natural voice and CTA survive to the final video plan', async () => {
+  const authored = authoredGeminiResponse()
+  let calls = 0
+  const original = globalThis.fetch
+  globalThis.fetch = async (_url, init) => {
+    calls++
+    const payload = JSON.parse(String(init?.body))
+    assert.match(payload.contents[0].parts[0].text, /ĐÍCH THÂN viết ba hook/)
+    return new Response(JSON.stringify({candidates: [{content: {parts: [{text: JSON.stringify(authored)}]}}]}), {status: 200})
+  }
+  try {
+    const result = await analyzeProductWithGemini(product, 'test-key')
+    assert.equal(calls, 1)
+    assert.equal(result.strategy.hook, authored.hookCandidates[0].text)
+    assert.equal(result.creativePlan.selectedHook?.headline, authored.hookCandidates[0].headline)
+    assert.equal(result.storyboard.scenes[1].voice, authored.scenes[1].voice)
+    assert.equal(result.storyboard.scenes[2].voice, authored.scenes[2].voice)
+    assert.equal(result.storyboard.scenes[2].subheadline, 'Dây dài 1,2 mét')
+    assert.equal(result.strategy.cta, authored.scenes[4].voice)
+    assert.equal(result.storyboard.scenes.at(-1)?.renderPlan?.ctaLabel, 'Xem cổng USB-C')
+    assert.equal(result.storyboard.scenes.at(-1)?.renderPlan?.decisionPrompt, authored.buyerQuestion.text)
+    assert.deepEqual(result.contentPlan.copySources, {hooks: 'gemini', script: 'gemini', cta: 'gemini'})
+    assert.ok(result.creativePlan.hookCandidates!.every((hook) => hook.source === 'gemini'))
+    assert.equal(result.suggestedCaption, `${authored.hookCandidates[0].text} ${authored.scenes[4].voice}`)
+  } finally {globalThis.fetch = original}
+})
+
+test('One hallucinated AI scene falls back locally while keeping other authored copy', async () => {
+  const authored = authoredGeminiResponse()
+  authored.scenes[2].voice = 'Dây có chiều dài 12 mét.'
+  authored.hookCandidates[1].text = 'Tai nghe USB-C bán chạy, mua ngay kẻo hết hàng!'
+  await withMockResponse(authored, async () => {
+    const result = await analyzeProductWithGemini(product, 'test-key')
+    assert.equal(result.storyboard.scenes[1].voice, authored.scenes[1].voice)
+    assert.equal(result.storyboard.scenes[2].voice, 'Dây dài 1,2 mét')
+    assert.equal(result.storyboard.scenes[2].renderPlan?.copySource, 'rules')
+    assert.equal(result.contentPlan.copySources?.script, 'mixed')
+    assert.equal(result.contentPlan.copySources?.hooks, 'mixed')
+    assert.equal(result.contentPlan.copySources?.cta, 'gemini')
+    assert.equal(result.creativePlan.hookCandidates!.length, 3)
+    assert.doesNotMatch(result.creativePlan.story, /12 mét|bán chạy|hết hàng/)
+  })
+})
+
+test('Copy validation rejects changed units, invented materials and reversed negatives', async () => {
+  const {validateCommerceCopy} = await import('../src/lib/ai/validate-commerce-copy')
+  const facts = planAdaptiveVideo(product).contentPlan.facts
+  assert.equal(validateCommerceCopy({text: 'Khám phá sản phẩm này ngay!', headline: 'Kết nối USB-C', evidenceIds: ['fact-1']}, facts, product.name, 'hook', 'fact-1'), false)
+  assert.equal(validateCommerceCopy({text: 'Dây dài 1,2 kg.', evidenceIds: ['fact-2']}, facts, product.name, 'body'), false)
+  assert.equal(validateCommerceCopy({text: 'Tai nghe USB-C làm bằng inox.', evidenceIds: ['fact-1']}, facts, product.name, 'body'), false)
+  assert.equal(validateCommerceCopy({text: 'Dây có chiều dài 1.2 mét.', evidenceIds: ['fact-2']}, facts, product.name, 'body'), true)
+  const negative = [{id: 'negative', text: 'Không hỗ trợ Bluetooth', source: 'user_input' as const}]
+  assert.equal(validateCommerceCopy({text: 'Kết nối Bluetooth.', evidenceIds: ['negative']}, negative, product.name, 'body'), false)
+  assert.equal(validateCommerceCopy({text: 'Mẫu này không hỗ trợ Bluetooth.', evidenceIds: ['negative']}, negative, product.name, 'body'), true)
+})
+
+test('Gemini may select a different sourced buying focus and hook headline remains intact', async () => {
+  const authored = authoredGeminiResponse()
+  authored.focusFactId = 'fact-2'
+  authored.hookCandidates = [
+    {headline: 'Dây 1,2 mét có phù hợp?', text: 'Dây dài 1,2 mét có phù hợp nhu cầu?', evidenceIds: ['fact-2']},
+    {headline: 'Đối chiếu chiều dài dây', text: 'Đối chiếu dây 1,2 mét trước khi chọn.', evidenceIds: ['fact-2']},
+    {headline: 'Bạn cần dây dài bao nhiêu?', text: 'Bạn có cần dây dài 1,2 mét?', evidenceIds: ['fact-2']},
+  ]
+  authored.scenes[1] = {...authored.scenes[1], voice: 'Dây có chiều dài 1,2 mét.', headline: 'Dây 1,2 mét', evidenceIds: ['fact-2']}
+  authored.scenes[4] = {...authored.scenes[4], voice: 'Nhấn sản phẩm để đối chiếu dây dài 1,2 mét.', headline: 'Đối chiếu chiều dài dây', evidenceIds: ['fact-2'], ctaLabel: 'Xem chiều dài dây'}
+  await withMockResponse(authored, async () => {
+    const result = await analyzeProductWithGemini(product, 'test-key')
+    assert.equal(result.contentPlan.focusFactId, 'fact-2')
+    assert.equal(result.contentPlan.primaryBuyingReason, 'Dây dài 1,2 mét')
+    assert.equal(result.contentPlan.buyerQuestion, undefined) // The old USB question is off-focus.
+    const {withOpeningHook} = await import('../src/engines/planning/AdaptiveVideoPlanner')
+    const hook = result.creativePlan.hookCandidates![1]
+    const changed = withOpeningHook(result.storyboard.scenes, hook.text, result.strategy.targetDuration, hook.headline, {source: hook.source, evidenceIds: hook.evidenceIds})
+    assert.equal(changed[0].headline, hook.headline)
+    assert.equal(changed[0].voice, hook.text)
+    assert.equal(changed[0].renderPlan?.copySource, hook.source)
+    assert.equal(changed.at(-1)?.voice, result.strategy.cta)
   })
 })

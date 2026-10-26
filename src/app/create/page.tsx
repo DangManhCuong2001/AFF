@@ -46,7 +46,7 @@ import { ContentPlanSummary } from '@/components/video/ContentPlanSummary'
 import { prepareAnalysisImages } from '@/lib/ai/prepare-images'
 import type { AnalysisImage } from '@/lib/ai/gemini'
 import { attachContextImage, getContextImage } from '@/lib/ai/context-scenes'
-import { isProductImage, distributeSceneDurations } from '@/engines/planning/AdaptiveVideoPlanner'
+import { isProductImage, withOpeningHook } from '@/engines/planning/AdaptiveVideoPlanner'
 import { applySceneAudioTimings, parseSceneAudioTimings, SceneAudioTiming } from '@/lib/video/scene-timing'
 import { InfographicDeckViewer } from '@/components/infographic/InfographicDeckViewer'
 import { CABLE_ORGANIZER_SEED_PRODUCT } from '@/engines/home/seed'
@@ -592,16 +592,10 @@ export default function CreateVideoPage() {
       setCurrentStep(2)
       setCaption(
         data.suggestedCaption ||
-          `${data.strategy.hook} 😅 ${data.analysis.mainBenefit}. Nhỏ mà tiện hơn mình nghĩ nhiều!`
+          `${data.strategy.hook} ${data.strategy.cta}`
       )
       setHashtags(
-        data.suggestedHashtags || [
-          '#dogiadung',
-          '#giadungthongminh',
-          '#organizer',
-          '#meovatgiadinh',
-          '#reviewgiadung',
-        ]
+        data.suggestedHashtags || ['#sanpham', '#chonmua']
       )
     } catch (err: unknown) {
       toast.error('Lỗi phân tích', (err as Error).message)
@@ -610,22 +604,14 @@ export default function CreateVideoPage() {
     }
   }
 
-  // Switch to another Hook candidate among the 5 generated hooks
+  // Hook alternatives share one buying reason, scene body and cached context image.
   const handleSelectHook = (candidate: HookCandidate) => {
+    if (!analysisResult || isRenderingVideo || analyzing || isRegeneratingAngle || isGeneratingContext || analysisResult.strategy.hook === candidate.text) return
     setSelectedHookId(candidate.id)
-    if (!analysisResult) return
 
     setAnalysisResult((prev) => {
       if (!prev) return prev
-      const updatedScenes = [...prev.storyboard.scenes]
-      if (updatedScenes.length > 0) {
-        updatedScenes[0] = {
-          ...updatedScenes[0],
-          voice: candidate.text,
-          tts: candidate.text,
-          headline: candidate.text,
-        }
-      }
+      const updatedScenes = withOpeningHook(prev.storyboard.scenes, candidate.text, prev.strategy.targetDuration, candidate.headline, {source: candidate.source, evidenceIds: candidate.evidenceIds})
       return {
         ...prev,
         strategy: {
@@ -634,19 +620,21 @@ export default function CreateVideoPage() {
         },
         storyboard: {
           ...prev.storyboard,
-          scenes: distributeSceneDurations(updatedScenes, prev.strategy.targetDuration),
+          scenes: updatedScenes,
         },
         creativePlan: prev.creativePlan
           ? {
               ...prev.creativePlan,
               selectedHook: candidate,
               hook: candidate.text,
+              story: updatedScenes.map((scene) => scene.voice).join(' '),
+              spokenScenes: updatedScenes.map((scene) => ({headline: scene.headline, voice: scene.voice})),
             }
           : undefined,
       }
     })
 
-    setCaption(`${candidate.text} Xem chi tiết và lựa chọn trong giỏ hàng.`)
+    setCaption(`${candidate.text} ${analysisResult.strategy.cta}`)
   }
 
   const handleGenerateAnotherAngle = async () => {
@@ -1824,7 +1812,7 @@ export default function CreateVideoPage() {
 
               <div className="flex items-center gap-2 pt-1 text-[11px] text-neutral-400">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Video không in trực tiếp số tiền để tránh lệch giá và kích thích bấm vào giỏ hàng góc trái.</span>
+                <span>Giá và lựa chọn cần khớp trang sản phẩm. Video không tự thêm mức giá hoặc ưu đãi chưa xác minh.</span>
               </div>
             </div>
 
@@ -1919,7 +1907,7 @@ export default function CreateVideoPage() {
                       onClick={handleGenerateAnotherAngle}
                       disabled={isRegeneratingAngle || isGeneratingContext}
                       className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 text-amber-300 border border-amber-500/30 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      title="Chuyển sang góc tiếp cận kịch bản khác (POV, Daily Frustration, Skeptical Test...)"
+                      title="Đổi giữa thiết kế, thông tin sản phẩm và hướng dẫn chọn mua"
                     >
                       <RotateCcw className={`w-3.5 h-3.5 ${isRegeneratingAngle ? 'animate-spin' : ''}`} />
                       <span>{isRegeneratingAngle ? 'Đang đổi...' : 'Đổi góc kể chuyện'}</span>
@@ -1970,10 +1958,10 @@ export default function CreateVideoPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
                         <Flame className="w-3.5 h-3.5 text-amber-400" />
-                        Câu mở đầu theo góc nội dung
+                        3 cách mở đầu, cùng một trọng tâm
                       </span>
                       <span className="text-[10px] text-neutral-400 font-mono">
-                        Chọn hook bạn thích nhất
+                        Đổi hook dùng lại ảnh bối cảnh
                       </span>
                     </div>
 
@@ -1983,21 +1971,19 @@ export default function CreateVideoPage() {
                           id: 'hook-1',
                           text: analysisResult.strategy.hook,
                           type: 'curiosity' as const,
-                          scores: {
-                            curiosity: 92,
-                            relatability: 90,
-                            specificity: 88,
-                            visualPotential: 90,
-                            clarity: 90,
-                            total: 92,
-                          },
-                          reasoning: 'Gợi mở sự tò mò và cảm giác thân quen',
+                          scores: {},
+                          reasoning: 'Câu mở đầu dựa trên thông tin đã có',
                         },
                       ]).map((candidate) => {
                         const isSelected = selectedHookId === candidate.id || (!selectedHookId && candidate.id === analysisResult.creativePlan?.selectedHook?.id)
                         return (
                           <div
                             key={candidate.id}
+                            role="button"
+                            tabIndex={0}
+                            aria-pressed={isSelected}
+                            aria-disabled={isRenderingVideo || analyzing || isRegeneratingAngle || isGeneratingContext}
+                            onKeyDown={(event) => {if (event.key === 'Enter' || event.key === ' ') {event.preventDefault(); handleSelectHook(candidate as HookCandidate)}}}
                             onClick={() => handleSelectHook(candidate as HookCandidate)}
                             className={`p-3 rounded-xl border text-xs transition cursor-pointer flex flex-col gap-1.5 ${
                               isSelected
@@ -2007,7 +1993,7 @@ export default function CreateVideoPage() {
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-rose-400 font-bold uppercase">
-                                {candidate.type}
+                                {candidate.source === 'gemini' ? 'Gemini' : candidate.source === 'rules' ? 'Dự phòng' : candidate.type}
                               </span>
                               <div className="flex items-center gap-1.5">
 
@@ -2139,7 +2125,7 @@ export default function CreateVideoPage() {
                       OfferEngine &amp; CTA Tự nhiên:
                     </div>
                     <p className="italic text-white">
-                      &quot;{analysisResult.creativePlan?.cta || 'Nếu bàn làm việc của bạn cũng hay bị như thế này thì mình để sản phẩm ở giỏ hàng góc trái nhé.'}&quot;
+                      &quot;{analysisResult.creativePlan?.cta || analysisResult.strategy.cta}&quot;
                     </p>
                     <p className="text-[10px] text-neutral-400">
                       ✅ Cam kết: Không gán sale ảo, không tạo khan hiếm giả tạo. Chỉ dùng giá thật hoặc dẫn dắt tự nhiên từ kết quả câu chuyện.

@@ -2,6 +2,9 @@ import { ProductAnalysis, ProductInput, CreativePlan, StoryApproach } from '@/en
 export type { CreativePlan, StoryApproach }
 
 export interface HookCandidate {
+  headline?: string
+  source?: 'gemini' | 'rules'
+  evidenceIds?: string[]
   id: string
   text: string
   type: 'observation' | 'confession' | 'problem' | 'curiosity' | 'test' | 'pov'
