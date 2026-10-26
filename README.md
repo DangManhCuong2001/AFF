@@ -39,6 +39,12 @@ Giữ **Workers Free** để không phát sinh phí Workers AI: có 10.000 Neuro
 
 Bảng kế hoạch trên studio hiển thị format, lý do lựa chọn, số ảnh đọc được và thông tin còn thiếu. Không dùng điểm nội bộ như dự báo chuyển đổi.
 
+## Bố cục TikTok
+
+Luồng adaptive dùng canvas 1080×1920 và vùng nội dung bảo thủ: chừa trên 240px, dưới 660px, trái 120px, phải 180px. Đây là preset của studio, không phải bảo đảm cố định của TikTok. Hook, thông tin, phụ đề và CTA được bố trí trong vùng này; chữ dài tự co để giữ nguyên nội dung. Ảnh bối cảnh dùng khung dọc lớn, ảnh chi tiết dùng crop của planner; chuyển động zoom nằm trong khung ảnh.
+
+Preview có **Chỉ video / Giao diện TikTok / Vùng an toàn**. Lớp mô phỏng là phần tử bên ngoài Player, không được truyền vào renderer hoặc ghi vào MP4. Vị trí giao diện thực tế có thể thay đổi theo thiết bị, caption và giỏ hàng. Video MP4 đã xuất trước đó cần render lại để áp dụng bố cục mới.
+
 ## Voice
 
 Trong phần Giọng thuyết minh, chọn Google để test hoặc ElevenLabs để làm video chính thức. Google dùng Google Translate TTS hiện có, không phải Google Cloud TTS. Nhà cung cấp được chọn tường minh; Google lỗi không tự gọi ElevenLabs. ElevenLabs cần `ELEVENLABS_API_KEY` phía server.

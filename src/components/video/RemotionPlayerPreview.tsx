@@ -4,11 +4,11 @@ import React, { useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { TikTokCommerceVideo } from '@/remotion/TikTokCommerceVideo'
 import { RemotionVideoProps } from '@/remotion/types'
-import { VisualBeat } from '@/engines/visual/types'
 import { VipeeVisualDirector } from '@/engines/visual/VipeeVisualDirector'
 import { StoryboardScene } from '@/engines/core/types'
 import { InfographicEngine } from '@/engines/infographic/InfographicEngine'
-import { Sparkles, Play, RefreshCw, Volume2, ShieldCheck, Film } from 'lucide-react'
+import { Sparkles, Volume2, ShieldCheck, Film } from 'lucide-react'
+import {TikTokPreviewOverlay} from './TikTokPreviewOverlay'
 
 // Dynamically import Player from @remotion/player with SSR disabled to prevent hydration mismatches
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -41,6 +41,7 @@ export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
   fps = 30,
   renderedVideoUrl,
 }) => {
+  const [overlayMode, setOverlayMode] = useState<'off' | 'tiktok' | 'guides'>('tiktok')
   const [viewMode, setViewMode] = useState<'remotion' | 'mp4'>('remotion')
 
   const visualDirector = useMemo(() => new VipeeVisualDirector(), [])
@@ -152,6 +153,11 @@ export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
         </div>
       )}
 
+      <div className="flex flex-wrap items-center justify-center gap-2 text-xs">
+        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+        {([['off', 'Chỉ video'], ['tiktok', 'Giao diện TikTok'], ['guides', 'Vùng an toàn']] as const).map(([mode, label]) => <button key={mode} type="button" aria-pressed={overlayMode === mode} onClick={() => setOverlayMode(mode)} className={`rounded-lg px-3 py-2 border transition ${overlayMode === mode ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200' : 'border-neutral-800 text-neutral-400 hover:text-white'}`}>{label}</button>)}
+      </div>
+
       {/* Main 9:16 Frame Container */}
       <div className="w-full max-w-[340px] aspect-[9/16] rounded-3xl overflow-hidden border-2 border-neutral-800 shadow-2xl bg-black relative flex flex-col justify-center items-center group">
         {viewMode === 'mp4' && renderedVideoUrl ? (
@@ -184,7 +190,10 @@ export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
             />
           </div>
         )}
+        {overlayMode !== 'off' && <TikTokPreviewOverlay mode={overlayMode} />}
       </div>
+
+      <p className="max-w-sm text-center text-[11px] leading-relaxed text-neutral-500">Lớp TikTok/vùng an toàn chỉ để xem thử, không có trong MP4. Vị trí thực tế thay đổi theo thiết bị, độ dài caption và giỏ hàng.</p>
 
       {/* Live Badge Information */}
       <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-neutral-400">
