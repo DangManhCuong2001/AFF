@@ -42,12 +42,13 @@ import { CreativePlan, HookCandidate, StoryApproach } from '@/engines/creative/t
 import { VoicePersonality } from '@/engines/speech/types'
 import type { VoiceProvider } from '@/lib/audio/provider'
 import type { ContentPlan, ContentAngle } from '@/engines/planning/types'
+import type {VideoDurationSelection} from '@/engines/planning/duration'
 import { ContentPlanSummary } from '@/components/video/ContentPlanSummary'
 import {loadProductImageBlob, prepareAnalysisImages} from '@/lib/ai/prepare-images'
 import type { AnalysisImage } from '@/lib/ai/gemini'
 import { attachContextImage, getContextImage } from '@/lib/ai/context-scenes'
 import { isProductImage, withOpeningHook } from '@/engines/planning/AdaptiveVideoPlanner'
-import { applySceneAudioTimings, parseSceneAudioTimings, SceneAudioTiming } from '@/lib/video/scene-timing'
+import { applySceneAudioTimings, hasCompleteSceneAudioTimings, parseSceneAudioTimings, sceneVoiceSignature, SceneAudioTiming } from '@/lib/video/scene-timing'
 import { InfographicDeckViewer } from '@/components/infographic/InfographicDeckViewer'
 import { CABLE_ORGANIZER_SEED_PRODUCT } from '@/engines/home/seed'
 import { RemotionPlayerPreview } from '@/components/video/RemotionPlayerPreview'
@@ -175,7 +176,8 @@ export default function CreateVideoPage() {
   const [isGeneratingVoice, setIsGeneratingVoice] = useState(false)
 
   // Target video duration in seconds
-  const [selectedDuration, setSelectedDuration] = useState<15 | 22 | 30 | 45>(22)
+  const [selectedDuration, setSelectedDuration] = useState<VideoDurationSelection>('auto')
+  const selectedDurationLabel = selectedDuration === 'auto' ? 'Tự động' : `${selectedDuration}s`
 
   // Strict 3-step linear flow: 1: Nhập thông tin & Thời lượng | 2: Phân tích & Kế hoạch | 3: Tạo Layout & Video Studio
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1)
@@ -275,6 +277,7 @@ export default function CreateVideoPage() {
   const [renderedVideoFile, setRenderedVideoFile] = useState<File | null>(null)
 
   const [voiceTimings, setVoiceTimings] = useState<SceneAudioTiming[]>([])
+  const voiceSourceRef = React.useRef<{url: string; signature: string; timings: SceneAudioTiming[]} | null>(null)
   const playbackScenes = React.useMemo(() => applySceneAudioTimings(analysisResult?.storyboard.scenes || [], voiceTimings), [analysisResult?.storyboard.scenes, voiceTimings])
   const playbackDuration = playbackScenes.reduce((sum, scene) => sum + scene.duration, 0)
 
@@ -291,6 +294,7 @@ export default function CreateVideoPage() {
     if (!scenes || scenes.length === 0) return
 
     setVoiceTimings([])
+    voiceSourceRef.current = null
     setRenderedVideoUrl(null)
     setRenderedVideoFile(null)
     setStoryboardVoiceUrl((previous) => {
@@ -318,9 +322,11 @@ export default function CreateVideoPage() {
           throw new Error(error.error || 'Không thể tải giọng đọc')
         }
         const timings = parseSceneAudioTimings(res.headers.get('X-Segment-Timings'))
+        if (!hasCompleteSceneAudioTimings(scenes, timings)) throw new Error('Chưa có đủ thời gian giọng đọc cho các cảnh. Vui lòng tạo lại giọng trước khi xuất video.')
         const blob = await res.blob()
         if (isSubscribed) {
           const url = URL.createObjectURL(blob)
+          voiceSourceRef.current = {url, signature: sceneVoiceSignature(scenes), timings}
           setVoiceTimings(timings)
           setStoryboardVoiceUrl((prev) => {
             if (prev) URL.revokeObjectURL(prev)
@@ -755,13 +761,13 @@ export default function CreateVideoPage() {
 
   // Start Step 3: Video Generation Flow (Real FFmpeg + Vietnamese TTS Rendering)
   const handleStartGeneratingVideo = async () => {
-    if (isRenderingVideo) return
+    if (isRenderingVideo || isGeneratingVoice) return
     uploadSessionRef.current = null
     setPublishResult(null)
     const renderImageUrls: string[] = []
     setIsRenderingVideo(true)
     setGenerationProgress({
-      stage: `1/4. Khởi tạo & nạp kịch bản Storyboard ${selectedDuration}s...`,
+      stage: `1/4. Khởi tạo kịch bản ${playbackDuration.toFixed(1)}s theo nội dung...`,
       percent: 15,
       logs: ['Bắt đầu quy trình sản xuất video TikTok 9:16 thật...'],
     })
@@ -803,7 +809,9 @@ export default function CreateVideoPage() {
       }
 
       // Guarantee voice audio track: reuse existing preview audio or synthesize now
-      let activeVoiceUrl = storyboardVoiceUrl
+      const savedVoice = voiceSourceRef.current
+      let activeVoiceUrl = savedVoice?.signature === sceneVoiceSignature(renderScenes) && hasCompleteSceneAudioTimings(renderScenes, savedVoice.timings) ? savedVoice.url : null
+      if (activeVoiceUrl && savedVoice) renderScenes = applySceneAudioTimings(renderScenes, savedVoice.timings)
       if (!activeVoiceUrl && analysisResult?.storyboard?.scenes?.length) {
         try {
           console.log('[handleStartGeneratingVideo] Voice audio not ready, synthesizing on-demand...')
@@ -818,11 +826,13 @@ export default function CreateVideoPage() {
           })
           if (voiceRes.ok) {
             const timings = parseSceneAudioTimings(voiceRes.headers.get('X-Segment-Timings'))
+            if (!hasCompleteSceneAudioTimings(renderScenes, timings)) throw new Error('Thiếu thời gian giọng đọc của một số cảnh; chưa thể đồng bộ để xuất video.')
             renderScenes = applySceneAudioTimings(renderScenes, timings)
             setVoiceTimings(timings)
             const voiceBlob = await voiceRes.blob()
             if (voiceBlob.size > 500) {
               activeVoiceUrl = URL.createObjectURL(voiceBlob)
+              voiceSourceRef.current = {url: activeVoiceUrl, signature: sceneVoiceSignature(renderScenes), timings}
               setStoryboardVoiceUrl(activeVoiceUrl)
             }
           }
@@ -854,7 +864,7 @@ export default function CreateVideoPage() {
         percent: 40,
         logs: [
           ...prev.logs,
-          `Đồng bộ giọng đọc thuyết minh cho ${analysisResult?.storyboard.scenes.length || 5} phân cảnh Storyboard (${analysisResult?.strategy.targetDuration || selectedDuration}s)`,
+          `Đồng bộ giọng đọc cho ${renderScenes.length} phân cảnh (${renderScenes.reduce((sum, scene) => sum + scene.duration, 0).toFixed(1)}s)`,
           `Lời thoại cảnh 1: "${analysisResult?.storyboard.scenes[0]?.voice || analysisResult?.strategy.hook}"`,
         ],
       }))
@@ -897,7 +907,7 @@ export default function CreateVideoPage() {
           setRenderedVideoFile(clientResult.file)
 
           setGenerationProgress((prev) => ({
-            stage: `4/4. Hoàn tất video ${selectedDuration}s chuẩn TikTok!`,
+            stage: `4/4. Hoàn tất video ${renderScenes.reduce((sum, scene) => sum + scene.duration, 0).toFixed(1)}s theo giọng đọc!`,
             percent: 100,
             logs: [
               ...prev.logs,
@@ -978,7 +988,7 @@ export default function CreateVideoPage() {
       setRenderedVideoFile(file)
 
       setGenerationProgress((prev) => ({
-        stage: `4/4. Hoàn tất video ${selectedDuration}s chuẩn TikTok!`,
+        stage: `4/4. Hoàn tất video ${renderScenes.reduce((sum, scene) => sum + scene.duration, 0).toFixed(1)}s theo giọng đọc!`,
         percent: 100,
         logs: [
           ...prev.logs,
@@ -1712,7 +1722,7 @@ export default function CreateVideoPage() {
               <p className="text-xs text-neutral-400">Tạo một ảnh có sản phẩm trong bối cảnh phù hợp, dùng ở cảnh mở đầu và kết thúc. Dùng Cloudflare Workers AI. Giữ tài khoản Workers Free để dùng trong hạn mức miễn phí; ảnh được tái sử dụng khi đổi góc kể chuyện.</p>
             </div>
 
-            {/* Video Duration Selector (15s, 30s, 45s) */}
+            {/* Automatic recommendation or a manually selected duration target. */}
             <div className="p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-neutral-200 flex items-center gap-2">
@@ -1720,12 +1730,16 @@ export default function CreateVideoPage() {
                   Chọn độ dài video TikTok
                 </label>
                 <span className="text-[11px] text-neutral-400 font-mono">
-                  Đang chọn: <span className="text-amber-400 font-bold">{selectedDuration}s</span>
+                  Đang chọn: <span className="text-amber-400 font-bold">{selectedDurationLabel}</span>
                 </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
-                <button type="button" onClick={() => setSelectedDuration(22)} className={`p-3 rounded-xl border text-left ${selectedDuration === 22 ? 'border-emerald-500 bg-emerald-500/10' : 'border-neutral-800 bg-neutral-950/60'}`}><p className="font-bold text-sm text-white">22 Giây</p><p className="text-[11px] text-emerald-300 mt-2">Đề xuất cho video từ ảnh</p></button>
+                <button type="button" aria-pressed={selectedDuration === 'auto'} onClick={() => setSelectedDuration('auto')} className={`sm:col-span-4 p-3 rounded-xl border text-left ${selectedDuration === 'auto' ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30' : 'border-neutral-800 bg-neutral-950/60'}`}>
+                  <span className="flex flex-wrap items-center justify-between gap-2"><span className="font-bold text-sm text-white">Tự động — Gemini đề xuất</span><span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">Khuyên dùng</span></span>
+                  <span className="block text-[11px] text-neutral-400 mt-2 leading-snug">Chọn độ dài theo nội dung, ưu tiên 20–30 giây khi đủ thông tin. Có thể ngắn hơn khi ít dữ liệu; không kéo dài bằng câu lặp.</span>
+                </button>
+                <button type="button" aria-pressed={selectedDuration === 22} onClick={() => setSelectedDuration(22)} className={`p-3 rounded-xl border text-left ${selectedDuration === 22 ? 'border-emerald-500 bg-emerald-500/10' : 'border-neutral-800 bg-neutral-950/60'}`}><p className="font-bold text-sm text-white">22 Giây</p><p className="text-[11px] text-neutral-400 mt-2">Chọn mốc 22 giây làm mục tiêu</p></button>
                 {/* 15s Option */}
                 <button
                   type="button"
@@ -1811,7 +1825,7 @@ export default function CreateVideoPage() {
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  TIẾP TỤC: PHÂN TÍCH &amp; LẬP KẾ HOẠCH VIDEO ({selectedDuration}s)
+                  TIẾP TỤC: PHÂN TÍCH &amp; LẬP KẾ HOẠCH VIDEO ({selectedDurationLabel})
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -1841,7 +1855,7 @@ export default function CreateVideoPage() {
               </div>
             </div>
 
-            {analysisResult.contentPlan && <ContentPlanSummary plan={analysisResult.contentPlan} onRetry={handleAnalyzeProduct} retrying={analyzing || isRegeneratingAngle || isGeneratingContext || isRenderingVideo} />}
+            {analysisResult.contentPlan && <ContentPlanSummary plan={analysisResult.contentPlan} actualDuration={!isGeneratingVoice && storyboardVoiceUrl && voiceTimings.length === playbackScenes.length ? playbackDuration : undefined} onRetry={handleAnalyzeProduct} retrying={analyzing || isRegeneratingAngle || isGeneratingContext || isRenderingVideo} />}
             {contextError && <div role="alert" className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs text-amber-200 space-y-2">
               <p>Chưa có ảnh bối cảnh: {contextError}</p>
               {contextRequiresSetup && <div className="space-y-2">
@@ -2202,7 +2216,7 @@ export default function CreateVideoPage() {
               secondaryImageUrl={product.assets[1]?.url}
               galleryImages={product.assets.map((a) => a.url)}
               scenes={playbackScenes}
-              duration={selectedDuration}
+              duration={playbackDuration}
             />
 
             {/* Part 2: Video Studio (Remotion Player Preview 60fps & MP4 Render / Publish) */}
@@ -2295,6 +2309,7 @@ export default function CreateVideoPage() {
                       <button
                         type="button"
                         onClick={handleStartGeneratingVideo}
+                        disabled={isRenderingVideo || isGeneratingVoice}
                         className="w-full py-3.5 px-5 rounded-xl font-bold text-xs uppercase tracking-wide bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-lg shadow-rose-900/30 transition flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <Film className="w-4 h-4" />
@@ -2413,7 +2428,7 @@ export default function CreateVideoPage() {
                             handlePublishToTikTok()
                           }
                         }}
-                        disabled={publishing || isRenderingVideo || !canSendToTikTok || ['processing', 'inbox', 'published'].includes(publishResult?.phase || '')}
+                        disabled={publishing || isRenderingVideo || isGeneratingVoice || !canSendToTikTok || ['processing', 'inbox', 'published'].includes(publishResult?.phase || '')}
                         className="w-full py-3.5 px-5 rounded-xl font-bold text-sm bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white shadow-lg shadow-rose-600/30 disabled:opacity-50 transition flex items-center justify-center gap-2 cursor-pointer"
                       >
                         {publishing ? (

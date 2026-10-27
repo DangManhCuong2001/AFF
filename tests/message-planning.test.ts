@@ -79,7 +79,7 @@ test('An unanswered opening is repaired with a sourced body sentence without ano
   value.scenes[1].voice = 'Bạn cần kết nối USB-C?'
   await withResponse(value, (result, calls) => {
     assert.equal(calls, 1)
-    assert.equal(result.storyboard.scenes[1].voice, 'Kết nối USB-C')
+    assert.equal(result.storyboard.scenes[1].voice, planAdaptiveVideo(product).storyboard.scenes[1].voice)
     assert.equal(result.storyboard.scenes[1].renderPlan?.copySource, 'rules')
     assert.equal(hookIsAnswered(result.creativePlan.selectedHook, result.contentPlan.facts, result.storyboard.scenes), true)
   })

@@ -11,13 +11,14 @@ import {
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { exec, execFile } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
 import { generateVietnameseTTS, normalizeVietnameseNumbers, sanitizeTextForTTS } from '@/lib/audio/tts'
 import { parseVoiceProvider, VoiceProvider } from '@/lib/audio/provider'
+import {analyzeVoiceFile, wavDuration} from '@/lib/audio/voice-processing'
 
-const execPromise = promisify(exec)
+const execFilePromise = promisify(execFile)
 
 export class VipeeSpeechDirector implements SpeechDirector {
   /**
@@ -120,13 +121,15 @@ export class VipeeSpeechDirector implements SpeechDirector {
       const ttsScript = this.generateTTSScript(spokenText)
 
       // Calculate natural breath pauses
-      const pauseBeforeMs = i === 0 ? 50 : beat === 'cta' ? 180 : 100
-      const pauseAfterMs = beat === 'cta' ? 450 : beat === 'hook' ? 250 : 300
+      const pauseBeforeMs = i === 0 ? 30 : beat === 'cta' ? 60 : 40
+      const pauseAfterMs = beat === 'cta' ? 250 : beat === 'hook' ? 120 : 140
+      const maxPauseAfterMs = beat === 'cta' ? 300 : 220
       const minimumDurationSec = beat === 'cta' ? 3.4 : beat === 'product_hero' || beat === 'reveal' ? 2.8 : 2.6
 
       // Word count estimated duration (Vietnamese average: ~3.5 to 4.2 words per second at normal pace)
       const wordCount = spokenText.split(/\s+/).filter(Boolean).length
-      const estimatedSec = Math.max(minimumDurationSec, (wordCount / (3.8 * pace)) + ((pauseBeforeMs + pauseAfterMs) / 1000))
+      const spokenEstimate = wordCount / (3.8 * pace)
+      const estimatedSec = Math.max(spokenEstimate + (pauseBeforeMs + pauseAfterMs) / 1000, Math.min(minimumDurationSec, spokenEstimate + (pauseBeforeMs + maxPauseAfterMs) / 1000))
       totalEstimatedDuration += estimatedSec
 
       const emphasisWords = s.emphasisWords || this.extractKeyEmphasisWords(spokenText)
@@ -146,6 +149,7 @@ export class VipeeSpeechDirector implements SpeechDirector {
         emphasis: emphasisWords,
         estimatedDurationSec: Number(estimatedSec.toFixed(2)),
         minimumDurationSec,
+        maxPauseAfterMs,
       })
     }
 
@@ -192,52 +196,6 @@ export class VipeeSpeechDirector implements SpeechDirector {
     }
     return keywords.slice(0, 3)
   }
-}
-
-// ─── Audio Measurement Utility ───────────────────────────────────────────────
-
-/**
- * Measures the actual duration of an audio file.
- * Tries ffprobe first (reliable JSON output), then falls back to FFmpeg stderr.
- *
- * IMPORTANT: FFmpeg always exits with code 1 when given -i without an output
- * file. We MUST use execFile so we can capture stderr independently of the
- * exit code – execPromise with `2>&1` shell redirect causes Node to throw
- * before we can read the stderr content.
- */
-async function measureAudioDurationSec(filePath: string, ffmpegBin: string): Promise<number> {
-  // Try ffprobe first (most reliable – native JSON, no regex parsing needed)
-  const ffprobeBin = ffmpegBin.replace(/ffmpeg(\.exe)?$/, 'ffprobe$1')
-  try {
-    const { stdout } = await execPromise(
-      `"${ffprobeBin}" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`
-    )
-    const val = parseFloat(stdout.trim())
-    if (isFinite(val) && val > 0) return val
-  } catch {
-    // ffprobe not available, fall through
-  }
-
-  // FFmpeg stderr fallback
-  return new Promise<number>((resolve) => {
-    execFile(
-      ffmpegBin,
-      ['-i', filePath],
-      { timeout: 10000 },
-      (_err, _stdout, stderr) => {
-        // Duration is always in stderr regardless of exit code
-        const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/)
-        if (m) {
-          const secs = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])
-          if (isFinite(secs) && secs > 0) {
-            resolve(secs)
-            return
-          }
-        }
-        resolve(0) // unknown – caller uses estimated value
-      }
-    )
-  })
 }
 
 /**
@@ -295,18 +253,19 @@ export class VipeeTTSProvider implements TTSProvider {
       for (let i = 0; i < plan.segments.length; i++) {
         const seg = plan.segments[i]
         const rawSegPath = path.join(tempDir, `raw_seg_${i}.mp3`)
-        const paddedSegPath = path.join(tempDir, `padded_seg_${i}.mp3`)
+        const paddedSegPath = path.join(tempDir, `padded_seg_${i}.wav`)
         const pace = Math.max(0.85, Math.min(1.1, seg.pace || 1))
-        const rawDuration = await measureAudioDurationSec(rawSegPath, ffmpeg)
-        if (rawDuration <= 0) throw new Error(`Không đo được thời lượng giọng đọc cảnh ${i + 1}`)
-        const speechDurationSec = rawDuration / pace
-        const speechOffsetSec = Math.max(0, seg.pauseBeforeMs) / 1000
-        const pauseSec = Math.max(
+        const raw = await analyzeVoiceFile(rawSegPath, ffmpeg)
+        const spokenDuration = (raw.trimEndSec - raw.trimStartSec) / pace
+        const beforeSec = Math.max(0, seg.pauseBeforeMs) / 1000
+        const desiredPause = Math.max(
           Math.max(0, seg.pauseAfterMs) / 1000,
-          (seg.minimumDurationSec || 0) - speechOffsetSec - speechDurationSec,
+          (seg.minimumDurationSec || 0) - beforeSec - spokenDuration,
         )
-        // Tempo preserves pitch; pad locally so short lines leave time to view the product.
-        const pacingFilters = [`atempo=${pace}`, `adelay=${Math.round(speechOffsetSec * 1000)}:all=1`, `apad=pad_dur=${pauseSec}`]
+        const pauseSec = seg.maxPauseAfterMs === undefined ? desiredPause : Math.min(desiredPause, Math.max(0, seg.maxPauseAfterMs) / 1000)
+        // Trim only provider-added outer silence, retaining phoneme margins and
+        // all pauses inside the sentence. Encode segments as PCM, not separate MP3s.
+        const pacingFilters = ['asetpts=PTS-STARTPTS', `atrim=start=${raw.trimStartSec}:end=${raw.trimEndSec}`, 'asetpts=PTS-STARTPTS', `atempo=${pace}`, `adelay=${Math.round(beforeSec * 1000)}:all=1`, `apad=pad_dur=${pauseSec}`]
         const filterStr = [
           `equalizer=f=250:t=q:w=1:g=2.0`,
           `equalizer=f=3500:t=q:w=1.2:g=2.5`,
@@ -315,7 +274,7 @@ export class VipeeTTSProvider implements TTSProvider {
         ].join(',')
         const encodeSegment = (filters: string) => promisify(execFile)(ffmpeg, [
           '-y', '-i', rawSegPath, '-af', filters,
-          '-c:a', 'libmp3lame', '-b:a', '192k', '-ar', '44100', '-ac', '2', paddedSegPath,
+          '-c:a', 'pcm_s16le', '-ar', '44100', '-ac', '2', paddedSegPath,
         ])
         try {
           await encodeSegment(filterStr)
@@ -324,40 +283,32 @@ export class VipeeTTSProvider implements TTSProvider {
           await encodeSegment(pacingFilters.join(','))
         }
 
-        // FIX: measure duration via execFile so we always get stderr content
-        let segDurationSec = seg.estimatedDurationSec || 2.5
-        const measured = await measureAudioDurationSec(paddedSegPath, ffmpeg)
-        if (measured > 0) {
-          segDurationSec = measured
-        } else {
-          console.warn(`[VipeeTTSProvider] Segment ${i} duration unknown, using estimate ${segDurationSec}s`)
-        }
+        const segDurationSec = wavDuration(fs.readFileSync(paddedSegPath))
+        const actual = await analyzeVoiceFile(paddedSegPath, ffmpeg)
+        const speechOffsetSec = actual.speechStartSec
+        const speechDurationSec = actual.speechEndSec - actual.speechStartSec
 
         segmentAudioFiles.push(paddedSegPath)
         segmentTimings.push({
           segmentId: seg.id,
-          startSec: Number(currentTimelineSec.toFixed(3)),
-          endSec: Number((currentTimelineSec + segDurationSec).toFixed(3)),
-          durationSec: Number(segDurationSec.toFixed(3)),
+          startSec: Number(currentTimelineSec.toFixed(6)),
+          endSec: Number((currentTimelineSec + segDurationSec).toFixed(6)),
+          durationSec: Number(segDurationSec.toFixed(6)),
           speechOffsetSec,
-          speechDurationSec: Number(Math.min(speechDurationSec, segDurationSec - speechOffsetSec).toFixed(3)),
+          speechDurationSec: Number(Math.min(speechDurationSec, segDurationSec - speechOffsetSec).toFixed(6)),
         })
         currentTimelineSec += segDurationSec
       }
 
       // ── Step 3: Concatenate into master voice track ──────────────────────
-      // FIX: Re-encode during concat (NOT -c copy).
-      // -c copy with MP3 causes pops/silence at boundaries due to encoder
-      // delay and padding headers in each segment's bitstream.
+      // Concatenate sample-exact PCM, then encode MP3 once for the entire narration.
       const concatListPath = path.join(tempDir, 'voice_concat.txt')
       fs.writeFileSync(concatListPath, segmentAudioFiles.map((f) => `file '${f}'`).join('\n'))
 
       const masterVoicePath = path.join(tempDir, 'master_speech.mp3')
       // afade=in 40ms: eliminates the MP3 encoder-delay pop that appears at the
       // very first frame when Chromium/Remotion begins decoding the audio stream.
-      await execPromise(
-        `"${ffmpeg}" -y -f concat -safe 0 -i "${concatListPath}" -af "afade=t=in:st=0:d=0.04" -c:a libmp3lame -b:a 192k -ar 44100 -ac 2 "${masterVoicePath}"`
-      )
+      await execFilePromise(ffmpeg, ['-y', '-f', 'concat', '-safe', '0', '-i', concatListPath, '-af', 'afade=t=in:st=0:d=0.02', '-c:a', 'libmp3lame', '-b:a', '192k', '-ar', '44100', '-ac', '2', masterVoicePath])
 
       if (!fs.existsSync(masterVoicePath) || fs.statSync(masterVoicePath).size < 500) {
         throw new Error('[VipeeTTSProvider] Master voice file is empty after concat')
@@ -371,7 +322,7 @@ export class VipeeTTSProvider implements TTSProvider {
 
       return {
         audioBuffer: masterBuffer,
-        durationSec: Number(currentTimelineSec.toFixed(2)),
+        durationSec: Number(currentTimelineSec.toFixed(6)),
         format: 'mp3',
         sampleRate: 44100,
         segmentTimings,
@@ -472,17 +423,4 @@ export class VipeeTTSProvider implements TTSProvider {
     return true
   }
 
-  /**
-   * Writes a silent MP3 file as emergency fallback so the pipeline never
-   * crashes on a missing segment file.
-   */
-  private async writeSilenceFile(ffmpegBin: string, outputPath: string, durationSec: number): Promise<void> {
-    try {
-      await execPromise(
-        `"${ffmpegBin}" -y -f lavfi -i anullsrc=r=44100:cl=stereo -t ${durationSec} -c:a libmp3lame -b:a 192k "${outputPath}"`
-      )
-    } catch (e) {
-      console.error('[VipeeTTSProvider] Could not write silence file:', e)
-    }
-  }
 }

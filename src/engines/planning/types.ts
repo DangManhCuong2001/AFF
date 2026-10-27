@@ -54,6 +54,7 @@ export interface AIAnalysisAttempt {
   elapsedMs: number
 }
 export interface ContentPlan {
+  durationPlan?: {mode: 'auto' | 'manual'; source: 'gemini' | 'rules'; suggestedSeconds: number; reason: string; requestedSeconds?: number; modelSuggestedSeconds?: number}
   aiStatus?: {state: 'not-configured' | 'completed' | 'partial' | 'failed'; reason?: 'missing-key' | AIAnalysisFailure; message: string; attachedImages: number; attempts?: AIAnalysisAttempt[]; review?: {part: string; index: number; reason: string}[]}
   message?: CommerceMessage
   buyingProfile?: {id: string; label: string; priorities: string[]; checks: string[]}

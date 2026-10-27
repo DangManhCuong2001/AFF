@@ -3,7 +3,8 @@ import os from 'os'
 import fs from 'fs'
 import { bundle } from '@remotion/bundler'
 import { selectComposition, renderMedia } from '@remotion/renderer'
-import { InfographicEngine, THEMES } from '../src/engines/infographic/InfographicEngine'
+import { InfographicEngine } from '../src/engines/infographic/InfographicEngine'
+import type {StoryboardScene} from '../src/engines/core/types'
 import { ProductCategory } from '../src/engines/infographic/types'
 import { VipeeVisualDirector } from '../src/engines/visual/VipeeVisualDirector'
 import { RemotionVideoProps } from '../src/remotion/types'
@@ -60,7 +61,7 @@ async function main() {
 
   // 2. Prepare Timings
   let cur = 0
-  const speechTimings = scenes.map((s: any, idx: number) => {
+  const speechTimings = scenes.map((s: StoryboardScene, idx: number) => {
     const dur = s.duration && s.duration > 0 ? s.duration : 3
     const t = {
       segmentId: s.id || `scene-${idx + 1}`,
@@ -111,7 +112,7 @@ async function main() {
     theme: deck.theme,
   }))
 
-  const totalDurationFrames = Math.max(90, Math.round(storyplan.totalDurationSec * fps))
+  const totalDurationFrames = Math.max(90, Math.ceil(storyplan.totalDurationSec * fps))
 
   const remotionProps: RemotionVideoProps = {
     beats: beatsWithCards,

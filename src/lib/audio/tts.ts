@@ -1,5 +1,7 @@
 import https from 'https'
 import { parseVoiceProvider, VoiceProvider } from './provider'
+import {splitTTSText} from './text-chunks'
+import {joinVoiceChunks} from './voice-processing'
 
 export type VietnameseVoice = 'vi-VN-HoaiMyNeural' | 'vi-VN-NamMinhNeural'
 
@@ -141,18 +143,7 @@ export async function generateVietnameseTTS(
 }
 
 async function fetchGoogleTTSFallback(text: string): Promise<Buffer> {
-  const words = text.split(/\s+/)
-  const chunks: string[] = []
-  let cur = ''
-  for (const w of words) {
-    if ((cur + ' ' + w).trim().length > 150) {
-      if (cur) chunks.push(cur.trim())
-      cur = w
-    } else {
-      cur = (cur + ' ' + w).trim()
-    }
-  }
-  if (cur) chunks.push(cur.trim())
+  const chunks = splitTTSText(text)
 
   const buffers: Buffer[] = []
   for (const chunk of chunks) {
@@ -174,14 +165,13 @@ async function fetchGoogleTTSFallback(text: string): Promise<Buffer> {
         })
         .on('error', (err) => reject(err))
     })
-    if (buf.length > 50) {
-      buffers.push(buf)
-    }
+    if (buf.length <= 50) throw new Error('Google chưa trả đủ một đoạn lời đọc. Vui lòng thử lại.')
+    buffers.push(buf)
   }
 
   if (buffers.length === 0) {
     throw new Error('Google TTS produced empty buffer')
   }
 
-  return Buffer.concat(buffers)
+  return joinVoiceChunks(buffers)
 }

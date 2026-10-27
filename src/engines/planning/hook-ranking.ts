@@ -16,6 +16,15 @@ export interface CommerceHook {
 }
 const genericTokens = new Set(['ban', 'can', 'dang', 'tim', 'chon', 'xem', 'thong', 'tin', 'truoc', 'khi', 'chi', 'tiet', 'phu', 'hop', 'ket', 'noi', 'kich', 'thuoc', 'chieu', 'dai', 'thanh', 'phan', 'chat', 'lieu', 'mau', 'dong', 'bo', 'toan', 'so', 'huu', 'thiet', 'ke', 'ro', 'net'])
 const anchors = (text: string) => [...copyTokens(text)].filter((token) => !genericTokens.has(token))
+const hasShopperNeed = (text: string) => /\bcan\b|dang tim|co (?:phu )?hop|dieu ban|ban muon|\bthich\b|\bmuon\b|\bneu\b/.test(normalizeCopy(text))
+
+/** Some models put the actual opening only in the headline. Preserve it in speech
+ * when the short combination still passes the normal source checks downstream. */
+export function restoreSpokenHookNeed<T extends {text: string; headline?: string}>(hook: T): T {
+  if (!hook.headline || hasShopperNeed(hook.text) || !hasShopperNeed(hook.headline)) return hook
+  const text = `${hook.headline.replace(/[.!?]+$/, '')}? ${hook.text}`
+  return text.trim().split(/\s+/).length <= 18 ? {...hook, text} : hook
+}
 export function isGenericCommerceHook(text: string): boolean {
   return /^(?:kham pha|quan sat|cung (?:xem|nhin))\b|ban da (?:xem|biet|nghe)|cung (?:xem|kham pha)|kham pha san pham|san pham nay co gi|xem qua thiet ke/.test(normalizeCopy(text))
 }
@@ -53,7 +62,7 @@ export function rankCommerceHooks<T extends CommerceHook>(candidates: T[], conte
     .map((hook) => {
       const tokens = copyTokens(hook.text)
       const covered = meaningful.filter((token) => tokens.has(token)).length
-      const need = /\bcan\b|dang tim|co (?:phu )?hop|dieu ban|ban muon/.test(normalizeCopy(hook.text))
+      const need = hasShopperNeed(hook.text)
       const relevance = focus ? 20 + (need ? 5 : 0) : 15
       const specificity = Math.min(25, Math.round(20 * covered / Math.max(1, meaningful.length)) + (anchors(hook.text).some((token) => /\d|usb|bluetooth/.test(token)) ? 5 : 0))
       const count = hook.text.trim().split(/\s+/).length

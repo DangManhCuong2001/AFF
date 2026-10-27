@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
         'Content-Length': String(result.audioBuffer.length),
         'X-Audio-Duration': String(result.durationSec),
         'X-Segment-Timings': JSON.stringify(result.segmentTimings),
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': 'private, no-store',
       },
     })
   } catch (err: unknown) {

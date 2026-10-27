@@ -270,6 +270,28 @@ test('Partially accepted chunks are not resent when resuming; completed ranges a
   })
 })
 
+test('Pending-share cap surfaces guidance and preserves TikTok diagnostics without uploading or retrying', async () => {
+  let vendorCalls = 0, initialized = false
+  await mockTikTok(async (url, init) => {
+    if (String(url) === '/api/tiktok/publish') return POST(request(JSON.parse(String(init?.body))))
+    vendorCalls++
+    assert.ok(String(url).endsWith('/inbox/video/init/'))
+    return json({error: {code: 'spam_risk_too_many_pending_share', message: 'spam_risk_too_many_pending_share', log_id: 'fixture-quota-log'}}, 403)
+  }, async () => {
+    const response = await POST(request({mode: 'upload', videoSize: 1024}))
+    assert.equal(response.status, 403)
+    const body = await response.json()
+    assert.equal(body.error.code, 'spam_risk_too_many_pending_share')
+    assert.equal(body.error.logId, 'fixture-quota-log')
+    assert.match(body.error.message, /5 lượt.*24 giờ/)
+    assert.match(body.error.message, /tải MP4/)
+    vendorCalls = 0
+    await assert.rejects(sendTikTokVideo(new Blob([new Uint8Array(1024)]), {mode: 'upload', title: '', privacyLevel: 'SELF_ONLY', isAigc: false, onInitialized: () => {initialized = true}}), /TikTok đang giới hạn chuyển vào Inbox/)
+    assert.equal(vendorCalls, 1)
+    assert.equal(initialized, false)
+  })
+})
+
 class UploadRequestFixture {
   upload: {onprogress: ((event: {loaded: number}) => void) | null} = {onprogress: null}
   onload: (() => void) | null = null

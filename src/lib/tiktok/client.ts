@@ -90,7 +90,9 @@ export async function tiktokFetch<T = unknown>(
 
     throw new TikTokApiError({
       code: rawError.code,
-      message: rawError.message || `TikTok API error (${rawError.code})`,
+      message: rawError.code === 'spam_risk_too_many_pending_share'
+        ? 'TikTok đang giới hạn chuyển vào Inbox: tối đa 5 lượt chia sẻ chờ hoàn tất trong khoảng 24 giờ. Mở Inbox TikTok để hoàn tất các video đã gửi; nếu vẫn bị chặn, hãy chờ hạn mức được giải phóng. Bạn có thể tải MP4 xuống và tự đăng trong TikTok. Bấm gửi lại hoặc kết nối lại không bảo đảm gỡ giới hạn này.'
+        : rawError.message || `TikTok API error (${rawError.code})`,
       logId: rawError.log_id,
       subCode: rawError.sub_code,
       httpStatus: res.status,

@@ -9,9 +9,10 @@ import { VipeeSpeechDirector, VipeeTTSProvider } from '@/engines/speech/VipeeSpe
 import { StoryboardScene } from '@/engines/core/types'
 import { VoicePersonality } from '@/engines/speech/types'
 import { RemotionVideoProps } from '@/remotion/types'
-import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
 import { applySceneAudioTimings } from './scene-timing'
 import { InfographicEngine } from '@/engines/infographic/InfographicEngine'
+import {analyzeVoiceBuffer} from '@/lib/audio/voice-processing'
+import {assertNarrationDuration} from './narration-sync'
 
 export interface RenderRemotionParams {
   productName: string
@@ -109,6 +110,7 @@ export async function renderRemotionVideo(
   // 2. Synthesize Master Speech Audio if not provided
   let renderedScenes = params.scenes
   let masterAudioBuffer = params.masterAudioBuffer
+  if (masterAudioBuffer) assertNarrationDuration(params.scenes, (await analyzeVoiceBuffer(masterAudioBuffer)).durationSec)
   let speechTimings: Array<{
     segmentId: string
     text: string
@@ -120,7 +122,6 @@ export async function renderRemotionVideo(
   }> = []
 
   if (!masterAudioBuffer) {
-    try {
       console.log('[RemotionRenderer] Generating Vietnamese voiceover TTS...')
       const speechDirector = new VipeeSpeechDirector()
       const speechPlan = speechDirector.createSpeechPlan(
@@ -158,9 +159,6 @@ export async function renderRemotionVideo(
         curStart += dur
         return timing
       })
-    } catch (speechErr) {
-      console.warn('[RemotionRenderer] Speech synthesis warning, using fallback timings:', speechErr)
-    }
   }
 
   // Fallback speech timings if TTS failed or custom buffer was passed
@@ -244,15 +242,7 @@ export async function renderRemotionVideo(
   const bgmPath = path.join(process.cwd(), 'public', 'music', 'lofi-beat.mp3')
   const bgmDataUri = fileToDataUri(bgmPath, 'audio/mp3')
 
-  // Sound Effects
-  const whooshPath = path.join(process.cwd(), 'public', 'sfx', 'whoosh.mp3')
-  const whooshDataUri = fileToDataUri(whooshPath, 'audio/mp3')
-  const popPath = path.join(process.cwd(), 'public', 'sfx', 'pop.mp3')
-  const popDataUri = fileToDataUri(popPath, 'audio/mp3')
-  const snapPath = path.join(process.cwd(), 'public', 'sfx', 'snap.mp3')
-  const snapDataUri = fileToDataUri(snapPath, 'audio/mp3')
-
-  const totalDurationFrames = Math.max(90, Math.round(storyplan.totalDurationSec * fps))
+  const totalDurationFrames = Math.max(90, Math.ceil(storyplan.totalDurationSec * fps))
 
   // 6. Build Remotion Video Props
   const inputProps: RemotionVideoProps = {
@@ -283,8 +273,6 @@ export async function renderRemotionVideo(
   const outputLocation = path.join(outputDir, safeFileName)
 
   console.log(`[RemotionRenderer] Rendering ${totalDurationFrames} frames at 1080x1920 30fps to ${outputLocation}...`)
-
-  const ffmpegBinary = getFfmpegBinaryPath()
 
   await renderMedia({
     composition,

@@ -1,9 +1,9 @@
 import type {ProductFact} from '@/engines/planning/types'
-import {normalizeCopy} from '@/engines/planning/commerce-copy'
+import {hasDecisionTarget, normalizeCopy} from '@/engines/planning/commerce-copy'
 import {isMerchantCopy, isProductDetail} from '@/engines/planning/product-facts'
 
 export interface CopyDraft {text: string; headline?: string; evidenceIds: string[]}
-export type CopyPurpose = 'hook' | 'body' | 'cta' | 'question'
+export type CopyPurpose = 'hook' | 'body' | 'cta' | 'cta-label' | 'question'
 const forbidden = /(?:mình|tôi)\s+(?:đã|từng|dùng|thử|mua)|100\s*%|số\s*1|tốt nhất|chữa|trị bệnh|diệt khuẩn|kháng khuẩn|chống nước|chống cháy|freeship|miễn phí vận chuyển|voucher|giảm giá|bảo hành trọn đời|sắp hết|hết hàng|chỉ hôm nay|bán chạy|ai cũng|đang hot|rẻ nhất|giá chỉ|https?:|www\.|zalo|inbox/i
 const stop = new Set(['san', 'pham', 'trong', 'anh', 'duoc', 'nhung', 'mot', 'cac', 'voi', 'cho', 'cua', 'nay', 'ban', 'khi', 'truoc', 'chon', 'xem', 'thong', 'tin'])
 const tokens = (text: string) => new Set((normalizeCopy(text).match(/[a-z0-9]+/g) || []).filter((word) => word.length >= 3 && !stop.has(word)))
@@ -11,14 +11,15 @@ const numbers = (text: string) => normalizeCopy(text).match(/\d+(?:[.,]\d+)?/g)?
 const measures = (text: string) => (normalizeCopy(text).match(/\d+(?:[.,]\d+)?\s*(?:cm|mm|km|met|m\b|ml|lit|l\b|kg|mg|g\b|mah|hz|gb|tb|w\b|v\b|gio|phut|mon|chiec)/g) || []).map((value) => value.replace(',', '.').replace(/\s/g, '').replace(/met$/, 'm').replace(/lit$/, 'l'))
 const attributes = ['inox', 'cotton', 'linen', 'silicone', 'nhựa', 'thép', 'gỗ', 'da thật', 'USB-C', 'Type-C', 'Bluetooth', 'iPhone', 'Android', 'Samsung', 'MacBook', 'iPad', 'không dây']
 const claims = ['thoai mai', 'ben bi', 'do ben', 'cao cap', 'day du', 'tien loi', 'tien dung', 'sang trong', 'tinh te', 'gon gang', 'de su dung', 'sac nhanh', 'chong on', 'cach am', 'mem mai', 'an toan', 'tiet kiem', 'khong gay kich ung', 'khong gay dau', 'tuong thich iphone', 'tuong thich android']
+const performanceClaims = ['sac ben', 'cat ngot', 'chac tay', 'chong truot', 'chong gi', 'giu nhiet', 'giu lanh', 'thoang mat', 'co gian', 'de ve sinh', 'de lau rua']
 
 /** Mechanical guardrails, not a semantic proof. Uncertain wording falls back to sourced copy. */
 export function validateCommerceCopy(draft: CopyDraft, facts: ProductFact[], productName: string, purpose: CopyPurpose, focusFactId?: string): boolean {
   const text = `${draft.text} ${draft.headline || ''}`.trim()
   const count = draft.text.trim().split(/\s+/).length
-  if (!draft.text.trim() || count > (purpose === 'hook' ? 18 : 26) || forbidden.test(text) || isMerchantCopy(text) || /\d[\d.,]*\s*(?:k\b|đ|₫|vnd|%)/i.test(text)) return false
+  if (!draft.text.trim() || count > (purpose === 'hook' ? 18 : purpose === 'cta-label' ? 6 : 26) || forbidden.test(text) || isMerchantCopy(text) || /\d[\d.,]*\s*(?:k\b|đ|₫|vnd|%)/i.test(text)) return false
   if (draft.evidenceIds.some((id) => !facts.some((fact) => fact.id === id))) return false
-  if (focusFactId && (purpose === 'hook' || purpose === 'cta') && !draft.evidenceIds.includes(focusFactId)) return false
+  if (focusFactId && (purpose === 'hook' || purpose === 'cta' || purpose === 'cta-label') && !draft.evidenceIds.includes(focusFactId)) return false
   const evidence = facts.filter((fact) => draft.evidenceIds.includes(fact.id))
   if (evidence.some((fact) => !isProductDetail(fact.text))) return false
   if (purpose === 'body' && !evidence.length) return false
@@ -28,14 +29,19 @@ export function validateCommerceCopy(draft: CopyDraft, facts: ProductFact[], pro
   const sourceMeasures = new Set(measures(source))
   if (measures(text).some((measure) => !sourceMeasures.has(measure))) return false
   const normalized = normalizeCopy(text)
+  if (/[,;:–—-]\s*$/.test(draft.text) || /(?:^|\s)(?:va|nhung|vi|de|neu|khi|hoac|cung|voi|la|cua|thi)[.!?]?\s*$/.test(normalizeCopy(draft.text))) return false
   const sourceNormalized = normalizeCopy(source)
   if (attributes.some((attribute) => text.toLowerCase().includes(attribute.toLowerCase()) && !source.toLowerCase().includes(attribute.toLowerCase()))) return false
   if (claims.some((claim) => normalized.includes(claim) && !sourceNormalized.includes(claim))) return false
+  if (performanceClaims.some((claim) => normalized.includes(claim) && !sourceNormalized.includes(claim))) return false
+  // A photo of accessories does not confirm that the purchased variant includes them.
+  if (/khong (?:phai|can) mua (?:them|rieng)|khoi mua (?:them|rieng)/.test(normalized) && !evidence.some(fact => fact.source === 'user_input' && !/\bkhong\b|\bchua\b/.test(normalizeCopy(fact.text)) && (/\bkèm\s+|bộ gồm|bao gồm/i.test(fact.text) || /\bdi kem\b|\bbo gom\b|\bbao gom\b|\bkem theo\b/.test(normalizeCopy(fact.text))))) return false
   // Preserve explicit negatives in factual evidence instead of reversing their meaning.
-  if (evidence.some((fact) => /\bkhong\b|\bchua\b/.test(normalizeCopy(fact.text))) && !/\bkhong\b|\bchua\b/.test(normalizeCopy(draft.text))) return false
+  if (purpose !== 'cta-label' && evidence.some((fact) => /\bkhong\b|\bchua\b/.test(normalizeCopy(fact.text))) && !/\bkhong\b|\bchua\b/.test(normalizeCopy(draft.text))) return false
   const anchors = tokens(evidence.length ? evidence.map((fact) => fact.text).join(' ') : productName)
   const used = tokens(draft.text)
-  if (anchors.size && ![...anchors].some((word) => used.has(word))) return false
+  const decision = (purpose === 'cta' || purpose === 'cta-label') && evidence.some(fact => hasDecisionTarget(draft.text, fact))
+  if (anchors.size && ![...anchors].some((word) => used.has(word)) && !decision) return false
   if (purpose === 'cta' && !/(?:nhấn|bấm|mở).*(?:sản phẩm|giỏ hàng)|xem.*(?:sản phẩm|giỏ hàng)/i.test(draft.text)) return false
   if (purpose === 'question' && !draft.text.includes('?')) return false
   return true

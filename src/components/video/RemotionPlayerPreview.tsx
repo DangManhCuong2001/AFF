@@ -106,7 +106,7 @@ export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
       theme: deck.theme,
     }))
 
-    const totalDurationFrames = Math.max(90, Math.round(storyplan.totalDurationSec * fps))
+    const totalDurationFrames = Math.max(90, Math.ceil(storyplan.totalDurationSec * fps))
 
     return {
       beats: beatsWithCards,

@@ -30,4 +30,6 @@ else {
   require('../tests/visual-evidence.test.ts')
   require('../tests/product-video-analysis.test.ts')
   require('../tests/context-cache.test.ts')
+  require('../tests/sales-writing.test.ts')
+  require('../tests/automatic-duration.test.ts')
 }

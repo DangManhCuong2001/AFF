@@ -7,6 +7,8 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { StoryboardScene } from '@/engines/core/types'
 import { VipeeSpeechDirector, VipeeTTSProvider } from '@/engines/speech/VipeeSpeechDirector'
+import {analyzeVoiceBuffer} from '@/lib/audio/voice-processing'
+import {assertNarrationDuration} from './narration-sync'
 
 const execFilePromise = promisify(execFile)
 
@@ -99,9 +101,10 @@ export async function renderWithRemotion(
   let renderedScenes = opts.scenes
   let masterAudioBase64 = ''
   if (opts.masterAudioBuffer && opts.masterAudioBuffer.length > 0) {
+    const actual = await analyzeVoiceBuffer(opts.masterAudioBuffer)
+    assertNarrationDuration(opts.scenes, actual.durationSec)
     masterAudioBase64 = `data:audio/mp3;base64,${opts.masterAudioBuffer.toString('base64')}`
   } else {
-    try {
       const speechDirector = new VipeeSpeechDirector()
       const speechPlan = speechDirector.createSpeechPlan(
         {
@@ -120,9 +123,6 @@ export async function renderWithRemotion(
       const speechAudioResult = await ttsProvider.generateSpeech(speechPlan, { provider: opts.voiceProvider })
       masterAudioBase64 = `data:audio/mp3;base64,${speechAudioResult.audioBuffer.toString('base64')}`
       renderedScenes = applySceneAudioTimings(opts.scenes, speechAudioResult.segmentTimings)
-    } catch (ttsErr) {
-      console.warn('[RemotionRenderer] Speech synthesis warning:', ttsErr)
-    }
   }
 
   // 3. Prepare background music
@@ -164,13 +164,13 @@ export async function renderWithRemotion(
 
   // Parse result from stdout
   const lines = stdout.trim().split('\n')
-  let resultJson: any = null
+  let resultJson: {filePath: string; duration?: number; fileSizeBytes?: number} | null = null
 
   for (let i = lines.length - 1; i >= 0; i--) {
     try {
-      const parsed = JSON.parse(lines[i])
-      if (parsed.success) {
-        resultJson = parsed
+      const parsed = JSON.parse(lines[i]) as Record<string, unknown>
+      if (parsed.success && typeof parsed.filePath === 'string') {
+        resultJson = {filePath: parsed.filePath, duration: typeof parsed.duration === 'number' ? parsed.duration : undefined, fileSizeBytes: typeof parsed.fileSizeBytes === 'number' ? parsed.fileSizeBytes : undefined}
         break
       }
     } catch {

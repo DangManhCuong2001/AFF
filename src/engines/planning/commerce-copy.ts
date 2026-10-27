@@ -29,6 +29,55 @@ export function intentForFact(fact?: ProductFact) {
   return intents.find((intent) => intent.pattern.test(plain) && !(intent.id === 'contents' && vagueContents) && (intent.id !== 'color' || !/mẫu/i.test(text) || /màu|kiểu dáng|thiết kế|họa tiết/i.test(text))) || fallbackIntent
 }
 
+/** Editorial situations, not new product facts or promises of performance. */
+export function sellingContextForFact(fact?: ProductFact) {
+  const intent = intentForFact(fact)
+  const plain = normalizeCopy(fact?.text || '')
+  if (!fact || /\bkhong\b|\bchua\b/.test(plain)) return undefined
+  if (intent.id === 'size' && /day|cap|chieu dai/.test(plain)) return {need: 'Bàn cách xa thiết bị?', reason: 'Đáng cân nhắc nếu bạn cần bố trí dây xa thiết bị.'}
+  if (intent.id === 'size' && /dung tich|\bml\b|\blit\b/.test(plain)) return {need: 'Bạn ưu tiên dung tích này?', reason: 'Đáng cân nhắc nếu dung tích này đúng nhu cầu của bạn.'}
+  const contexts: Record<string, {need: string; reason: string}> = {
+    compatibility: {need: 'Đang tìm đúng kiểu kết nối?', reason: 'Đáng cân nhắc nếu bạn đang tìm kiểu kết nối này.'},
+    size: {need: 'Đang chọn theo kích thước?', reason: 'Một lựa chọn để bạn cân nhắc theo nhu cầu về kích thước.'},
+    contents: {need: 'Muốn chọn cả bộ?', reason: fact.source === 'image' ? 'Xem các món trong ảnh trước khi chọn bộ bạn thích.' : 'Bạn biết rõ mình đang chọn những món nào trong bộ.'},
+    color: {need: 'Thích đồ cùng tông?', reason: 'Một lựa chọn đáng xem nếu bạn thích tông này.'},
+    fit: {need: 'Bạn thích form dáng này?', reason: 'Đáng cân nhắc nếu đây là kiểu dáng bạn thích.'},
+    material: {need: 'Bạn chọn đồ theo chất liệu?', reason: 'Đáng cân nhắc nếu bạn ưu tiên chất liệu này.'},
+    scent: {need: 'Bạn chọn theo mùi hương?', reason: 'Đáng xem nếu bạn đang tìm nhóm hương này.'},
+    concentration: {need: 'Bạn ưu tiên nồng độ nào?', reason: 'Bạn có thể chọn theo nồng độ mình đang tìm.'},
+    ingredients: {need: 'Bạn chọn theo thành phần?', reason: 'Bạn có thể cân nhắc theo thành phần mình ưu tiên.'},
+    skin: {need: 'Bạn đang tìm đúng đối tượng sử dụng?', reason: 'Bạn có thể xem đối tượng sử dụng trước khi chọn.'},
+  }
+  return contexts[intent.id]
+}
+
+export function spokenProductFact(fact: ProductFact) {
+  return fact.text.replace(/[.!?]+$/, '').replace(/^(?:Màu sắc|Màu):\s*/i, 'Tông màu ')
+    .replace(/^Chất liệu:\s*/i, 'Chất liệu là ').replace(/:\s*/g, ' ')
+}
+
+/** Explain one reason to consider the item; only the sourced detail is asserted. */
+export function sellingBody(fact: ProductFact) {
+  const point = spokenProductFact(fact)
+  const context = sellingContextForFact(fact)
+  const expanded = context ? `${point}. ${context.reason}` : point
+  return words(expanded).length <= 26 ? expanded : point
+}
+
+export function hasDecisionTarget(text: string, fact: ProductFact) {
+  const patterns: Record<string, RegExp> = {
+    compatibility: /ket noi|tuong thich|dau cam|cong/,
+    size: /kich thuoc|chieu dai|dung tich|so do|\bsize\b/,
+    contents: /thanh phan bo|nhung mon|tron bo|ca bo|bo gom/,
+    color: /mau|tong|kieu dang/, fit: /form|dang|so do/,
+    material: /chat lieu/, care: /bao quan/, ingredients: /thanh phan/,
+    skin: /doi tuong su dung|loai da/, scent: /mui huong|nhom huong/,
+    concentration: /nong do/, power: /nguon dien|cong suat|dien ap/,
+    usage: /cach (?:su )?dung|huong dan/, design: /chi tiet|kieu dang/,
+  }
+  return patterns[intentForFact(fact).id].test(normalizeCopy(text))
+}
+
 export function createCommerceCopy(name: string, angle: ContentAngle, facts: ProductFact[], preferredFocusId?: string, priorities: string[] = []) {
   // Prefer concise facts that can actually be explained in a short video.
   const candidates = facts.filter((fact) => words(fact.text).length <= 18 && isProductDetail(fact.text))
@@ -39,19 +88,20 @@ export function createCommerceCopy(name: string, angle: ContentAngle, facts: Pro
   }).sort((a, b) => b.score - a.score)
   const focus = ranked.find(({fact}) => fact.id === preferredFocusId)?.fact || ranked[0]?.fact
   const intent = intentForFact(focus)
+  const context = sellingContextForFact(focus)
   const productName = trimWords(name, 6)
   const point = focus?.text || productName
   const detail = point.replace(/[.!?]$/, '').replace(/^Có\s+/i, '').replace(/^[A-ZĐ](?=[a-zà-ỹ])/u, (letter) => letter.toLocaleLowerCase('vi'))
   const withinHook = (text: string, fallback: string) => words(text).length <= 18 ? text : fallback
   const hooks = [
-    {id: angle, text: focus ? withinHook(`Cần ${detail}?`, `${point.replace(/[.!?]$/, '')}?`) : `${productName}: nhìn rõ mẫu trong ảnh.`, reasoning: 'Mở bằng một nhu cầu gắn trực tiếp với chi tiết có nguồn.'},
+    {id: angle, text: focus ? withinHook(context ? `${context.need} ${detail}?` : `Cần ${detail}?`, `${point.replace(/[.!?]$/, '')}?`) : `${productName}: nhìn rõ mẫu trong ảnh.`, reasoning: 'Mở bằng nhu cầu hoặc sở thích, gắn với chi tiết có nguồn.'},
     {id: `${angle}-detail`, text: focus ? withinHook(`${productName}: ${detail}.`, `${point.replace(/[.!?]$/, '')}.`) : `Bạn chọn ${productName} vì kiểu dáng nào?`, reasoning: 'Đưa sản phẩm và đặc điểm cụ thể lên ngay câu đầu.'},
-    {id: `${angle}-check`, text: focus ? withinHook(`${detail} — có đúng điều bạn cần?`, `Trước khi chọn ${productName}, xem ${intent.shortLabel}.`) : `Định chọn ${productName}? Xem kỹ ảnh này.`, reasoning: 'Giúp người xem đối chiếu một đặc điểm cụ thể với nhu cầu.'},
+    {id: `${angle}-check`, text: focus ? withinHook(`${point.replace(/[.!?]$/, '')} — có đúng điều bạn cần?`, `Trước khi chọn ${productName}, xem ${intent.shortLabel}.`) : `Định chọn ${productName}? Xem kỹ ảnh này.`, reasoning: 'Giúp người xem đối chiếu một đặc điểm cụ thể với nhu cầu.'},
   ]
   const ctaHeadline = ({compatibility: 'Khớp thiết bị của bạn?', size: 'Đúng kích thước bạn cần?', contents: 'Đúng bộ bạn đang tìm?', color: 'Đúng màu bạn muốn?', material: 'Đúng chất liệu bạn cần?'} as Record<string, string>)[intent.id] || 'Xem kỹ trước khi chọn'
   const buyerQuestion = ({compatibility: 'Kiểu kết nối này có khớp thiết bị của bạn?', size: 'Kích thước này có phù hợp nhu cầu của bạn?', contents: 'Bộ này có đúng những món bạn cần?', color: 'Màu và kiểu dáng có đúng lựa chọn của bạn?', material: 'Chất liệu này có phù hợp nhu cầu của bạn?'} as Record<string, string>)[intent.id] || `Bạn đã đọc kỹ ${intent.shortLabel} của sản phẩm chưa?`
   return {focus, intent, hooks, ctaHeadline, buyerQuestion, headline: focus ? trimWords(point, 9) : productName,
-    cta: focus ? `Nhấn sản phẩm để xem: ${detail}.` : `Nhấn sản phẩm để xem ảnh và mô tả của ${productName}.`,
+    cta: focus ? /\bkhong\b|\bchua\b/.test(normalizeCopy(focus.text)) ? `Nhấn sản phẩm để xem: ${detail}.` : `Nhấn sản phẩm để xem ${intent.shortLabel.replace(/ và /g, ', ')} và giá hiện tại nhé.` : `Nhấn sản phẩm để xem ảnh và mô tả của ${productName}.`,
     orderedFacts: focus ? [focus, ...ranked.map(({fact}) => fact).filter((fact) => fact.id !== focus.id)] : ranked.map(({fact}) => fact)}
 }
 

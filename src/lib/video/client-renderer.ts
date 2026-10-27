@@ -1,6 +1,7 @@
 'use client'
 
-import { canRenderMediaOnWeb, renderMediaOnWeb } from '@remotion/web-renderer'
+import { canRenderMediaOnWeb, renderMediaOnWeb, type WebRendererAudioCodec, type WebRendererVideoCodec } from '@remotion/web-renderer'
+import {assertNarrationDuration} from './narration-sync'
 import { TikTokCommerceVideo } from '@/remotion/TikTokCommerceVideo'
 import { RemotionVideoProps } from '@/remotion/types'
 import { StoryboardScene } from '@/engines/core/types'
@@ -30,8 +31,8 @@ export interface ClientRenderResult {
 export async function getWebExportConfig(): Promise<{
   supported: boolean
   container: 'mp4' | 'webm'
-  videoCodec?: 'h264' | 'vp9'
-  audioCodec?: 'aac' | 'opus'
+  videoCodec?: WebRendererVideoCodec
+  audioCodec?: WebRendererAudioCodec
 }> {
   if (typeof window === 'undefined') {
     return { supported: false, container: 'mp4' }
@@ -48,8 +49,8 @@ export async function getWebExportConfig(): Promise<{
       return {
         supported: true,
         container: 'mp4',
-        videoCodec: (mp4Res.resolvedVideoCodec as any) || 'h264',
-        audioCodec: (mp4Res.resolvedAudioCodec as any) || 'aac',
+        videoCodec: mp4Res.resolvedVideoCodec || 'h264',
+        audioCodec: mp4Res.resolvedAudioCodec || 'aac',
       }
     }
     console.log('[client-renderer] MP4 canRenderMediaOnWeb issues:', mp4Res.issues)
@@ -68,8 +69,8 @@ export async function getWebExportConfig(): Promise<{
       return {
         supported: true,
         container: 'webm',
-        videoCodec: (webmRes.resolvedVideoCodec as any) || 'vp9',
-        audioCodec: (webmRes.resolvedAudioCodec as any) || 'opus',
+        videoCodec: webmRes.resolvedVideoCodec || 'vp9',
+        audioCodec: webmRes.resolvedAudioCodec || 'opus',
       }
     }
     console.log('[client-renderer] WebM canRenderMediaOnWeb issues:', webmRes.issues)
@@ -117,8 +118,13 @@ export async function renderVideoOnClient(
   const validImages = await Promise.all(rawImages.map(prepareAssetUrl))
 
   // Prepare Audio URLs with pre-fetched blob URLs to avoid playback hiccups or CORS during render
-  let resolvedVoiceUrl = opts.voiceAudioUrl ? await prepareAssetUrl(opts.voiceAudioUrl) : ''
-  let resolvedBgmUrl = await prepareAssetUrl(opts.bgmAudioUrl || '/music/lofi-beat.mp3')
+  const resolvedVoiceUrl = opts.voiceAudioUrl ? await prepareAssetUrl(opts.voiceAudioUrl) : ''
+  if (resolvedVoiceUrl) {
+    const bytes = await fetch(resolvedVoiceUrl).then(response => response.arrayBuffer())
+    const decoded = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(bytes)
+    assertNarrationDuration(opts.scenes, decoded.duration)
+  }
+  const resolvedBgmUrl = await prepareAssetUrl(opts.bgmAudioUrl || '/music/lofi-beat.mp3')
 
   // 1. Build Exact Speech Timings matching RemotionPlayerPreview
   const speechTimings = opts.scenes.reduce<{
@@ -181,7 +187,7 @@ export async function renderVideoOnClient(
     theme: deck.theme,
   }))
 
-  const totalDurationFrames = Math.max(90, Math.round(storyplan.totalDurationSec * fps))
+  const totalDurationFrames = Math.max(90, Math.ceil(storyplan.totalDurationSec * fps))
 
   const remotionProps: RemotionVideoProps = {
     beats: beatsWithCards,
@@ -198,17 +204,18 @@ export async function renderVideoOnClient(
   opts.onProgress?.(10, `Đang khởi tạo Remotion Engine 1080x1920 (${exportConfig.container.toUpperCase()})...`)
 
   // 5. Render directly in the browser via WebCodecs & Mediabunny
+  const webProps: RemotionVideoProps & Record<string, unknown> = {...remotionProps}
   const { getBlob } = await renderMediaOnWeb({
     composition: {
-      component: TikTokCommerceVideo as React.ComponentType<any>,
+      component: TikTokCommerceVideo,
       durationInFrames: totalDurationFrames,
       fps,
       width: 1080,
       height: 1920,
       id: 'TikTokCommerceVideo',
-      defaultProps: remotionProps as any,
+      defaultProps: webProps,
     },
-    inputProps: remotionProps as any,
+    inputProps: webProps,
     container: exportConfig.container,
     videoCodec: exportConfig.videoCodec,
     audioCodec: exportConfig.audioCodec,

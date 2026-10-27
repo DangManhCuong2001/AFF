@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {createRequire} from 'node:module'
 import {planAdaptiveVideo} from '../src/engines/planning/AdaptiveVideoPlanner'
 import {analyzeProductWithGemini} from '../src/lib/ai/gemini'
+import {validateCommerceCopy} from '../src/lib/ai/validate-commerce-copy'
 import {VipeeVisualDirector} from '../src/engines/visual/VipeeVisualDirector'
 import {InfographicEngine} from '../src/engines/infographic/InfographicEngine'
 import {applySceneAudioTimings, parseSceneAudioTimings} from '../src/lib/video/scene-timing'
@@ -24,7 +25,7 @@ test('Different categories preserve product facts and selected images', () => {
   for (const name of ['Váy linen', 'Nước hoa A', 'Bộ dao', 'Tai nghe X']) {
     const p = planAdaptiveVideo({...product, name}, 22)
     assert.equal(p.contentPlan.format, 'feature-explainer')
-    assert.ok(p.storyboard.scenes.some((scene) => scene.voice === 'Kết nối USB-C'))
+    assert.ok(p.storyboard.scenes.some((scene) => scene.voice.includes('Kết nối USB-C')))
     assert.equal(p.storyboard.scenes[2].renderPlan?.assetId, 'detail')
     assert.equal(p.storyboard.scenes[2].renderPlan?.assetIndex, 1)
     assert.doesNotMatch(p.strategy.hook, /bừa bộn|nhà cửa|dọn dẹp/)
@@ -266,7 +267,8 @@ test('Product-specific focus and CTA follow supplied facts across categories', (
   ]
   for (const sample of cases) {
     const result = planAdaptiveVideo({...product, ...sample})
-    assert.ok(result.strategy.cta.toLowerCase().includes(sample.features[0].toLowerCase()))
+    assert.equal(validateCommerceCopy({text: result.strategy.cta, evidenceIds: [result.contentPlan.focusFactId!]}, result.contentPlan.facts, sample.name, 'cta', result.contentPlan.focusFactId), true)
+    assert.match(result.strategy.cta, /giá hiện tại/)
     assert.match(result.storyboard.scenes.at(-1)!.renderPlan!.ctaLabel!, sample.expected)
     assert.equal(result.contentPlan.primaryBuyingReason, sample.features[0])
     assert.ok(result.storyboard.scenes[0].headline.includes(sample.features[0]))
@@ -281,7 +283,7 @@ test('Mismatched detail crops cannot illustrate unrelated specifications', () =>
   const cableScene = result.storyboard.scenes.find((scene) => scene.voice === 'Dây dài 1,2 mét')!
   assert.equal(cableScene.renderPlan?.framing, 'full')
   assert.equal(cableScene.renderPlan?.crop, undefined)
-  const portScene = result.storyboard.scenes.find((scene) => scene.voice === 'Kết nối USB-C')!
+  const portScene = result.storyboard.scenes.find((scene) => scene.type !== 'hook' && scene.type !== 'cta' && scene.renderPlan?.evidenceIds.includes('fact-1'))!
   assert.equal(portScene.renderPlan?.assetId, 'detail')
 })
 

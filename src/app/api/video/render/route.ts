@@ -5,6 +5,7 @@ import path from 'path'
 import { renderProductVideo } from '@/lib/video/generator'
 import { renderWithRemotion } from '@/lib/video/remotion-renderer'
 import { StoryboardScene } from '@/engines/core/types'
+import {NarrationSyncError} from '@/lib/video/narration-sync'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -160,6 +161,7 @@ export async function POST(request: NextRequest) {
       })
       console.log(`[VideoRenderAPI] Remotion render success: ${result.fileName} (${result.fileSizeBytes} bytes)`)
     } catch (remotionErr) {
+      if (remotionErr instanceof NarrationSyncError) throw remotionErr
       if (scenes.some((scene) => scene.renderPlan?.contextImageUrl)) {
         throw new Error('Không xuất được video bối cảnh bằng Remotion. Vui lòng thử lại; app giữ nguyên ảnh preview thay vì đổi sang bản dựng khác.')
       }

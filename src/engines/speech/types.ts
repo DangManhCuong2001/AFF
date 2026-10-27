@@ -25,6 +25,7 @@ export interface SpeechSegment {
   emphasis?: string[] // Key words to stress (legacy)
   estimatedDurationSec?: number
   minimumDurationSec?: number
+  maxPauseAfterMs?: number
 }
 
 export interface SpeechPlan {

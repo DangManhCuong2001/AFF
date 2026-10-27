@@ -3,22 +3,25 @@ import type {AIAnalysisAttempt, AIAnalysisFailure, ContentAngle} from '@/engines
 import {extractProductFacts} from '@/engines/planning/product-facts'
 import {isProductImage, planAdaptiveVideo} from '@/engines/planning/AdaptiveVideoPlanner'
 import {analyzeProductWithGemini, readImageInsights, type AnalysisImage} from './gemini'
+import type {DurationMode, VideoDurationSelection} from '@/engines/planning/duration'
 
 const MODEL = 'gemini-flash-lite-latest'
 const box = {type: 'array', items: {type: 'integer', minimum: 0, maximum: 1000}, minItems: 4, maxItems: 4, description: '[ymin, xmin, ymax, xmax], normalized to 0–1000. These are edge coordinates, not width/height.'}
 
 /** Read photos first; only then let the writer reference canonical, validated facts. */
-export async function analyzeProductForVideo(product: ProductInput, customApiKey?: string, targetDuration = 22, options?: {angle?: ContentAngle; images?: AnalysisImage[]}) {
+export async function analyzeProductForVideo(product: ProductInput, customApiKey?: string, targetDuration: VideoDurationSelection = 22, options?: {angle?: ContentAngle; images?: AnalysisImage[]}) {
+  const durationMode: DurationMode = targetDuration === 'auto' ? 'auto' : 'manual'
+  const durationBudget = targetDuration === 'auto' ? 45 : targetDuration
   const apiKey = customApiKey?.trim() || process.env.GEMINI_API_KEY?.trim()
   const images = (options?.images || []).filter(image => product.assets.some(asset => asset.id === image.assetId && isProductImage(asset)) && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(image.dataUrl) && image.dataUrl.length < 900_000).slice(0, 3)
-  if (!apiKey || !images.length) return analyzeProductWithGemini(product, customApiKey, targetDuration, options)
+  if (!apiKey || !images.length) return analyzeProductWithGemini(product, customApiKey, durationBudget, {...options, durationMode})
   const deadline = Date.now() + 50_000
   const started = Date.now()
   const attempt: AIAnalysisAttempt = {model: MODEL, stage: 'vision', outcome: 'invalid-response', elapsedMs: 0}
   const fallback = (reason: AIAnalysisFailure, message: string) => {
     attempt.outcome = reason
     attempt.elapsedMs = Date.now() - started
-    const result = planAdaptiveVideo(product, targetDuration, options?.angle)
+    const result = planAdaptiveVideo(product, durationBudget, options?.angle, [], undefined, durationMode)
     result.contentPlan.aiStatus = {state: 'failed', reason, message, attachedImages: images.length, attempts: [attempt]}
     result.contentPlan.warnings.push(message)
     return result
@@ -54,11 +57,11 @@ box_2d của ảnh bao trọn đúng sản phẩm và phụ kiện thực tế, 
     if (candidate?.finishReason === 'MAX_TOKENS') return fallback('output-limit', 'Kết quả đọc ảnh bị cắt trước khi hoàn tất; đang dùng thông tin sản phẩm đã lọc.')
     const text = candidate?.content?.parts?.filter((part: {text?: string; thought?: boolean}) => typeof part.text === 'string' && !part.thought).map((part: {text: string}) => part.text).join('')
     const insights = readImageInsights(JSON.parse(text || ''), images)
-    const readable = planAdaptiveVideo(product, targetDuration, options?.angle, insights)
+    const readable = planAdaptiveVideo(product, durationBudget, options?.angle, insights, undefined, durationMode)
     if (!readable.contentPlan.facts.some(fact => fact.source === 'image') && !extractProductFacts(product).facts.length) return fallback('invalid-content', 'Ảnh chưa cung cấp chi tiết sản phẩm đọc được; hãy tải ảnh rõ hơn hoặc bổ sung thông số.')
     attempt.outcome = insights.length ? 'completed' : 'partial'
     attempt.elapsedMs = Date.now() - started
-    const result = await analyzeProductWithGemini(product, apiKey, targetDuration, {angle: options?.angle, insights, deadline})
+    const result = await analyzeProductWithGemini(product, apiKey, durationBudget, {angle: options?.angle, insights, deadline, durationMode})
     const status = result.contentPlan.aiStatus!
     result.contentPlan.aiStatus = {...status, attachedImages: images.length, attempts: [attempt, ...(status.attempts || []).map(attempt => ({...attempt, stage: 'copy' as const}))],
       message: status.state === 'completed' ? 'Đã đọc ảnh, chọn chi tiết có nguồn và viết hook, lời đọc, CTA bằng Gemini.' : status.message}

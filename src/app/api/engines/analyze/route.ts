@@ -4,13 +4,14 @@ import type {AnalysisImage} from '@/lib/ai/gemini'
 import {analyzeProductForVideo} from '@/lib/ai/product-video-analysis'
 import { ProductInputSchema, ProductAssetSchema } from '@/engines/core/contracts'
 import type { ContentAngle } from '@/engines/planning/types'
+import {isVideoDurationSelection, type VideoDurationSelection} from '@/engines/planning/duration'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 interface AnalyzeRequestBody extends ProductInput {
   geminiApiKey?: string
-  targetDuration?: number
+  targetDuration?: VideoDurationSelection
   angle?: ContentAngle
   analysisImages?: AnalysisImage[]
 }
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     const { geminiApiKey, targetDuration, angle, analysisImages, ...input } = body
     const parsed = ProductInputSchema.extend({assets: ProductAssetSchema.array().max(30)}).safeParse(input)
-    if (!parsed.success || (angle && !['design', 'features', 'fit'].includes(angle)) || (targetDuration !== undefined && ![15, 22, 30, 45].includes(targetDuration))) {
+    if (!parsed.success || (angle && !['design', 'features', 'fit'].includes(angle)) || (targetDuration !== undefined && !isVideoDurationSelection(targetDuration))) {
       return NextResponse.json({error: 'Thông tin sản phẩm hoặc lựa chọn video không hợp lệ'}, {status: 400})
     }
     if (analysisImages && (!Array.isArray(analysisImages) || analysisImages.length > 3 || analysisImages.some((image) => typeof image?.assetId !== 'string' || typeof image?.dataUrl !== 'string' || image.dataUrl.length > 900_000))) {
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
     const result = await analyzeProductForVideo(
       product,
       geminiApiKey,
-      targetDuration || 22,
+      targetDuration ?? 22,
       {angle, images: analysisImages}
     )
 

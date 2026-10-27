@@ -1,9 +1,14 @@
 import type {ContentPlan} from '@/engines/planning/types'
 const labels = {'design-showcase': 'Giới thiệu thiết kế', 'feature-explainer': 'Giải thích thông tin', 'buying-guide': 'Hướng dẫn chọn mua', 'problem-solution': 'Nhu cầu và giải pháp'}
 const outcomes = {auth: 'Lỗi key/quyền truy cập', quota: 'Giới hạn yêu cầu/quota', service: 'Dịch vụ không khả dụng', request: 'Yêu cầu bị từ chối', timeout: 'Quá thời gian chờ', blocked: 'Phản hồi bị chặn', 'output-limit': 'JSON bị cắt', 'invalid-response': 'JSON/kết nối không hợp lệ', 'invalid-content': 'Kịch bản không hợp lệ', completed: 'Hoàn tất', partial: 'Dùng một phần kết quả'}
-export function ContentPlanSummary({plan, onRetry, retrying}: {plan: ContentPlan; onRetry?: () => void; retrying?: boolean}) {
+export function ContentPlanSummary({plan, actualDuration, onRetry, retrying}: {plan: ContentPlan; actualDuration?: number; onRetry?: () => void; retrying?: boolean}) {
   return <div className="rounded-2xl border border-emerald-500/30 bg-neutral-900 p-5 space-y-3 text-xs">
-    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-emerald-300">Kế hoạch theo sản phẩm của bạn</h3><span className="text-neutral-400">{plan.source === 'gemini' ? 'Gemini hỗ trợ' : 'Nội dung theo đầu vào'} · {plan.recommendedDuration}s dự kiến</span></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-emerald-300">Kế hoạch theo sản phẩm của bạn</h3><span className="text-neutral-400">{plan.source === 'gemini' ? 'Gemini hỗ trợ' : 'Nội dung theo đầu vào'} · {actualDuration ? `${actualDuration.toFixed(1)}s theo giọng đọc` : `${plan.recommendedDuration}s dự kiến`}</span></div>
+    {plan.durationPlan && <div className="rounded-xl bg-neutral-950 p-3 text-neutral-300 space-y-1">
+      <p className="font-semibold">{plan.durationPlan.mode === 'auto' ? plan.durationPlan.source === 'gemini' ? `Gemini gợi ý ${plan.durationPlan.modelSuggestedSeconds ?? plan.durationPlan.suggestedSeconds}s` : 'Tự động theo dữ liệu đầu vào' : `Mốc bạn chọn: ${plan.durationPlan.requestedSeconds}s`} · Kế hoạch {plan.durationPlan.suggestedSeconds}s</p>
+      <p className="text-neutral-400">{plan.durationPlan.reason}</p>
+      <p className="text-neutral-400">{actualDuration ? `Thời lượng theo giọng đọc: ${actualDuration.toFixed(1)}s. Preview và bản xuất dùng thời lượng này.` : 'Đây là thời lượng ước tính. Sau khi tạo giọng, preview và bản xuất cập nhật theo âm thanh thực tế.'}</p>
+    </div>}
     <p className="text-white font-semibold">{labels[plan.format]}</p>
     <p className="text-neutral-400">{plan.formatReason}</p>
     {plan.aiStatus && <p role="status" className={plan.aiStatus.state === 'completed' ? 'text-emerald-300' : 'text-amber-300'}>{plan.aiStatus.message}</p>}

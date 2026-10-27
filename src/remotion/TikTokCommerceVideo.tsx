@@ -1,5 +1,5 @@
 import React from 'react'
-import { AbsoluteFill, Sequence, staticFile } from 'remotion'
+import { AbsoluteFill, Sequence, staticFile, useVideoConfig } from 'remotion'
 import { Audio } from '@remotion/media'
 import { RemotionVideoProps } from './types'
 import { DynamicScene } from './DynamicScene'
@@ -33,6 +33,7 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
   fps,
 }) => {
   const resolvedMasterAudio = resolveAudioSrc(masterAudioUrl)
+  const {durationInFrames} = useVideoConfig()
   const resolvedBgmAudio = resolveAudioSrc(bgmAudioUrl)
 
   return (
@@ -41,7 +42,7 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
       {beats.map((beat, idx) => {
         const fromFrame = Math.round(beat.startTimeSec * fps)
         // Shared boundaries prevent one-frame gaps from rounding individual durations.
-        const endFrame = Math.round((beats[idx + 1]?.startTimeSec ?? (beat.startTimeSec + beat.durationSec)) * fps)
+        const endFrame = idx === beats.length - 1 ? durationInFrames : Math.round(beats[idx + 1].startTimeSec * fps)
         const durationFrames = Math.max(1, endFrame - fromFrame)
         const isLastScene = idx === beats.length - 1
 
@@ -62,13 +63,14 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
         )
       })}
 
-      {/* 2. Master Voiceover Audio – fade in over first 4 frames to mask encoder-delay pop */}
+      {/* 2. Master narration already has a short audio fade before speech begins. */}
       {resolvedMasterAudio && (
         <Audio
           src={resolvedMasterAudio}
           volume={(f) => {
-            // Smooth ramp 0→1.0 over first 4 frames (≈133ms @ 30fps)
-            const ramp = Math.min(1, f / 4)
+            // Finish the visual audio ramp inside the initial silence, preserving
+            // the first spoken syllable instead of fading it over 133 milliseconds.
+            const ramp = Math.min(1, f / Math.max(1, Math.round(fps * 0.02)))
             // Leave headroom for the background track when the voice is near full scale.
             return ramp * 0.85
           }}
