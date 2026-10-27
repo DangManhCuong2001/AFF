@@ -9,6 +9,8 @@ export async function GET(request: NextRequest) {
     let customScope: string | undefined
     if (scopeParam === 'basic') {
       customScope = 'user.info.basic'
+    } else if (scopeParam === 'upload' || scopeParam === 'publish') {
+      customScope = `user.info.basic,video.${scopeParam}`
     }
 
     // Determine return destination after authorization

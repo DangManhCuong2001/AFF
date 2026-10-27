@@ -70,3 +70,12 @@ export const directPostClientRequestSchema = z.object({
   isAigc: z.boolean().default(false),
   videoCoverTimestampMs: z.number().optional().default(1000),
 })
+
+const videoSizeSchema = z.number().int().positive().max(4 * 1024 ** 3)
+export const postingInitRequestSchema = z.preprocess((value) => {
+  if (value && typeof value === 'object' && !Array.isArray(value) && !('mode' in value)) return {...value, mode: 'publish'}
+  return value
+}, z.discriminatedUnion('mode', [
+  z.object({mode: z.literal('publish'), videoSize: videoSizeSchema, title: z.string().trim().min(1).max(2200), privacyLevel: privacyLevelSchema.default('SELF_ONLY'), disableComment: z.boolean().default(false), disableDuet: z.boolean().default(false), disableStitch: z.boolean().default(false), isAigc: z.boolean().default(false)}),
+  z.object({mode: z.literal('upload'), videoSize: videoSizeSchema}),
+]))

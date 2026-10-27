@@ -69,7 +69,8 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
           volume={(f) => {
             // Smooth ramp 0→1.0 over first 4 frames (≈133ms @ 30fps)
             const ramp = Math.min(1, f / 4)
-            return ramp * 1.0
+            // Leave headroom for the background track when the voice is near full scale.
+            return ramp * 0.85
           }}
         />
       )}

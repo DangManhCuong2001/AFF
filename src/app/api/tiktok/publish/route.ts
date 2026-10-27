@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { initDirectPost, uploadVideoChunk } from '@/lib/tiktok/posting'
+import { initDirectPost, initInboxUpload, uploadVideoChunk } from '@/lib/tiktok/posting'
+import {postingInitRequestSchema} from '@/lib/tiktok/schemas'
+import {fileUploadPlan, uploadRanges} from '@/lib/tiktok/posting-mode'
 import { TikTokApiError, PrivacyLevel } from '@/lib/tiktok/types'
 
 export const dynamic = 'force-dynamic'
@@ -13,44 +15,13 @@ export async function POST(request: NextRequest) {
 
     // ── Flow A: JSON Request for Step 1 (Initialize Post) ──
     if (contentType.includes('application/json')) {
-      const body = await request.json()
-      const title = (body.title as string) || ''
-      const privacyLevel = (body.privacyLevel as PrivacyLevel) || 'SELF_ONLY'
-      const disableComment = Boolean(body.disableComment)
-      const disableDuet = Boolean(body.disableDuet)
-      const disableStitch = Boolean(body.disableStitch)
-      const isAigc = Boolean(body.isAigc)
-      const videoSize = Number(body.videoSize) || 0
-
-      if (!title.trim()) {
-        return NextResponse.json(
-          { error: { code: 'MISSING_TITLE', message: 'Video caption/title is required' } },
-          { status: 400 }
-        )
-      }
-
-      if (videoSize <= 0) {
-        return NextResponse.json(
-          { error: { code: 'INVALID_FILE_SIZE', message: 'Video size must be greater than 0' } },
-          { status: 400 }
-        )
-      }
-
-      const initResult = await initDirectPost({
-        title: title.trim(),
-        privacyLevel,
-        disableComment,
-        disableDuet,
-        disableStitch,
-        isAigc,
-        videoSize,
-      })
-
-      return NextResponse.json({
-        success: true,
-        publishId: initResult.publishId,
-        uploadUrl: initResult.uploadUrl,
-      })
+      const input = postingInitRequestSchema.safeParse(await request.json().catch(() => null))
+      if (!input.success) return NextResponse.json({error: {code: 'INVALID_REQUEST', message: 'Chọn đúng cách gửi, dung lượng video và caption (khi đăng trực tiếp).'}}, {status: 400})
+      const body = input.data
+      const initResult = body.mode === 'upload'
+        ? await initInboxUpload(body.videoSize)
+        : await initDirectPost(body)
+      return NextResponse.json({success: true, mode: body.mode, ...initResult})
     }
 
     // ── Flow B: Multipart FormData (Chunk upload OR Legacy single file) ──
@@ -64,13 +35,16 @@ export async function POST(request: NextRequest) {
       const startByte = Number(formData.get('startByte') || 0)
       const totalBytes = Number(formData.get('totalBytes') || 0)
 
-      if (!uploadUrl || !chunkFile || totalBytes <= 0) {
+      if (!uploadUrl || !chunkFile || typeof chunkFile === 'string' || !Number.isSafeInteger(totalBytes) || totalBytes <= 0 || totalBytes > 4 * 1024 ** 3) {
         return NextResponse.json(
           { error: { code: 'INVALID_CHUNK_REQUEST', message: 'Missing uploadUrl, chunk file, or totalBytes' } },
           { status: 400 }
         )
       }
 
+      const plan = fileUploadPlan(totalBytes)
+      const range = uploadRanges(totalBytes, plan.chunkSize, plan.totalChunkCount).find((range) => range.start === startByte)
+      if (!range || chunkFile.size !== range.end - range.start) return NextResponse.json({error: {code: 'INVALID_CHUNK_RANGE', message: 'Phân đoạn không khớp dung lượng đã khai báo với TikTok.'}}, {status: 400})
       const chunkBuffer = Buffer.from(await chunkFile.arrayBuffer())
       await uploadVideoChunk(uploadUrl, chunkBuffer, startByte, totalBytes)
 
@@ -84,13 +58,15 @@ export async function POST(request: NextRequest) {
     // ── Sub-Flow B2: Legacy single-file Direct Post ──
     const file = formData.get('video') as File | null
     const title = (formData.get('title') as string) || ''
+    const mode = formData.get('mode') || 'publish'
+    if (mode !== 'publish' && mode !== 'upload') return NextResponse.json({error: {code: 'INVALID_MODE', message: 'Cách gửi video không hợp lệ.'}}, {status: 400})
     const privacyLevel = (formData.get('privacyLevel') as PrivacyLevel) || 'SELF_ONLY'
     const disableComment = formData.get('disableComment') === 'true'
     const disableDuet = formData.get('disableDuet') === 'true'
     const disableStitch = formData.get('disableStitch') === 'true'
     const isAigc = formData.get('isAigc') === 'true'
 
-    if (!file) {
+    if (!file || typeof file === 'string') {
       return NextResponse.json(
         { error: { code: 'MISSING_FILE', message: 'No video file provided' } },
         { status: 400 }
@@ -105,14 +81,14 @@ export async function POST(request: NextRequest) {
     }
 
     const videoSize = file.size
-    if (videoSize <= 0) {
+    if (videoSize <= 0 || videoSize > 4 * 1024 ** 3) {
       return NextResponse.json(
         { error: { code: 'INVALID_FILE_SIZE', message: 'Video file is empty' } },
         { status: 400 }
       )
     }
 
-    if (!title.trim()) {
+    if (mode === 'publish' && !title.trim()) {
       return NextResponse.json(
         { error: { code: 'MISSING_TITLE', message: 'Video caption/title is required' } },
         { status: 400 }
@@ -120,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 1: Initialize post
-    const initResult = await initDirectPost({
+    const initResult = mode === 'upload' ? await initInboxUpload(videoSize) : await initDirectPost({
       title: title.trim(),
       privacyLevel,
       disableComment,
@@ -135,12 +111,15 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(arrayBuffer)
 
     // Step 3: Upload chunk to TikTok upload_url
-    await uploadVideoChunk(initResult.uploadUrl, buffer, 0, buffer.length)
+    for (const range of uploadRanges(buffer.length, initResult.chunkSize, initResult.totalChunkCount)) {
+      await uploadVideoChunk(initResult.uploadUrl, buffer.subarray(range.start, range.end), range.start, buffer.length)
+    }
 
     return NextResponse.json({
       success: true,
+      mode,
       publishId: initResult.publishId,
-      message: 'Video uploaded to TikTok storage successfully',
+      message: 'Đã gửi file tới TikTok. Đang chờ TikTok xác nhận xử lý.',
     })
   } catch (err: unknown) {
     if (err instanceof TikTokApiError) {
@@ -153,7 +132,7 @@ export async function POST(request: NextRequest) {
             subCode: err.subCode,
           },
         },
-        { status: err.httpStatus || 400 }
+        { status: err.httpStatus && err.httpStatus >= 400 ? err.httpStatus : 400 }
       )
     }
 

@@ -1,4 +1,5 @@
 import { tiktokFetch } from './client'
+import {fileUploadPlan} from './posting-mode'
 import {
   DirectPostInitParams,
   DirectPostInitResult,
@@ -16,8 +17,7 @@ import {
 export async function initDirectPost(
   params: DirectPostInitParams
 ): Promise<DirectPostInitResult> {
-  const chunkSize = params.videoSize // Single chunk for standard files <= 64MB
-  const totalChunkCount = 1
+  const {chunkSize, totalChunkCount} = fileUploadPlan(params.videoSize)
 
   const body = {
     post_info: {
@@ -57,7 +57,24 @@ export async function initDirectPost(
   return {
     publishId: parsed.data.data.publish_id,
     uploadUrl: parsed.data.data.upload_url,
+    chunkSize,
+    totalChunkCount,
   }
+}
+
+/** Upload-to-Inbox intentionally sends no caption, privacy, or publishing metadata. */
+export async function initInboxUpload(videoSize: number): Promise<DirectPostInitResult> {
+  const {chunkSize, totalChunkCount} = fileUploadPlan(videoSize)
+  const result = await tiktokFetch<unknown>('/post/publish/inbox/video/init/', {
+    method: 'POST',
+    body: {source_info: {source: 'FILE_UPLOAD', video_size: videoSize, chunk_size: chunkSize, total_chunk_count: totalChunkCount}},
+    requireAuth: true,
+  })
+  const parsed = initVideoPostApiResponseSchema.safeParse(result.raw)
+  if (!parsed.success || !parsed.data.data?.publish_id || !parsed.data.data?.upload_url) {
+    throw new TikTokApiError({code: 'INIT_UPLOAD_FAILED', message: 'Không nhận được thông tin chuyển video vào Inbox từ TikTok.', logId: result.logId, httpStatus: 502})
+  }
+  return {publishId: parsed.data.data.publish_id, uploadUrl: parsed.data.data.upload_url, chunkSize, totalChunkCount}
 }
 
 /**
@@ -69,6 +86,11 @@ export async function uploadVideoChunk(
   startByte = 0,
   totalBytes: number = buffer.length
 ): Promise<void> {
+  let target: URL
+  try {target = new URL(uploadUrl)} catch {throw new TikTokApiError({code: 'INVALID_UPLOAD_URL', message: 'Địa chỉ nhận video không hợp lệ.', httpStatus: 400})}
+  if (target.protocol !== 'https:' || !target.hostname.endsWith('.tiktokapis.com') || target.username || target.password || target.port) {
+    throw new TikTokApiError({code: 'INVALID_UPLOAD_URL', message: 'Địa chỉ nhận video không thuộc TikTok.', httpStatus: 400})
+  }
   const endByte = startByte + buffer.length - 1
   const contentRange = `bytes ${startByte}-${endByte}/${totalBytes}`
 
@@ -80,6 +102,7 @@ export async function uploadVideoChunk(
       'Content-Range': contentRange,
     },
     body: new Uint8Array(buffer),
+    redirect: 'error',
   })
 
   if (!res.ok) {
@@ -131,5 +154,6 @@ export async function getPublishStatus(publishId: string): Promise<PublishStatus
     failReason: typeof data.fail_reason === 'string' ? data.fail_reason : undefined,
     postIds: postIds.length > 0 ? postIds : undefined,
     publicityCheckState: typeof data.publicity_check_state === 'string' ? data.publicity_check_state : undefined,
+    uploadedBytes: typeof data.uploaded_bytes === 'number' ? data.uploaded_bytes : undefined,
   }
 }

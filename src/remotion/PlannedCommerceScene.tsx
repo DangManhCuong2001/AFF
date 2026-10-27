@@ -1,38 +1,31 @@
-import React, {useState} from 'react'
-import {AbsoluteFill, Img, cancelRender, continueRender, delayRender, spring, useCurrentFrame, useVideoConfig} from 'remotion'
+import React from 'react'
+import {AbsoluteFill, Img, spring, useCurrentFrame, useVideoConfig} from 'remotion'
 import type {StoryboardScene} from '../engines/core/types'
 import {COMMERCE_LAYOUT as layout, fitCommerceText} from './tiktok-layout'
+import {CommerceProductImage} from './CommerceProductImage'
 import {captionAtProgress, speechProgressAtTime} from './scene-captions'
 
 /** One shared safe layout for browser preview, client export and server rendering. */
-export const PlannedCommerceScene: React.FC<{scene: StoryboardScene; imageUrl: string; durationSec: number}> = ({scene, imageUrl, durationSec}) => {
+export const PlannedCommerceScene: React.FC<{scene: StoryboardScene; imageUrl: string; secondaryImageUrl?: string; durationSec: number}> = ({scene, imageUrl, secondaryImageUrl, durationSec}) => {
   const frame = useCurrentFrame()
   const {fps} = useVideoConfig()
-  const [size, setSize] = useState({width: 1, height: 1})
-  const [handle] = useState(() => delayRender('Loading planned product image'))
   const progress = Math.min(1, frame / Math.max(1, durationSec * fps))
   const enter = spring({frame, fps, config: {damping: 23}})
   const plan = scene.renderPlan!
   const contextImage = plan.contextImageUrl
   const cta = scene.type === 'cta'
-  // Source bounds are valid only on the source photo, never on a generated context.
-  // Keep the exact product large in front; the context establishes the environment.
-  const displayedImage = imageUrl
-  const crop = plan.crop || {x: 0, y: 0, width: 100, height: 100}
   const speakingProgress = speechProgressAtTime(frame / fps, durationSec, plan.speechTiming)
-  const cropWidth = size.width * crop.width / 100
-  const cropHeight = size.height * crop.height / 100
+  const caption = captionAtProgress(scene.voice || scene.headline, speakingProgress)
+  const variant = cta ? 'decision' : plan.layout === 'gallery' && !secondaryImageUrl ? 'hero' : plan.layout || 'hero'
   const cardWidth = layout.width
-  const hasSubheadline = !!scene.subheadline && scene.subheadline !== scene.headline
+  const hasSubheadline = !!scene.subheadline && scene.subheadline !== scene.headline && variant !== 'spec'
   const imageSlot = cta ? {top: 480, height: 440} : hasSubheadline ? layout.image : {top: 420, height: 604}
   const cardHeight = imageSlot.height
-  const scale = Math.min((cardWidth - 32) / cropWidth, (cardHeight - 32) / cropHeight) * (plan.framing === 'detail' ? 0.98 + speakingProgress * 0.02 : 0.95 + speakingProgress * 0.05)
-  const caption = captionAtProgress(scene.voice || scene.headline, speakingProgress)
+  const zoom = plan.framing === 'detail' ? 0.98 + speakingProgress * 0.02 : 0.95 + speakingProgress * 0.05
   const emphasis = new Set((scene.keywords || []).flatMap((keyword) => keyword.toLocaleLowerCase('vi').split(/\s+/)))
   const detail = plan.framing === 'detail'
-  const subheadline = scene.subheadline !== scene.headline ? scene.subheadline : undefined
+  const subheadline = hasSubheadline ? scene.subheadline : undefined
   const annotation = detail ? plan.annotation : undefined
-  const imageLoaded = (event: React.SyntheticEvent<HTMLImageElement>) => {const image = event.currentTarget; setSize({width: image.naturalWidth, height: image.naturalHeight}); continueRender(handle)}
   const box = (slot: {top: number; height: number}): React.CSSProperties => ({position: 'absolute', left: layout.left, width: layout.width, top: slot.top, height: slot.height})
   const copyStyle = (text: string, height: number, font: number, width = layout.width): React.CSSProperties => ({fontSize: fitCommerceText(text, width, height, font), lineHeight: 1.2, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap'})
   return <AbsoluteFill style={{background: '#f5f2eb', color: '#252922', fontFamily: 'Arial, sans-serif'}}>
@@ -49,10 +42,28 @@ export const PlannedCommerceScene: React.FC<{scene: StoryboardScene; imageUrl: s
     </div>
     {subheadline && <div style={{...box(layout.subheadline), zIndex: 2, ...copyStyle(subheadline, layout.subheadline.height, 27, layout.width - 32), color: '#6e665b', background: plan.evidenceIds.length ? '#eee6d8' : undefined, borderRadius: 12, padding: plan.evidenceIds.length ? '0 16px' : undefined, boxSizing: 'border-box', display: 'flex', alignItems: 'center'}}>{subheadline}</div>}
     <div style={{...box(imageSlot), borderRadius: 28, overflow: 'hidden', background: '#fff', boxShadow: '0 18px 50px #3a291b24', transform: `translateY(${(1 - enter) * 16}px)`, border: '1px solid #ffffffbb'}}>
-      <div style={{position: 'absolute', left: (cardWidth - cropWidth * scale) / 2, top: (cardHeight - cropHeight * scale) / 2, width: cropWidth * scale, height: cropHeight * scale, overflow: 'hidden', borderRadius: 8}}>
-        <Img src={displayedImage} onLoad={imageLoaded} onError={() => cancelRender(new Error('Không tải được ảnh sản phẩm cho cảnh này'))}
-          style={{position: 'absolute', maxWidth: 'none', width: size.width * scale, height: size.height * scale, left: -size.width * crop.x / 100 * scale, top: -size.height * crop.y / 100 * scale}} />
-      </div>
+      {variant === 'gallery' && secondaryImageUrl ? <div style={{display: 'flex', gap: 16, padding: 16}}>
+        {[{src: imageUrl, width: 432, crop: plan.crop, label: 'ẢNH 1'}, {src: secondaryImageUrl, width: cardWidth - 480, crop: plan.secondaryAsset?.crop, label: 'ẢNH 2'}].map((item) => <div key={item.label} style={{width: item.width, borderRadius: 18, background: '#f8f6f1', overflow: 'hidden'}}>
+          <CommerceProductImage src={item.src} width={item.width} height={cardHeight - 84} crop={item.crop} zoom={zoom} />
+          <div style={{height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8c664a', fontSize: 18, letterSpacing: 1.5}}>{item.label}</div>
+        </div>)}
+      </div> : variant === 'detail' ? <div style={{display: 'flex', gap: 16, padding: 16}}>
+        <div style={{width: 260, borderRadius: 18, background: '#f8f6f1', overflow: 'hidden'}}>
+          <CommerceProductImage src={imageUrl} width={260} height={cardHeight - 84} crop={plan.fullProductCrop} highlight={plan.crop} />
+          <div style={{height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8c664a', fontSize: 18, letterSpacing: 1}}>VỊ TRÍ CHI TIẾT</div>
+        </div>
+        <div style={{width: cardWidth - 308, border: '2px solid #ca773955', borderRadius: 18, overflow: 'hidden', boxSizing: 'border-box'}}>
+          <CommerceProductImage src={imageUrl} width={cardWidth - 312} height={cardHeight - 88} crop={plan.crop} zoom={zoom} />
+          <div style={{height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8c664a', fontSize: 18, letterSpacing: 1.5}}>CẬN CẢNH</div>
+        </div>
+      </div> : variant === 'spec' && plan.spec ? <div style={{display: 'flex', alignItems: 'center', height: '100%', padding: 16, gap: 16, boxSizing: 'border-box'}}>
+        <CommerceProductImage src={imageUrl} width={390} height={cardHeight - 32} crop={plan.crop} zoom={zoom} />
+        <div style={{width: cardWidth - 438, minHeight: cardHeight - 80, borderRadius: 20, background: '#eee6d8', padding: 22, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 20}}>
+          <div style={{...copyStyle(plan.spec.label, 64, 22, cardWidth - 482), color: '#8c664a'}}>{plan.spec.label}</div>
+          <div style={{...copyStyle(plan.spec.value, cardHeight - 228, 40, cardWidth - 482), fontWeight: 800}}>{plan.spec.value}</div>
+        </div>
+      </div> : <CommerceProductImage src={imageUrl} width={cardWidth} height={cardHeight} crop={plan.crop} zoom={zoom} />}
+
     </div>
     {annotation && <div style={{...box(layout.annotation), display: 'flex', gap: 12, alignItems: 'center', color: '#8c664a'}}><span style={{width: 8, height: 8, borderRadius: 8, background: '#ca7739', flexShrink: 0}} /><span style={copyStyle(annotation, layout.annotation.height, 23, layout.width - 20)}>{annotation}</span></div>}
     {cta && plan.decisionPrompt && <div style={{...box({top: 944, height: 136}), borderRadius: 18, background: '#eee6d8', padding: '12px 18px', boxSizing: 'border-box'}}>

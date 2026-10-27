@@ -35,6 +35,7 @@ export class VipeeVisualDirector implements VisualDirector {
         const transform = {scaleStart: 1, scaleEnd: 1.04, translateXStart: 0, translateXEnd: 0, translateYStart: 0, translateYEnd: 0}
         return {
           id: `beat-${idx + 1}`, segmentId: seg.segmentId, plannedScene: planned,
+          secondaryImageUrl: planned.renderPlan.secondaryAsset ? productImages[planned.renderPlan.secondaryAsset.assetIndex] : undefined,
           shotType: planned.type === 'cta' ? 'CTAShot' : planned.renderPlan.framing === 'detail' ? 'DetailShot' : 'ProductRevealShot',
           startTimeSec: seg.startSec, durationSec: seg.durationSec, visualIntent: planned.renderPlan.purpose,
           cameraMotion: 'camera_push', productVisible: true, productRevealDelaySec: 0,

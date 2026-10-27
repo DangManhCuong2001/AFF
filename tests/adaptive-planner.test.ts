@@ -13,11 +13,11 @@ const product: ProductInput = {id: 'test', name: 'Tai nghe X', category: 'tech',
 test('Sparse single-photo inputs stay short and do not invent utility claims', () => {
   const p = planAdaptiveVideo({...product, features: [], assets: [product.assets[0]]}, 45)
   assert.equal(p.contentPlan.format, 'design-showcase')
-  assert.equal(p.strategy.targetDuration, 18)
-  assert.equal(p.storyboard.scenes.length, 4)
+  assert.equal(p.strategy.targetDuration, 12)
+  assert.equal(p.storyboard.scenes.length, 3)
   assert.ok(p.contentPlan.warnings.some((warning) => warning.includes('một ảnh')))
   assert.doesNotMatch(JSON.stringify(p), /freeship|gọn gàng 100%|bền đẹp|đã dùng|kháng khuẩn/i)
-  assert.equal(p.storyboard.scenes.reduce((sum, scene) => sum + scene.duration, 0), 18)
+  assert.equal(p.storyboard.scenes.reduce((sum, scene) => sum + scene.duration, 0), 12)
 })
 
 test('Different categories preserve product facts and selected images', () => {
@@ -266,7 +266,7 @@ test('Product-specific focus and CTA follow supplied facts across categories', (
   ]
   for (const sample of cases) {
     const result = planAdaptiveVideo({...product, ...sample})
-    assert.match(result.strategy.cta, sample.expected)
+    assert.ok(result.strategy.cta.toLowerCase().includes(sample.features[0].toLowerCase()))
     assert.match(result.storyboard.scenes.at(-1)!.renderPlan!.ctaLabel!, sample.expected)
     assert.equal(result.contentPlan.primaryBuyingReason, sample.features[0])
     assert.ok(result.storyboard.scenes[0].headline.includes(sample.features[0]))
@@ -337,8 +337,7 @@ function authoredGeminiResponse() {
   scenes[0] = {...scenes[0], headline: hooks[0].headline, voice: hooks[0].text, evidenceIds: ['fact-1']}
   scenes[1] = {...scenes[1], headline: 'Kiểu kết nối USB-C', voice: 'Mẫu này dùng kết nối USB-C.', evidenceIds: ['fact-1']}
   scenes[2] = {...scenes[2], headline: 'Dây 1,2 mét', voice: 'Dây có chiều dài 1,2 mét.', evidenceIds: ['fact-2']}
-  scenes[3] = {...scenes[3], headline: 'Cổng USB-C có phù hợp?', voice: 'Cổng USB-C này có phù hợp thiết bị của bạn?', evidenceIds: ['fact-1']}
-  scenes[4] = {...scenes[4], headline: 'Kiểm tra cổng USB-C', voice: 'Nhấn sản phẩm để kiểm tra kết nối USB-C trước khi đặt.', evidenceIds: ['fact-1'], ctaLabel: 'Xem cổng USB-C'}
+  scenes[3] = {...scenes[3], headline: 'Kiểm tra cổng USB-C', voice: 'Nhấn sản phẩm để kiểm tra kết nối USB-C trước khi đặt.', evidenceIds: ['fact-1'], ctaLabel: 'Xem cổng USB-C'}
   return {images: [], focusFactId: 'fact-1', buyerQuestion: {text: 'Cổng USB-C có phù hợp thiết bị của bạn?', evidenceIds: ['fact-1']}, hookCandidates: hooks, scenes}
 }
 
@@ -355,17 +354,19 @@ test('Gemini-authored hooks, natural voice and CTA survive to the final video pl
   try {
     const result = await analyzeProductWithGemini(product, 'test-key')
     assert.equal(calls, 1)
-    assert.equal(result.strategy.hook, authored.hookCandidates[0].text)
-    assert.equal(result.creativePlan.selectedHook?.headline, authored.hookCandidates[0].headline)
+    const selected = result.creativePlan.selectedHook!
+    assert.ok(authored.hookCandidates.some((hook) => hook.text === selected.text && hook.headline === selected.headline))
+    assert.equal(result.strategy.hook, selected.text)
+    assert.equal(selected.editorialScore.total, Math.max(...result.creativePlan.hookCandidates!.map((hook) => hook.editorialScore.total)))
     assert.equal(result.storyboard.scenes[1].voice, authored.scenes[1].voice)
     assert.equal(result.storyboard.scenes[2].voice, authored.scenes[2].voice)
     assert.equal(result.storyboard.scenes[2].subheadline, 'Dây dài 1,2 mét')
-    assert.equal(result.strategy.cta, authored.scenes[4].voice)
+    assert.equal(result.strategy.cta, authored.scenes[3].voice)
     assert.equal(result.storyboard.scenes.at(-1)?.renderPlan?.ctaLabel, 'Xem cổng USB-C')
     assert.equal(result.storyboard.scenes.at(-1)?.renderPlan?.decisionPrompt, authored.buyerQuestion.text)
     assert.deepEqual(result.contentPlan.copySources, {hooks: 'gemini', script: 'gemini', cta: 'gemini'})
     assert.ok(result.creativePlan.hookCandidates!.every((hook) => hook.source === 'gemini'))
-    assert.equal(result.suggestedCaption, `${authored.hookCandidates[0].text} ${authored.scenes[4].voice}`)
+    assert.equal(result.suggestedCaption, `${selected.text} ${authored.scenes[3].voice}`)
   } finally {globalThis.fetch = original}
 })
 
@@ -407,12 +408,12 @@ test('Gemini may select a different sourced buying focus and hook headline remai
     {headline: 'Bạn cần dây dài bao nhiêu?', text: 'Bạn có cần dây dài 1,2 mét?', evidenceIds: ['fact-2']},
   ]
   authored.scenes[1] = {...authored.scenes[1], voice: 'Dây có chiều dài 1,2 mét.', headline: 'Dây 1,2 mét', evidenceIds: ['fact-2']}
-  authored.scenes[4] = {...authored.scenes[4], voice: 'Nhấn sản phẩm để đối chiếu dây dài 1,2 mét.', headline: 'Đối chiếu chiều dài dây', evidenceIds: ['fact-2'], ctaLabel: 'Xem chiều dài dây'}
+  authored.scenes[3] = {...authored.scenes[3], voice: 'Nhấn sản phẩm để đối chiếu dây dài 1,2 mét.', headline: 'Đối chiếu chiều dài dây', evidenceIds: ['fact-2'], ctaLabel: 'Xem chiều dài dây'}
   await withMockResponse(authored, async () => {
     const result = await analyzeProductWithGemini(product, 'test-key')
     assert.equal(result.contentPlan.focusFactId, 'fact-2')
     assert.equal(result.contentPlan.primaryBuyingReason, 'Dây dài 1,2 mét')
-    assert.equal(result.contentPlan.buyerQuestion, undefined) // The old USB question is off-focus.
+    assert.doesNotMatch(result.contentPlan.buyerQuestion!, /USB/) // Keep the sourced size question when the AI question is off-focus.
     const {withOpeningHook} = await import('../src/engines/planning/AdaptiveVideoPlanner')
     const hook = result.creativePlan.hookCandidates![1]
     const changed = withOpeningHook(result.storyboard.scenes, hook.text, result.strategy.targetDuration, hook.headline, {source: hook.source, evidenceIds: hook.evidenceIds})

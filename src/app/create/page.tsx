@@ -52,6 +52,9 @@ import { InfographicDeckViewer } from '@/components/infographic/InfographicDeckV
 import { CABLE_ORGANIZER_SEED_PRODUCT } from '@/engines/home/seed'
 import { RemotionPlayerPreview } from '@/components/video/RemotionPlayerPreview'
 import { renderVideoOnClient, isClientExportSupported } from '@/lib/video/client-renderer'
+import {hasPostingScope, requiredPostingScope, type TikTokPostingMode} from '@/lib/tiktok/posting-mode'
+import {TikTokPostingModeSelector} from '@/components/video/TikTokPostingModeSelector'
+import {sendTikTokVideo, fetchTikTokProgress} from '@/lib/tiktok/upload-client'
 import { useToast } from '@/components/ui/Toast'
 
 interface CategoryTab {
@@ -188,12 +191,15 @@ export default function CreateVideoPage() {
   const [caption, setCaption] = useState('')
   const [hashtags, setHashtags] = useState<string[]>([])
   const [privacyLevel, setPrivacyLevel] = useState<'SELF_ONLY' | 'PUBLIC_TO_EVERYONE'>('SELF_ONLY')
+  const [postingMode, setPostingMode] = useState<TikTokPostingMode>('publish')
+  const [checkingPost, setCheckingPost] = useState(false)
   const [isAigc, setIsAigc] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishResult, setPublishResult] = useState<{
-    success: boolean
+    mode: TikTokPostingMode
+    phase: 'processing' | 'inbox' | 'published' | 'failed'
     publishId?: string
-    message?: string
+    message: string
   } | null>(null)
 
   // Gemini API Key config
@@ -215,6 +221,17 @@ export default function CreateVideoPage() {
   // TikTok Connection State
   const [tiktokConnected, setTiktokConnected] = useState<boolean | null>(null)
 
+  const [tiktokScope, setTiktokScope] = useState<string>()
+  const canSendToTikTok = !!tiktokConnected && hasPostingScope(tiktokScope, postingMode)
+  const changePostingMode = (mode: TikTokPostingMode) => {
+    setPostingMode(mode)
+    setPublishResult(null)
+    try {localStorage.setItem('tiktok_posting_mode', mode)} catch { /* Preference storage is optional. */ }
+  }
+  useEffect(() => {
+    try {if (localStorage.getItem('tiktok_posting_mode') === 'upload') setPostingMode('upload')} catch { /* Keep the default if storage is unavailable. */ }
+  }, [])
+
   // Listen to OAuth redirect query params for instant notifications
   React.useEffect(() => {
     if (typeof window === 'undefined') return
@@ -232,7 +249,7 @@ export default function CreateVideoPage() {
   React.useEffect(() => {
     fetch('/api/tiktok/status')
       .then((r) => r.json())
-      .then((data) => setTiktokConnected(!!data.connected && !data.expired))
+      .then((data) => {setTiktokConnected(!!data.connected && !data.expired); setTiktokScope(data.scope)})
       .catch(() => setTiktokConnected(false))
   }, [])
 
@@ -241,6 +258,7 @@ export default function CreateVideoPage() {
       const res = await fetch('/api/tiktok/status', { method: 'DELETE' })
       if (res.ok) {
         setTiktokConnected(false)
+        setTiktokScope(undefined)
         toast.info('Đã ngắt kết nối TikTok', 'Bạn có thể bấm nút "Kết nối TikTok" để bắt đầu quay video demo.')
       } else {
         toast.error('Lỗi ngắt kết nối', 'Không thể ngắt kết nối tài khoản.')
@@ -972,121 +990,70 @@ export default function CreateVideoPage() {
     }
   }
 
-  // Publish Directly to TikTok with chunked upload support (bypasses Vercel 4.5MB limit)
+  // File transfer and the eventual TikTok outcome are distinct states.
+  useEffect(() => {
+    const id = publishResult?.publishId
+    const mode = publishResult?.mode
+    if (!id || !mode || publishResult?.phase !== 'processing' || publishing) return
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let attempts = 0
+    const poll = async () => {
+      attempts++
+      let done = false
+      try {
+        const progress = await fetchTikTokProgress(id, mode, controller.signal)
+        done = progress.terminal
+        if (!controller.signal.aborted) setPublishResult((current) => current?.publishId === id ? {...current, phase: progress.phase, message: progress.message} : current)
+      } catch {
+        if (!controller.signal.aborted) setPublishResult((current) => current?.publishId === id ? {...current, message: 'Chưa đọc được kết quả từ TikTok. Bạn có thể kiểm tra lại trạng thái bên dưới.'} : current)
+      }
+      if (!controller.signal.aborted && !done && attempts < 30) timer = setTimeout(poll, 3000)
+    }
+    void poll()
+    return () => {controller.abort(); if (timer) clearTimeout(timer)}
+  }, [publishResult?.publishId, publishResult?.mode, publishResult?.phase, publishing])
+
+  const handleCheckTikTokPost = async () => {
+    const id = publishResult?.publishId
+    const mode = publishResult?.mode
+    if (!id || !mode) return
+    setCheckingPost(true)
+    try {
+      const progress = await fetchTikTokProgress(id, mode)
+      setPublishResult((current) => current?.publishId === id ? {...current, phase: progress.phase, message: progress.message} : current)
+    } catch (error) {toast.error('Chưa đọc được trạng thái', (error as Error).message)}
+    finally {setCheckingPost(false)}
+  }
+
   const handlePublishToTikTok = async () => {
+    if (!canSendToTikTok || publishing || publishResult?.phase === 'processing') return
+    const mode = postingMode
     setPublishing(true)
     setPublishResult(null)
-
+    let activePublishId: string | undefined
     try {
-      const fullCaption = `${caption} ${hashtags.join(' ')}`
-
-      // 1. Resolve video file
-      let videoFile: File | null = null
-      if (renderedVideoFile) {
-        videoFile = renderedVideoFile
-      } else if (renderedVideoUrl) {
-        const res = await fetch(renderedVideoUrl)
-        const blob = await res.blob()
-        videoFile = new File([blob], 'tiktok_video.mp4', { type: 'video/mp4' })
-      } else {
-        const videoAsset = product.assets.find(
-          (a) => (a.type === 'PRODUCT_VIDEO' || a.type === 'DEMO_VIDEO') && a.file
-        )
-        if (videoAsset && videoAsset.file) {
-          videoFile = videoAsset.file
-        } else {
-          toast.warning('Chưa có video', 'Vui lòng tạo video hoàn chỉnh ở Bước 3 trước khi đăng.')
-          setPublishing(false)
-          return
-        }
+      const fullCaption = `${caption} ${hashtags.join(' ')}`.trim()
+      let videoFile: File | null = renderedVideoFile
+      if (!videoFile && renderedVideoUrl) {
+        const response = await fetch(renderedVideoUrl)
+        if (!response.ok) throw new Error('Không tải được file MP4 đã dựng.')
+        videoFile = new File([await response.blob()], 'tiktok_video.mp4', {type: 'video/mp4'})
       }
-
-      if (!videoFile || videoFile.size <= 0) {
-        throw new Error('File video không hợp lệ hoặc rỗng.')
-      }
-
-      // 2. Step 1: Initialize post with lightweight JSON (payload < 1KB, completely avoids 413)
-      const initRes = await fetch('/api/tiktok/publish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: fullCaption,
-          privacyLevel,
-          videoSize: videoFile.size,
-          disableComment: false,
-          disableDuet: false,
-          disableStitch: false,
-          isAigc,
-        }),
-      })
-
-      const initJson = await initRes.json().catch(() => ({}))
-      if (!initRes.ok || !initJson.uploadUrl || !initJson.publishId) {
-        throw new Error(initJson.error?.message || `Khởi tạo đăng video thất bại (${initRes.status})`)
-      }
-
-      const { publishId, uploadUrl } = initJson
-
-      // 3. Step 2: Upload Video Bytes
-      // Try Direct Upload to TikTok's upload_url first
-      let uploadSuccess = false
-      try {
-        const directRes = await fetch(uploadUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'video/mp4',
-            'Content-Length': String(videoFile.size),
-            'Content-Range': `bytes 0-${videoFile.size - 1}/${videoFile.size}`,
-          },
-          body: videoFile,
-        })
-        if (directRes.ok) {
-          uploadSuccess = true
-        }
-      } catch (directErr) {
-        console.warn('Direct upload to TikTok storage failed, using resilient chunk proxy:', directErr)
-      }
-
-      // If direct upload failed (e.g. CORS), upload through Serverless Chunk Proxy (2MB chunks < 4.5MB limit)
-      if (!uploadSuccess) {
-        const CHUNK_SIZE = 2 * 1024 * 1024 // 2MB chunk
-        for (let start = 0; start < videoFile.size; start += CHUNK_SIZE) {
-          const end = Math.min(start + CHUNK_SIZE, videoFile.size)
-          const chunkBlob = videoFile.slice(start, end)
-          const chunkForm = new FormData()
-          chunkForm.append('action', 'chunk')
-          chunkForm.append('uploadUrl', uploadUrl)
-          chunkForm.append('startByte', String(start))
-          chunkForm.append('totalBytes', String(videoFile.size))
-          chunkForm.append('chunk', chunkBlob)
-
-          const chunkRes = await fetch('/api/tiktok/publish', {
-            method: 'POST',
-            body: chunkForm,
-          })
-          if (!chunkRes.ok) {
-            const chunkErr = await chunkRes.json().catch(() => ({}))
-            throw new Error(chunkErr.error?.message || `Lỗi tải phân đoạn video (${chunkRes.status})`)
-          }
-        }
-      }
-
-      setPublishResult({
-        success: true,
-        publishId,
-        message: 'Video đã được đăng lên TikTok thành công! Đang chờ TikTok xử lý hiển thị.',
-      })
-      toast.success('Đăng TikTok thành công!', 'Video đã được gửi tới tài khoản TikTok của bạn.')
-    } catch (err: unknown) {
-      const errMsg = (err as Error)?.message || 'Lỗi kết nối khi đăng video'
-      setPublishResult({
-        success: false,
-        message: errMsg,
-      })
-      toast.error('Đăng video thất bại', errMsg)
-    } finally {
-      setPublishing(false)
-    }
+      if (!videoFile) videoFile = product.assets.find((asset) => (asset.type === 'PRODUCT_VIDEO' || asset.type === 'DEMO_VIDEO') && asset.file)?.file || null
+      if (!videoFile || videoFile.size <= 0) throw new Error('Vui lòng render video MP4 trước khi gửi.')
+      if (mode === 'publish' && !fullCaption) throw new Error('Nhập caption trước khi đăng trực tiếp.')
+      const result = await sendTikTokVideo(videoFile, {mode, title: fullCaption, privacyLevel, isAigc, onInitialized: (id) => {
+        activePublishId = id
+        setPublishResult({mode, publishId: id, phase: 'processing', message: 'Đang chuyển file video tới TikTok...'})
+      }})
+      setPublishResult({mode, publishId: result.publishId, phase: 'processing', message: mode === 'upload' ? 'Đã gửi file. Đang chờ TikTok chuyển vào Inbox; video chưa được xuất bản.' : 'Đã gửi file. Đang chờ TikTok xác nhận xuất bản.'})
+      toast.info('Đã gửi file tới TikTok', 'Theo dõi kết quả xử lý ở phần trạng thái bên dưới.')
+    } catch (error) {
+      const message = (error as Error).message || 'Không gửi được video tới TikTok.'
+      setPublishResult({mode, publishId: activePublishId, phase: 'failed', message})
+      toast.error('Gửi video chưa thành công', message)
+    } finally {setPublishing(false)}
   }
 
   return (
@@ -1137,6 +1104,9 @@ export default function CreateVideoPage() {
               {geminiApiKey ? 'Gemini API Connected' : 'Cài đặt Gemini API Key'}
             </button>
 
+            <select aria-label="Cách gửi video TikTok" value={postingMode} disabled={publishing} onChange={(event) => changePostingMode(event.target.value as TikTokPostingMode)} className="bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-neutral-300">
+              <option value="publish">TikTok: Đăng trực tiếp</option><option value="upload">TikTok: Chuyển vào Inbox</option>
+            </select>
             {tiktokConnected ? (
               <div className="flex items-center gap-1.5 p-1 rounded-xl bg-neutral-900 border border-neutral-800">
                 <span className="px-2.5 py-1 text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
@@ -1154,7 +1124,7 @@ export default function CreateVideoPage() {
               </div>
             ) : (
               <a
-                href="/api/tiktok/auth?returnTo=/create"
+                href={`/api/tiktok/auth?scope=${postingMode}&returnTo=/create`}
                 className="px-3.5 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-rose-600 to-pink-600 hover:opacity-90 text-white shadow-lg shadow-rose-600/20 transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Film className="w-3.5 h-3.5" />
@@ -1953,15 +1923,15 @@ export default function CreateVideoPage() {
                     </div>
                   )}
 
-                  {/* 2. HOOK ENGINE: 5 Ranked Hook Candidates */}
+                  {/* Hook options ranked by grounded editorial criteria. */}
                   <div className="space-y-2.5 pt-2 border-t border-neutral-800/80">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
                         <Flame className="w-3.5 h-3.5 text-amber-400" />
-                        3 cách mở đầu, cùng một trọng tâm
+                        Các cách mở đầu, cùng một trọng tâm
                       </span>
                       <span className="text-[10px] text-neutral-400 font-mono">
-                        Đổi hook dùng lại ảnh bối cảnh
+                        Xếp theo độ rõ và nội dung có nguồn
                       </span>
                     </div>
 
@@ -1974,7 +1944,7 @@ export default function CreateVideoPage() {
                           scores: {},
                           reasoning: 'Câu mở đầu dựa trên thông tin đã có',
                         },
-                      ]).map((candidate) => {
+                      ]).map((candidate, index) => {
                         const isSelected = selectedHookId === candidate.id || (!selectedHookId && candidate.id === analysisResult.creativePlan?.selectedHook?.id)
                         return (
                           <div
@@ -1996,7 +1966,7 @@ export default function CreateVideoPage() {
                                 {candidate.source === 'gemini' ? 'Gemini' : candidate.source === 'rules' ? 'Dự phòng' : candidate.type}
                               </span>
                               <div className="flex items-center gap-1.5">
-
+                                {index === 0 && candidate.editorialScore && <span className="text-[10px] text-amber-300">Gợi ý</span>}
                                 {isSelected && (
                                   <span className="w-4 h-4 rounded-full bg-rose-500 flex items-center justify-center text-white">
                                     <Check className="w-2.5 h-2.5" />
@@ -2323,13 +2293,13 @@ export default function CreateVideoPage() {
                     )}
                   </div>
 
-                  {/* TikTok Direct Publish Form */}
+                  {/* TikTok Direct Post or Upload-to-Inbox */}
                   <div className="p-6 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-4">
                     <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
                       <div>
                         <h4 className="font-bold text-sm text-white flex items-center gap-2">
                           <Send className="w-4 h-4 text-rose-500" />
-                          Đăng trực tiếp lên kênh TikTok (Direct Post)
+                          Gửi video tới TikTok
                         </h4>
                         <p className="text-xs text-neutral-400 mt-0.5">
                           Sử dụng TikTok Content Posting API chính thức đã tích hợp.
@@ -2346,13 +2316,21 @@ export default function CreateVideoPage() {
                       )}
                     </div>
 
+                    <TikTokPostingModeSelector value={postingMode} disabled={publishing} onChange={changePostingMode} />
+                    {postingMode === 'upload' && <p className="rounded-xl bg-sky-950/30 border border-sky-800/40 p-3 text-xs leading-relaxed text-sky-200">Video sẽ được chuyển vào Inbox, chưa xuất bản. Bạn cần mở thông báo trong ứng dụng TikTok, hoàn tất caption, nhãn AI và đăng video. Nếu tài khoản hỗ trợ gắn sản phẩm, thực hiện bước đó trong TikTok.</p>}
+                    {!canSendToTikTok && <div className="rounded-xl border border-amber-700/40 bg-amber-950/20 p-3 space-y-2 text-xs text-amber-200">
+                      <p>{tiktokConnected ? `Tài khoản chưa cấp quyền ${requiredPostingScope(postingMode)} cho cách gửi này.` : 'Kết nối tài khoản TikTok trước khi gửi video.'}</p>
+                      <a href={`/api/tiktok/auth?scope=${postingMode}&returnTo=/create`} className="inline-block rounded-lg bg-amber-500 px-3 py-2 font-semibold text-neutral-950">{tiktokConnected ? 'Kết nối lại để cấp quyền' : 'Kết nối TikTok'}</a>
+                    </div>}
+
                     {/* Caption & Hashtags */}
                     <div className="space-y-2">
                       <label className="text-xs font-semibold text-neutral-300 block">
-                        Tiêu đề &amp; Caption TikTok (AI Tự sinh):
+                        {postingMode === 'upload' ? 'Caption để sao chép sang TikTok:' : 'Caption TikTok:'}
                       </label>
                       <textarea
                         rows={3}
+                        disabled={publishing}
                         value={caption}
                         onChange={(e) => setCaption(e.target.value)}
                         className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-3 text-xs text-neutral-200 focus:outline-none focus:border-rose-500 leading-relaxed"
@@ -2376,8 +2354,16 @@ export default function CreateVideoPage() {
                       </div>
                     </div>
 
-                    {/* Settings toggles */}
-                    <div className="pt-3 border-t border-neutral-800 space-y-2.5">
+                    {postingMode === 'upload' && <div className="space-y-2 text-xs text-neutral-400">
+                      <p>Caption và hashtag không tự chuyển qua API Upload. Sao chép nội dung rồi dán khi hoàn tất đăng trong TikTok.</p>
+                      <button type="button" className="rounded-lg border border-neutral-700 px-3 py-2 text-neutral-200 hover:bg-neutral-800" onClick={async () => {
+                        try {await navigator.clipboard.writeText(`${caption} ${hashtags.join(' ')}`.trim()); toast.success('Đã sao chép caption', 'Dán nội dung khi hoàn tất đăng trong TikTok.')}
+                        catch {toast.error('Chưa sao chép được', 'Bạn có thể chọn và sao chép nội dung caption thủ công.')}
+                      }}>Sao chép caption và hashtag</button>
+                    </div>}
+
+                    {/* Direct Post settings are completed in TikTok for Inbox uploads. */}
+                    {postingMode === 'publish' && <div className="pt-3 border-t border-neutral-800 space-y-2.5">
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-neutral-300">Chế độ hiển thị (Privacy Level):</span>
                         <select
@@ -2404,7 +2390,7 @@ export default function CreateVideoPage() {
                           </span>
                         </label>
                       </div>
-                    </div>
+                    </div>}
 
                     {/* Publish Action Button */}
                     <div className="pt-2 flex gap-3">
@@ -2417,32 +2403,36 @@ export default function CreateVideoPage() {
                             handlePublishToTikTok()
                           }
                         }}
-                        disabled={publishing || isRenderingVideo}
+                        disabled={publishing || isRenderingVideo || !canSendToTikTok || publishResult?.phase === 'processing'}
                         className="w-full py-3.5 px-5 rounded-xl font-bold text-sm bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white shadow-lg shadow-rose-600/30 disabled:opacity-50 transition flex items-center justify-center gap-2 cursor-pointer"
                       >
                         {publishing ? (
                           <>
                             <RefreshCw className="w-4 h-4 animate-spin" />
-                            Đang tải lên TikTok qua Content Posting API...
+                            {postingMode === 'upload' ? 'Đang chuyển video sang TikTok...' : 'Đang gửi video tới TikTok...'}
                           </>
                         ) : isRenderingVideo ? (
                           <>
                             <RefreshCw className="w-4 h-4 animate-spin" />
                             Đang render video chuẩn Preview...
                           </>
-                        ) : !renderedVideoUrl ? (
+                        ) : !renderedVideoUrl && !renderedVideoFile ? (
                           <>
                             <Sparkles className="w-4 h-4" />
-                            Render &amp; Đăng lên TikTok
+                            Render MP4 trước khi gửi
                           </>
                         ) : (
                           <>
                             <Send className="w-4 h-4" />
-                            ĐĂNG LÊN TIKTOK NGAY (PUBLISH TO TIKTOK)
+                            {publishResult?.phase === 'processing' ? 'Đang chờ TikTok xử lý...' : postingMode === 'upload' ? 'Chuyển vào Inbox TikTok' : 'Đăng trực tiếp lên TikTok'}
                           </>
                         )}
                       </button>
                     </div>
+                    {publishResult && <div role="status" aria-live="polite" className={`rounded-xl border p-3 text-xs space-y-2 ${publishResult.phase === 'failed' ? 'border-rose-700/50 bg-rose-950/20 text-rose-200' : publishResult.phase === 'inbox' || publishResult.phase === 'published' ? 'border-emerald-700/50 bg-emerald-950/20 text-emerald-200' : 'border-sky-700/40 bg-sky-950/20 text-sky-200'}`}>
+                      <p className="leading-relaxed">{publishResult.message}</p>
+                      {publishResult.publishId && <><p className="font-mono text-[10px] break-all text-neutral-500">Mã xử lý: {publishResult.publishId}</p><button type="button" onClick={handleCheckTikTokPost} disabled={checkingPost || publishing} className="rounded-lg border border-current/30 px-3 py-1.5 disabled:opacity-50">{checkingPost ? 'Đang kiểm tra...' : 'Kiểm tra lại trạng thái'}</button></>}
+                    </div>}
                   </div>
                 </div>
               </div>

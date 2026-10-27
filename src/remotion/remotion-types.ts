@@ -298,6 +298,7 @@ export interface VisualLayerTransform {
 }
 
 export interface StoryplanBeat {
+  secondaryImageUrl?: string
   plannedScene?: import('../engines/core/types').StoryboardScene
   id: string
   segmentId: string

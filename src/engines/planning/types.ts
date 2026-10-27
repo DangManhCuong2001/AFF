@@ -10,7 +10,26 @@ export interface ImageInsight {
   source: 'vision' | 'metadata'
 }
 export interface ProductFact { id: string; text: string; source: 'user_input' | 'image'; assetId?: string }
+export interface CommerceMessage {
+  viewerNeed: string
+  answer: string
+  evidenceIds: string[]
+  proof: {sceneId: string; factId: string; assetId?: string; kind: 'image' | 'description'}[]
+  nextStep: string
+  source: 'gemini' | 'rules'
+}
+export interface HookEditorialScore {
+  relevance: number
+  specificity: number
+  clarity: number
+  support: number
+  total: number
+}
 export interface SceneRenderPlan {
+  layout?: 'hero' | 'detail' | 'gallery' | 'spec' | 'decision'
+  secondaryAsset?: {assetId: string; assetIndex: number; crop?: ImageFocus}
+  spec?: {label: string; value: string; evidenceId: string}
+  fullProductCrop?: ImageFocus
   speechTiming?: {offsetSec: number; durationSec: number}
   contextImageUrl?: string
   ctaLabel?: string
@@ -26,6 +45,8 @@ export interface SceneRenderPlan {
   evidenceIds: string[]
 }
 export interface ContentPlan {
+  message?: CommerceMessage
+  buyingProfile?: {id: string; label: string; priorities: string[]; checks: string[]}
   format: ContentFormat
   formatReason: string
   angle: ContentAngle

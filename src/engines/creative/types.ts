@@ -2,6 +2,7 @@ import { ProductAnalysis, ProductInput, CreativePlan, StoryApproach } from '@/en
 export type { CreativePlan, StoryApproach }
 
 export interface HookCandidate {
+  editorialScore?: import('../planning/types').HookEditorialScore
   headline?: string
   source?: 'gemini' | 'rules'
   evidenceIds?: string[]

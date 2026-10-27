@@ -18,7 +18,7 @@ export const DynamicScene: React.FC<DynamicSceneProps> = ({
   isLastScene,
 }) => {
   if (beat.plannedScene?.renderPlan) {
-    return <PlannedCommerceScene scene={beat.plannedScene} imageUrl={beat.layers.product.url} durationSec={beat.durationSec} />
+    return <PlannedCommerceScene scene={beat.plannedScene} imageUrl={beat.layers.product.url} secondaryImageUrl={beat.secondaryImageUrl} durationSec={beat.durationSec} />
   }
   // Priority: If beat has an Infographic Card from Commercial Infographic Deck, render InfographicMotionScene!
   if (beat.infographicCard && beat.theme) {

@@ -17,5 +17,11 @@ require.extensions['.ts'] = (module, filename) => {
   })
   module._compile(outputText, filename)
 }
-require('../tests/adaptive-planner.test.ts')
-require('../tests/speech-timing.test.ts')
+const suites = process.argv.slice(2)
+if (suites.length) suites.forEach((suite) => require(path.resolve(suite)))
+else {
+  require('../tests/adaptive-planner.test.ts')
+  require('../tests/speech-timing.test.ts')
+  require('../tests/content-improvements.test.ts')
+  require('../tests/message-planning.test.ts')
+}

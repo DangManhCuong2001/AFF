@@ -74,6 +74,8 @@ export interface DirectPostInitParams {
 export interface DirectPostInitResult {
   publishId: string
   uploadUrl: string
+  chunkSize: number
+  totalChunkCount: number
 }
 
 export type TikTokPublishRawStatus =
@@ -99,6 +101,7 @@ export interface PublishStatusResult {
   failReason?: string
   postIds?: string[]
   publicityCheckState?: string
+  uploadedBytes?: number
 }
 
 export interface TikTokConnectionStatus {
