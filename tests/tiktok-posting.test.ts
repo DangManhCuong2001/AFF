@@ -6,7 +6,8 @@ import {GET as authorize} from '../src/app/api/tiktok/auth/route'
 import {GET as queryStatus} from '../src/app/api/tiktok/publish-status/route'
 import {tikTokTokenStore} from '../src/lib/tiktok/token-store'
 import {fileUploadPlan, uploadRanges, hasPostingScope, postingProgress} from '../src/lib/tiktok/posting-mode'
-import {sendTikTokVideo, fetchTikTokProgress} from '../src/lib/tiktok/upload-client'
+import {sendTikTokVideo, fetchTikTokProgress, type TikTokUploadSession} from '../src/lib/tiktok/upload-client'
+import {uploadDirectChunk} from '../src/lib/tiktok/upload-transport'
 import {uploadVideoChunk} from '../src/lib/tiktok/posting'
 
 const uploadUrl = 'https://open-upload.tiktokapis.com/video/?upload_id=test&upload_token=fixture'
@@ -192,4 +193,131 @@ test('Missing upload scope fails without a hidden Direct Post fallback', async (
     await assert.rejects(sendTikTokVideo(new Blob([new Uint8Array(1024)]), {mode: 'upload', title: '', privacyLevel: 'SELF_ONLY', isAigc: false}), /video.upload/)
     assert.equal(calls, 1)
   })
+})
+
+test('Retrying an interrupted transfer reuses the task and checks accepted bytes before sending', async () => {
+  const video = new Blob([new Uint8Array(1024)])
+  let session: TikTokUploadSession | undefined
+  let initializations = 0, transfers = 0, checks = 0
+  await mockTikTok(async (url) => {
+    if (String(url) === uploadUrl) {
+      transfers++
+      if (transfers === 1) throw new TypeError('Connection interrupted')
+      return new Response(null, {status: 201})
+    }
+    if (String(url).includes('publish-status')) {
+      checks++
+      if (checks === 1) throw new TypeError('Status unavailable')
+      return json({status: 'PROCESSING_UPLOAD', uploadedBytes: 0})
+    }
+    initializations++
+    return json({publishId: 'original-task', uploadUrl, ...fileUploadPlan(video.size)})
+  }, async () => {
+    const options = {mode: 'upload' as const, title: '', privacyLevel: 'SELF_ONLY' as const, isAigc: false, onSession: (value: TikTokUploadSession) => {session = value}}
+    await assert.rejects(sendTikTokVideo(video, options), /Status unavailable/)
+    assert.ok(session)
+    assert.equal((await sendTikTokVideo(video, {...options, session})).publishId, 'original-task')
+    assert.equal(initializations, 1)
+    assert.equal(transfers, 2)
+    assert.equal(checks, 2)
+  })
+})
+
+test('A resumed task already accepted by TikTok never resends the MP4 or initializes again', async () => {
+  const video = new Blob([new Uint8Array(1024)])
+  await mockTikTok(async (url) => {
+    assert.ok(String(url).includes('publish-status'))
+    return json({status: 'SEND_TO_USER_INBOX'})
+  }, async () => {
+    const result = await sendTikTokVideo(video, {mode: 'upload', title: '', privacyLevel: 'SELF_ONLY', isAigc: false, session: {publishId: 'original-task', uploadUrl, videoSize: video.size, mode: 'upload', ...fileUploadPlan(video.size)}})
+    assert.equal(result.publishId, 'original-task')
+  })
+})
+
+test('Hosted fallback refuses an oversized proxy request without splitting TikTok chunks or creating a second task', async () => {
+  const video = new Blob([new Uint8Array(5_239_130)])
+  let initializations = 0
+  await mockTikTok(async (url, init) => {
+    if (String(url) === uploadUrl) throw new TypeError('CORS')
+    if (String(url).includes('publish-status')) return json({status: 'PROCESSING_UPLOAD', uploadedBytes: 0})
+    assert.ok(!(init?.body instanceof FormData), 'Oversized file must not be posted to the serverless function')
+    initializations++
+    return json({publishId: 'original-task', uploadUrl, maxProxyBytes: 4_000_000, ...fileUploadPlan(video.size)})
+  }, async () => {
+    await assert.rejects(sendTikTokVideo(video, {mode: 'upload', title: '', privacyLevel: 'SELF_ONLY', isAigc: false}), /vượt giới hạn/)
+    assert.equal(initializations, 1)
+  })
+})
+
+test('Partially accepted chunks are not resent when resuming; completed ranges are skipped', async () => {
+  const size = 65 * 1024 ** 2
+  const video = new Blob([new Uint8Array(size)])
+  let bytes = 1, transfers = 0
+  const plan = fileUploadPlan(size)
+  await mockTikTok(async (url, init) => {
+    if (String(url).includes('publish-status')) return json({status: 'PROCESSING_UPLOAD', uploadedBytes: bytes})
+    assert.equal(String(url), uploadUrl)
+    transfers++
+    assert.equal((init?.headers as Record<string, string>)['Content-Range'], `bytes ${plan.chunkSize}-${size - 1}/${size}`)
+    return new Response(null, {status: 201})
+  }, async () => {
+    const options = {mode: 'upload' as const, title: '', privacyLevel: 'SELF_ONLY' as const, isAigc: false, session: {mode: 'upload' as const, videoSize: size, publishId: 'original-task', uploadUrl, ...plan}}
+    await assert.rejects(sendTikTokVideo(video, options), /nhận dở/)
+    assert.equal(transfers, 0)
+    bytes = plan.chunkSize
+    await sendTikTokVideo(video, options)
+    assert.equal(transfers, 1)
+  })
+})
+
+class UploadRequestFixture {
+  upload: {onprogress: ((event: {loaded: number}) => void) | null} = {onprogress: null}
+  onload: (() => void) | null = null
+  onerror: (() => void) | null = null
+  ontimeout: (() => void) | null = null
+  onabort: (() => void) | null = null
+  status = 201
+  timeout = 0
+  aborted = false
+  headers: Record<string, string> = {}
+  open() {}
+  setRequestHeader(name: string, value: string) {this.headers[name] = value}
+  send() {}
+  abort() {this.aborted = true; this.onabort?.()}
+}
+
+test('A stalled browser PUT is aborted after inactivity instead of leaving the button pending forever', async (context) => {
+  const original = globalThis.XMLHttpRequest
+  const request = new UploadRequestFixture()
+  globalThis.XMLHttpRequest = function () {return request} as unknown as typeof XMLHttpRequest
+  context.mock.timers.enable({apis: ['setTimeout']})
+  try {
+    const result = uploadDirectChunk(uploadUrl, new Blob([new Uint8Array(100)]), 0, 100)
+    const rejected = assert.rejects(result, /60 giây/)
+    context.mock.timers.tick(60_000)
+    await rejected
+    assert.equal(request.aborted, true)
+  } finally {globalThis.XMLHttpRequest = original; context.mock.timers.reset()}
+})
+
+test('A slow upload stays alive while bytes advance and reports progress without claiming Inbox delivery', async (context) => {
+  const original = globalThis.XMLHttpRequest
+  const request = new UploadRequestFixture()
+  globalThis.XMLHttpRequest = function () {return request} as unknown as typeof XMLHttpRequest
+  context.mock.timers.enable({apis: ['setTimeout']})
+  try {
+    const progress: number[] = []
+    const result = uploadDirectChunk(uploadUrl, new Blob([new Uint8Array(100)]), 200, 300, bytes => progress.push(bytes))
+    context.mock.timers.tick(59_000)
+    request.upload.onprogress?.({loaded: 40})
+    context.mock.timers.tick(59_000)
+    request.upload.onprogress?.({loaded: 100})
+    assert.equal(request.aborted, false)
+    assert.equal(request.headers['Content-Range'], 'bytes 200-299/300')
+    request.onload?.()
+    assert.equal(await result, 201)
+    assert.deepEqual(progress, [40, 100])
+    context.mock.timers.tick(600_000)
+    assert.equal(request.aborted, false)
+  } finally {globalThis.XMLHttpRequest = original; context.mock.timers.reset()}
 })

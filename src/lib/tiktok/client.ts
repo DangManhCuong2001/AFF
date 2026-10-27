@@ -63,6 +63,7 @@ export async function tiktokFetch<T = unknown>(
       method,
       headers: requestHeaders,
       body: requestBodyString,
+      signal: AbortSignal.timeout(15_000),
     })
   } catch (netErr: unknown) {
     logEntry.errorCode = 'NETWORK_ERROR'

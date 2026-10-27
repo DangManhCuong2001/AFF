@@ -54,7 +54,7 @@ import { RemotionPlayerPreview } from '@/components/video/RemotionPlayerPreview'
 import { renderVideoOnClient, isClientExportSupported } from '@/lib/video/client-renderer'
 import {hasPostingScope, requiredPostingScope, type TikTokPostingMode} from '@/lib/tiktok/posting-mode'
 import {TikTokPostingModeSelector} from '@/components/video/TikTokPostingModeSelector'
-import {sendTikTokVideo, fetchTikTokProgress} from '@/lib/tiktok/upload-client'
+import {sendTikTokVideo, fetchTikTokProgress, type TikTokUploadSession} from '@/lib/tiktok/upload-client'
 import { useToast } from '@/components/ui/Toast'
 
 interface CategoryTab {
@@ -196,9 +196,10 @@ export default function CreateVideoPage() {
   const [checkingPost, setCheckingPost] = useState(false)
   const [isAigc, setIsAigc] = useState(false)
   const [publishing, setPublishing] = useState(false)
+  const uploadSessionRef = React.useRef<{session: TikTokUploadSession; video: File} | null>(null)
   const [publishResult, setPublishResult] = useState<{
     mode: TikTokPostingMode
-    phase: 'processing' | 'inbox' | 'published' | 'failed'
+    phase: 'transferring' | 'processing' | 'inbox' | 'published' | 'failed'
     publishId?: string
     message: string
   } | null>(null)
@@ -755,6 +756,8 @@ export default function CreateVideoPage() {
   // Start Step 3: Video Generation Flow (Real FFmpeg + Vietnamese TTS Rendering)
   const handleStartGeneratingVideo = async () => {
     if (isRenderingVideo) return
+    uploadSessionRef.current = null
+    setPublishResult(null)
     const renderImageUrls: string[] = []
     setIsRenderingVideo(true)
     setGenerationProgress({
@@ -1023,37 +1026,42 @@ export default function CreateVideoPage() {
     setCheckingPost(true)
     try {
       const progress = await fetchTikTokProgress(id, mode)
-      setPublishResult((current) => current?.publishId === id ? {...current, phase: progress.phase, message: progress.message} : current)
+      setPublishResult((current) => current?.publishId === id ? {...current, phase: progress.terminal ? progress.phase : current.phase, message: progress.message} : current)
     } catch (error) {toast.error('Chưa đọc được trạng thái', (error as Error).message)}
     finally {setCheckingPost(false)}
   }
 
   const handlePublishToTikTok = async () => {
-    if (!canSendToTikTok || publishing || publishResult?.phase === 'processing') return
+    if (!canSendToTikTok || publishing || ['processing', 'inbox', 'published'].includes(publishResult?.phase || '')) return
     const mode = postingMode
     setPublishing(true)
-    setPublishResult(null)
+    setPublishResult({mode, phase: 'transferring', message: 'Đang chuẩn bị phiên gửi video...'})
     let activePublishId: string | undefined
     try {
       const fullCaption = `${caption} ${hashtags.join(' ')}`.trim()
       let videoFile: File | null = renderedVideoFile
       if (!videoFile && renderedVideoUrl) {
-        const response = await fetch(renderedVideoUrl)
+        const response = await fetch(renderedVideoUrl, {signal: AbortSignal.timeout(20_000)})
         if (!response.ok) throw new Error('Không tải được file MP4 đã dựng.')
         videoFile = new File([await response.blob()], 'tiktok_video.mp4', {type: 'video/mp4'})
       }
       if (!videoFile) videoFile = product.assets.find((asset) => (asset.type === 'PRODUCT_VIDEO' || asset.type === 'DEMO_VIDEO') && asset.file)?.file || null
       if (!videoFile || videoFile.size <= 0) throw new Error('Vui lòng render video MP4 trước khi gửi.')
       if (mode === 'publish' && !fullCaption) throw new Error('Nhập caption trước khi đăng trực tiếp.')
-      const result = await sendTikTokVideo(videoFile, {mode, title: fullCaption, privacyLevel, isAigc, onInitialized: (id) => {
+      const session = uploadSessionRef.current?.video === videoFile && uploadSessionRef.current.session.mode === mode ? uploadSessionRef.current.session : undefined
+      activePublishId = session?.publishId
+      const result = await sendTikTokVideo(videoFile, {mode, title: fullCaption, privacyLevel, isAigc, session,
+        onSession: (session) => {uploadSessionRef.current = {session, video: videoFile!}},
+        onProgress: (message) => setPublishResult((current) => current?.phase === 'transferring' ? {...current, message} : current),
+        onInitialized: (id) => {
         activePublishId = id
-        setPublishResult({mode, publishId: id, phase: 'processing', message: 'Đang chuyển file video tới TikTok...'})
+        setPublishResult({mode, publishId: id, phase: 'transferring', message: 'Đang kết nối để chuyển file video tới TikTok...'})
       }})
-      setPublishResult({mode, publishId: result.publishId, phase: 'processing', message: mode === 'upload' ? 'Đã gửi file. Đang chờ TikTok chuyển vào Inbox; video chưa được xuất bản.' : 'Đã gửi file. Đang chờ TikTok xác nhận xuất bản.'})
+      setPublishResult((current) => current?.publishId === result.publishId && ['inbox', 'published'].includes(current.phase) ? current : {mode, publishId: result.publishId, phase: 'processing', message: mode === 'upload' ? 'Đã gửi file. Đang chờ TikTok chuyển vào Inbox; video chưa được xuất bản.' : 'Đã gửi file. Đang chờ TikTok xác nhận xuất bản.'})
       toast.info('Đã gửi file tới TikTok', 'Theo dõi kết quả xử lý ở phần trạng thái bên dưới.')
     } catch (error) {
       const message = (error as Error).message || 'Không gửi được video tới TikTok.'
-      setPublishResult({mode, publishId: activePublishId, phase: 'failed', message})
+      setPublishResult((current) => current && ['inbox', 'published'].includes(current.phase) ? current : {mode, publishId: activePublishId, phase: 'failed', message: activePublishId ? `${message} Phiên gửi được giữ lại; kiểm tra trạng thái hoặc tiếp tục phiên này, không tạo yêu cầu mới.` : message})
       toast.error('Gửi video chưa thành công', message)
     } finally {setPublishing(false)}
   }
@@ -2405,7 +2413,7 @@ export default function CreateVideoPage() {
                             handlePublishToTikTok()
                           }
                         }}
-                        disabled={publishing || isRenderingVideo || !canSendToTikTok || publishResult?.phase === 'processing'}
+                        disabled={publishing || isRenderingVideo || !canSendToTikTok || ['processing', 'inbox', 'published'].includes(publishResult?.phase || '')}
                         className="w-full py-3.5 px-5 rounded-xl font-bold text-sm bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white shadow-lg shadow-rose-600/30 disabled:opacity-50 transition flex items-center justify-center gap-2 cursor-pointer"
                       >
                         {publishing ? (
@@ -2426,14 +2434,15 @@ export default function CreateVideoPage() {
                         ) : (
                           <>
                             <Send className="w-4 h-4" />
-                            {publishResult?.phase === 'processing' ? 'Đang chờ TikTok xử lý...' : postingMode === 'upload' ? 'Chuyển vào Inbox TikTok' : 'Đăng trực tiếp lên TikTok'}
+                            {publishResult?.phase === 'inbox' ? 'TikTok đã xác nhận chuyển vào Inbox' : publishResult?.phase === 'published' ? 'TikTok đã xác nhận xuất bản' : publishResult?.phase === 'processing' ? 'Đang chờ TikTok xử lý...' : publishResult?.phase === 'failed' && publishResult.publishId ? 'Tiếp tục phiên gửi video' : postingMode === 'upload' ? 'Chuyển vào Inbox TikTok' : 'Đăng trực tiếp lên TikTok'}
                           </>
                         )}
                       </button>
                     </div>
                     {publishResult && <div role="status" aria-live="polite" className={`rounded-xl border p-3 text-xs space-y-2 ${publishResult.phase === 'failed' ? 'border-rose-700/50 bg-rose-950/20 text-rose-200' : publishResult.phase === 'inbox' || publishResult.phase === 'published' ? 'border-emerald-700/50 bg-emerald-950/20 text-emerald-200' : 'border-sky-700/40 bg-sky-950/20 text-sky-200'}`}>
                       <p className="leading-relaxed">{publishResult.message}</p>
-                      {publishResult.publishId && <><p className="font-mono text-[10px] break-all text-neutral-500">Mã xử lý: {publishResult.publishId}</p><button type="button" onClick={handleCheckTikTokPost} disabled={checkingPost || publishing} className="rounded-lg border border-current/30 px-3 py-1.5 disabled:opacity-50">{checkingPost ? 'Đang kiểm tra...' : 'Kiểm tra lại trạng thái'}</button></>}
+                      {publishResult.phase === 'inbox' && <p className="leading-relaxed">Chưa thấy thông báo? Kiểm tra đúng tài khoản TikTok đã kết nối, làm mới Hộp thư và mở thông báo tải video. Không cần gửi lại video này.</p>}
+                      {publishResult.publishId && <><p className="font-mono text-[10px] break-all text-neutral-500">Mã xử lý: {publishResult.publishId}</p><button type="button" onClick={handleCheckTikTokPost} disabled={checkingPost} className="rounded-lg border border-current/30 px-3 py-1.5 disabled:opacity-50">{checkingPost ? 'Đang kiểm tra...' : 'Kiểm tra lại trạng thái'}</button></>}
                     </div>}
                   </div>
                 </div>

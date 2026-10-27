@@ -77,6 +77,7 @@ export async function exchangeCodeForTokens(code: string): Promise<TikTokTokenDa
 
   const res = await fetch(`${TIKTOK_API_BASE}/oauth/token/`, {
     method: 'POST',
+    signal: AbortSignal.timeout(15_000),
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Cache-Control': 'no-cache',
@@ -140,6 +141,7 @@ export async function refreshAccessToken(currentRefreshToken: string): Promise<T
 
   const res = await fetch(`${TIKTOK_API_BASE}/oauth/token/`, {
     method: 'POST',
+    signal: AbortSignal.timeout(15_000),
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Cache-Control': 'no-cache',

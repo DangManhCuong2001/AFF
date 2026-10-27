@@ -21,14 +21,14 @@ export async function POST(request: NextRequest) {
       const initResult = body.mode === 'upload'
         ? await initInboxUpload(body.videoSize)
         : await initDirectPost(body)
-      return NextResponse.json({success: true, mode: body.mode, ...initResult})
+      return NextResponse.json({success: true, mode: body.mode, ...initResult, ...(process.env.VERCEL ? {maxProxyBytes: 4_000_000} : {})})
     }
 
     // ── Flow B: Multipart FormData (Chunk upload OR Legacy single file) ──
     const formData = await request.formData()
     const action = formData.get('action') as string | null
 
-    // ── Sub-Flow B1: Chunk Proxy Upload (Bypasses Vercel 4.5MB limit with 2MB chunks) ──
+    // Proxy the exact chunk declared to TikTok; it cannot be split to bypass hosting limits.
     if (action === 'chunk') {
       const uploadUrl = formData.get('uploadUrl') as string | null
       const chunkFile = formData.get('chunk') as File | null

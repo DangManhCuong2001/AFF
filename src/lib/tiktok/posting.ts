@@ -94,22 +94,27 @@ export async function uploadVideoChunk(
   const endByte = startByte + buffer.length - 1
   const contentRange = `bytes ${startByte}-${endByte}/${totalBytes}`
 
-  const res = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'video/mp4',
-      'Content-Length': buffer.length.toString(),
-      'Content-Range': contentRange,
-    },
-    body: new Uint8Array(buffer),
-    redirect: 'error',
-  })
+  let res: Response
+  try {
+    res = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'video/mp4',
+        'Content-Length': buffer.length.toString(),
+        'Content-Range': contentRange,
+      },
+      body: new Uint8Array(buffer),
+      redirect: 'error',
+      signal: AbortSignal.timeout(45_000),
+    })
+  } catch {
+    throw new TikTokApiError({code: 'UPLOAD_CONNECTION_INTERRUPTED', message: 'Kết nối gửi file tới TikTok bị ngắt hoặc quá thời gian chờ. Kiểm tra trạng thái phiên gửi trước khi thử lại.', httpStatus: 504})
+  }
 
   if (!res.ok) {
-    const errorText = await res.text().catch(() => '')
     throw new TikTokApiError({
       code: 'UPLOAD_BYTES_FAILED',
-      message: `Failed to upload video data to TikTok upload_url: HTTP ${res.status} - ${errorText}`,
+      message: `TikTok chưa nhận được phân đoạn video (HTTP ${res.status}). Kiểm tra lại trạng thái phiên gửi.`,
       httpStatus: res.status,
     })
   }
