@@ -94,12 +94,12 @@ test('Valid model response binds known evidence and ignores observations of unse
   })
 })
 
-test('Out-of-bounds vision crops are rejected', async () => {
+test('Out-of-bounds vision crops are ignored without discarding valid authored copy', async () => {
   const base = planAdaptiveVideo(product)
   const value = {images: [{assetId: 'main', role: 'primary', focus: {x: 80, y: 0, width: 50, height: 100}}], scenes: base.storyboard.scenes.map((scene) => ({headline: scene.headline, voice: scene.voice, assetId: scene.renderPlan!.assetId, evidenceIds: scene.renderPlan!.evidenceIds}))}
   await withMockResponse(value, async () => {
     const result = await analyzeProductWithGemini(product, 'test-key')
-    assert.equal(result.contentPlan.source, 'rules')
+    assert.equal(result.contentPlan.source, 'gemini')
     assert.ok(result.storyboard.scenes.every((scene) => !scene.renderPlan?.crop))
   })
 })
@@ -172,8 +172,8 @@ test('Cloudflare uses real reference multipart, compresses output, deduplicates 
       assert.equal(new Headers(init?.headers).has('Content-Type'), false)
       assert.equal(new Headers(init?.headers).has('x-goog-api-key'), false)
       const body = init?.body as FormData
-      assert.equal(body.get('width'), '768')
-      assert.equal(body.get('height'), '1344')
+      assert.equal(body.get('width'), '1024')
+      assert.equal(body.get('height'), '1024')
       assert.match(String(body.get('prompt')), /authoritative product reference/)
       const file = body.get('input_image_0') as Blob
       const dimensions = await sharp(Buffer.from(await file.arrayBuffer())).metadata()

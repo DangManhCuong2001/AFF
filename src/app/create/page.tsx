@@ -43,7 +43,7 @@ import { VoicePersonality } from '@/engines/speech/types'
 import type { VoiceProvider } from '@/lib/audio/provider'
 import type { ContentPlan, ContentAngle } from '@/engines/planning/types'
 import { ContentPlanSummary } from '@/components/video/ContentPlanSummary'
-import { prepareAnalysisImages } from '@/lib/ai/prepare-images'
+import {loadProductImageBlob, prepareAnalysisImages} from '@/lib/ai/prepare-images'
 import type { AnalysisImage } from '@/lib/ai/gemini'
 import { attachContextImage, getContextImage } from '@/lib/ai/context-scenes'
 import { isProductImage, withOpeningHook } from '@/engines/planning/AdaptiveVideoPlanner'
@@ -144,6 +144,7 @@ export default function CreateVideoPage() {
   const [isGeneratingContext, setIsGeneratingContext] = useState(false)
   const [contextError, setContextError] = useState<string | null>(null)
   const [contextRequiresSetup, setContextRequiresSetup] = useState(false)
+  const [contextCanRetry, setContextCanRetry] = useState(true)
   const contextCacheRef = React.useRef<{signature: string; imageUrl: string} | null>(null)
   const [analysisResult, setAnalysisResult] = useState<{
     analysis: ProductAnalysis
@@ -521,6 +522,7 @@ export default function CreateVideoPage() {
     setIsGeneratingContext(true)
     setContextError(null)
     setContextRequiresSetup(false)
+    setContextCanRetry(true)
     setAnalysisStage('Đang tạo bối cảnh từ ảnh sản phẩm...')
     try {
       const primaryId = product.assets.find((asset) => asset.isPrimary && isProductImage(asset))?.id
@@ -533,6 +535,7 @@ export default function CreateVideoPage() {
         const data = await response.json()
         if (!response.ok || !data.imageUrl) {
           setContextRequiresSetup(data.code === 'CONFIGURATION_REQUIRED')
+          setContextCanRetry(data.code === 'CONFIGURATION_REQUIRED' || data.retryable !== false)
           throw new Error(data.error || 'Không thể tạo ảnh bối cảnh')
         }
         imageUrl = data.imageUrl as string
@@ -562,8 +565,13 @@ export default function CreateVideoPage() {
       const sourceImages = await prepareAnalysisImages(product.assets)
       const primaryId = product.assets.find((asset) => asset.isPrimary && isProductImage(asset))?.id
       const reference = sourceImages.find((image) => image.assetId === primaryId) || sourceImages[0]
-      if (reference) contextCacheRef.current = {signature: `${product.name}|${product.category}|${reference.dataUrl}`, imageUrl: images[0].dataUrl}
-      setAnalysisResult((previous) => previous ? {...previous, storyboard: {...previous.storyboard, scenes: attachContextImage(previous.storyboard.scenes, images[0].dataUrl)}} : previous)
+      let imageUrl = images[0].dataUrl
+      if (reference) {
+        const saved = await fetch('/api/assets/context', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: product.name, category: product.category, reference, existingImage: imageUrl})}).then(response => response.ok ? response.json() : null).catch(() => null)
+        if (saved?.imageUrl) imageUrl = saved.imageUrl
+        contextCacheRef.current = {signature: `${product.name}|${product.category}|${reference.dataUrl}`, imageUrl}
+      }
+      setAnalysisResult((previous) => previous ? {...previous, storyboard: {...previous.storyboard, scenes: attachContextImage(previous.storyboard.scenes, imageUrl)}} : previous)
       setContextError(null)
       setContextRequiresSetup(false)
     } catch (error) {setContextError(error instanceof Error ? error.message : 'Không tải được ảnh bối cảnh')}
@@ -572,6 +580,7 @@ export default function CreateVideoPage() {
 
   // Execute AI Product Analysis (Gemini API with Algorithmic Fallback)
   const handleAnalyzeProduct = async () => {
+    if (analyzing || isRegeneratingAngle || isGeneratingContext || isRenderingVideo) return
     if (!product.name.trim()) {
       toast.warning('Thiếu thông tin', 'Vui lòng nhập tên sản phẩm trước khi phân tích.')
       return
@@ -587,6 +596,7 @@ export default function CreateVideoPage() {
         body: JSON.stringify({
           ...product,
           targetDuration: selectedDuration,
+          angle: currentStep === 2 ? analysisResult?.contentPlan?.angle : undefined,
           analysisImages,
           geminiApiKey: geminiApiKey.trim() || undefined,
         }),
@@ -600,7 +610,9 @@ export default function CreateVideoPage() {
 
       const result = await addContextToResult({analysis: data.analysis, strategy: data.strategy, storyboard: data.storyboard, creativePlan: data.creativePlan, contentPlan: data.contentPlan}, analysisImages)
       setAnalysisResult(result)
-      toast.success('Phân tích thành công!', 'Đã tạo kịch bản 9:16 và kế hoạch video.')
+      if (data.contentPlan?.aiStatus && data.contentPlan.aiStatus.state !== 'completed') {
+        toast.warning(data.contentPlan.aiStatus.state === 'partial' ? 'Gemini chỉ hoàn tất một phần' : 'Đang dùng kế hoạch dự phòng', data.contentPlan.aiStatus.message)
+      } else toast.success('Phân tích thành công!', 'Đã tạo kịch bản 9:16 và kế hoạch video.')
       if (data.creativePlan?.selectedHook?.id) {
         setSelectedHookId(data.creativePlan.selectedHook.id)
       }
@@ -742,6 +754,8 @@ export default function CreateVideoPage() {
 
   // Start Step 3: Video Generation Flow (Real FFmpeg + Vietnamese TTS Rendering)
   const handleStartGeneratingVideo = async () => {
+    if (isRenderingVideo) return
+    const renderImageUrls: string[] = []
     setIsRenderingVideo(true)
     setGenerationProgress({
       stage: `1/4. Khởi tạo & nạp kịch bản Storyboard ${selectedDuration}s...`,
@@ -766,23 +780,12 @@ export default function CreateVideoPage() {
         (a) => isProductImage(a) && (a.file || a.url)
       )
 
-      for (let idx = 0; idx < candidateAssets.length; idx++) {
-        const a = candidateAssets[idx]
-        if (a.file) {
-          formData.append('images', a.file)
-        } else if (a.url) {
-          try {
-            const imgRes = await fetch(a.url)
-            if (!imgRes.ok) throw new Error('Image unavailable')
-            if (imgRes.ok) {
-              const blob = await imgRes.blob()
-              formData.append('images', blob, `product_asset_${idx}.jpg`)
-            }
-          } catch (imgErr) {
-            console.warn('[VideoAssets] Could not load image:', imgErr)
-            throw new Error(`Không tải được ảnh sản phẩm ${idx + 1}. Vui lòng tải ảnh lên hoặc thử lại.`)
-          }
-        }
+      const imageBlobs = await Promise.all(candidateAssets.map((asset, index) => loadProductImageBlob(asset).catch(() => {
+        throw new Error(`Không tải được ảnh sản phẩm ${index + 1}. Vui lòng tải ảnh lên hoặc thử lại.`)
+      })))
+      for (const [index, blob] of imageBlobs.entries()) {
+        formData.append('images', blob, candidateAssets[index].name || `product_asset_${index}.jpg`)
+        renderImageUrls.push(URL.createObjectURL(blob))
       }
 
       const imageUrls = candidateAssets.filter((a) => a.url).map((a) => a.url!)
@@ -874,9 +877,7 @@ export default function CreateVideoPage() {
             price: product.price ? Number(product.price) : undefined,
             category: product.category,
             scenes: renderScenes,
-            imageUrls: product.assets
-              .filter((a) => isProductImage(a) && a.url)
-              .map((a) => a.url!),
+            imageUrls: renderImageUrls,
             voiceAudioUrl: activeVoiceUrl || undefined,
             bgmAudioUrl: '/music/lofi-beat.mp3',
             fps: 30,
@@ -986,6 +987,7 @@ export default function CreateVideoPage() {
     } catch (err: unknown) {
       toast.error('Lỗi render video', (err as Error).message)
     } finally {
+      renderImageUrls.forEach((url) => URL.revokeObjectURL(url))
       setIsRenderingVideo(false)
     }
   }
@@ -1831,7 +1833,7 @@ export default function CreateVideoPage() {
               </div>
             </div>
 
-            {analysisResult.contentPlan && <ContentPlanSummary plan={analysisResult.contentPlan} />}
+            {analysisResult.contentPlan && <ContentPlanSummary plan={analysisResult.contentPlan} onRetry={handleAnalyzeProduct} retrying={analyzing || isRegeneratingAngle || isGeneratingContext || isRenderingVideo} />}
             {contextError && <div role="alert" className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs text-amber-200 space-y-2">
               <p>Chưa có ảnh bối cảnh: {contextError}</p>
               {contextRequiresSetup && <div className="space-y-2">
@@ -1841,13 +1843,13 @@ export default function CreateVideoPage() {
                   <a href="https://developers.cloudflare.com/workers-ai/get-started/rest-api/" target="_blank" rel="noreferrer" className="underline">Hướng dẫn cấu hình Cloudflare</a>
                 </div>
               </div>}
-              <button type="button" disabled={isGeneratingContext || isRegeneratingAngle || analyzing} onClick={handleRetryContext} className="px-3 py-2 rounded-lg bg-neutral-800 text-white disabled:opacity-50">{isGeneratingContext ? 'Đang tạo...' : contextRequiresSetup ? 'Đã cấu hình Cloudflare — kiểm tra lại' : 'Thử tạo bối cảnh lại'}</button>
+              {contextCanRetry && <button type="button" disabled={isGeneratingContext || isRegeneratingAngle || analyzing} onClick={handleRetryContext} className="px-3 py-2 rounded-lg bg-neutral-800 text-white disabled:opacity-50">{isGeneratingContext ? 'Đang tạo...' : contextRequiresSetup ? 'Đã cấu hình Cloudflare — kiểm tra lại' : 'Thử tạo bối cảnh lại'}</button>}
             </div>}
             <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 space-y-2">
               <label className="block font-semibold">Dùng ảnh bối cảnh có sẵn
                 <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleUploadContext} disabled={isGeneratingContext || isRegeneratingAngle || isRenderingVideo || analyzing} className="mt-2 block w-full text-neutral-400" />
               </label>
-              <p className="text-neutral-500">Tải ảnh dọc có đúng sản phẩm để dùng cho cảnh mở đầu và kết thúc. Thay ảnh bối cảnh không tạo lại voice.</p>
+              <p className="text-neutral-500">Tải ảnh rõ toàn bộ sản phẩm để dùng cho cảnh mở đầu và kết thúc. Thay ảnh bối cảnh không tạo lại voice.</p>
             </div>
             {getContextImage(analysisResult.storyboard.scenes) && <p className="text-xs text-emerald-300">Đã có ảnh bối cảnh. Cảnh mở đầu và kết thúc trong preview và bản xuất dùng cùng ảnh này.</p>}
 

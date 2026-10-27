@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ProductInput } from '@/engines/core/types'
-import { analyzeProductWithGemini, AnalysisImage } from '@/lib/ai/gemini'
+import type {AnalysisImage} from '@/lib/ai/gemini'
+import {analyzeProductForVideo} from '@/lib/ai/product-video-analysis'
 import { ProductInputSchema, ProductAssetSchema } from '@/engines/core/contracts'
 import type { ContentAngle } from '@/engines/planning/types'
 
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
     }
     const product = parsed.data
 
-    const result = await analyzeProductWithGemini(
+    const result = await analyzeProductForVideo(
       product,
       geminiApiKey,
       targetDuration || 22,

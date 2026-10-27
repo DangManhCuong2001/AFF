@@ -11,7 +11,7 @@ export function planSceneLayouts(scenes: StoryboardScene[], assets: ProductInput
     // Recalculate after AI authors/reorders scenes; never retain a stale second asset.
     const next: SceneRenderPlan = {...plan, secondaryAsset: undefined, spec: undefined, fullProductCrop: undefined, layout: 'hero'}
     if (scene.type === 'cta') next.layout = 'decision'
-    else if (scene.type !== 'hook' && plan.framing === 'detail' && image?.source === 'vision' && image.focus && fact && visualMatch(fact, image) > 0) {
+    else if (scene.type !== 'hook' && plan.framing === 'detail' && image?.source === 'vision' && plan.crop && fact && visualMatch(fact, image) > 0) {
       next.layout = 'detail'
       next.fullProductCrop = image.productBounds
     } else if (scene.type === 'product_hero') {

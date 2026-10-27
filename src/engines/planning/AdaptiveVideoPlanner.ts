@@ -1,7 +1,8 @@
 import type { ProductInput, ProductAnalysis, VideoStrategy, VideoStoryboard, StoryboardScene } from '../core/types'
 import type { CreativePlan } from '../creative/types'
 import type { ContentAngle, ContentPlan, ImageInsight, ProductFact } from './types'
-import {distinctFacts, equivalentCopy} from './copy-novelty'
+import {distinctFacts} from './copy-novelty'
+import {extractProductFacts, isMerchantCopy, isProductDetail} from './product-facts'
 import {buyingProfileFor} from './buying-profile'
 import {rankCommerceHooks} from './hook-ranking'
 import {buildCommerceMessage} from './message-plan'
@@ -11,15 +12,9 @@ import {createCommerceCopy, factKeywords, intentForFact, visualMatch} from './co
 export const isProductImage = (asset: ProductInput['assets'][number]) => ['image', 'PRODUCT_IMAGE', 'DETAIL_IMAGE'].includes(asset.type)
 const words = (text: string) => text.trim().split(/\s+/).filter(Boolean)
 const short = (text: string, limit = 16) => words(text).length <= limit ? text : words(text).slice(0, limit).join(' ') + '…'
-const firstStatement = (text: string) => text.trim().split(/(?:[.!?](?=\s|$)|\n)/).find(Boolean)?.trim() || ''
 
 export function collectProductFacts(product: ProductInput): ProductFact[] {
-  const raw = [...(product.features || []), ...(product.benefits || []), ...(product.description || '').split(/[;\n]/), product.howToUse || '']
-  const statements = raw.map(firstStatement).filter(Boolean)
-  const unique = statements.filter((text, index) => !statements.slice(0, index).some((previous) => equivalentCopy(previous, text)))
-  // Price/discount copy is not evergreen evidence for video claims.
-  return unique.filter((text) => !/\d[\d.,]*\s*(?:k\b|đ|₫|vnd|%)/i.test(text)).slice(0, 8)
-    .map((text, index) => ({id: `fact-${index + 1}`, text, source: 'user_input'}))
+  return extractProductFacts(product).facts
 }
 
 export function distributeSceneDurations(scenes: StoryboardScene[], duration: number): StoryboardScene[] {
@@ -36,19 +31,28 @@ export function distributeSceneDurations(scenes: StoryboardScene[], duration: nu
 export function planAdaptiveVideo(product: ProductInput, requestedDuration = 22, angle?: ContentAngle, vision: ImageInsight[] = [], preferredFocusId?: string) {
   const images = (product.assets || []).filter(isProductImage)
   const primaryIndex = Math.max(0, images.findIndex((asset) => asset.isPrimary))
-  const facts = collectProductFacts(product)
+  const extraction = extractProductFacts(product)
+  const facts = extraction.facts
   const inspected = images.map<ImageInsight>((asset) => vision.find((image) => image.assetId === asset.id) || {
     assetId: asset.id, role: asset.role === 'detail' || asset.type === 'DETAIL_IMAGE' ? 'detail' : asset.role === 'lifestyle' ? 'lifestyle' : asset.role === 'packaging' ? 'packaging' : 'primary', source: 'metadata',
-  })
+  }).map((image) => image.observation && !isProductDetail(image.observation) ? {...image, observation: undefined} : image)
   for (const image of inspected) {
-    if (image.source === 'vision' && image.observation) facts.push({id: `image-${image.assetId}`, text: image.observation, source: 'image', assetId: image.assetId})
+    if (image.source !== 'vision') continue
+    if (image.observation) facts.push({id: `image-${image.assetId}`, text: image.observation, source: 'image', assetId: image.assetId})
+    for (const [index, detail] of (image.details || []).entries()) {
+      if (isProductDetail(detail.text) && words(detail.text).length <= 18) facts.push({id: `image-${image.assetId}-detail-${index + 1}`, text: detail.text, source: 'image', assetId: image.assetId})
+    }
   }
-  const usefulFacts = distinctFacts(facts).filter((fact) => words(fact.text).length <= 18)
+  const preferred = facts.find((fact) => fact.id === preferredFocusId)
+  const usefulFacts = distinctFacts(preferred ? [preferred, ...facts.filter((fact) => fact !== preferred)] : facts).filter((fact) => words(fact.text).length <= 18)
   const profile = buyingProfileFor(product)
   const selectedAngle = angle || (usefulFacts.length >= 2 ? 'features' : 'design')
-  const format = selectedAngle === 'fit' ? 'buying-guide' : selectedAngle === 'design' ? 'design-showcase' : product.problemSolved && product.benefits?.length ? 'problem-solution' : 'feature-explainer'
-  const missingInformation = [!product.description && 'Mô tả sản phẩm', !product.features?.length && 'Thông số hoặc tính năng', !product.howToUse && 'Cách sử dụng / tương thích', images.length < 2 && 'Ảnh chi tiết hoặc góc chụp bổ sung'].filter((value): value is string => !!value)
+  const problem = product.problemSolved && isProductDetail(product.problemSolved) ? product.problemSolved : undefined
+  const audience = product.targetAudience && !isMerchantCopy(product.targetAudience) ? product.targetAudience : 'Người đang cân nhắc sản phẩm này'
+  const format = selectedAngle === 'fit' ? 'buying-guide' : selectedAngle === 'design' ? 'design-showcase' : problem && extraction.cleaned.benefits.length ? 'problem-solution' : 'feature-explainer'
+  const missingInformation = [!extraction.cleaned.description && !extraction.cleaned.features.length && 'Mô tả hoặc thông số riêng của sản phẩm', !extraction.cleaned.howToUse && 'Cách sử dụng / tương thích', images.length < 2 && 'Ảnh chi tiết hoặc góc chụp bổ sung'].filter((value): value is string => !!value)
   const warnings: string[] = []
+  if (extraction.excludedCount) warnings.push(`Đã bỏ ${extraction.excludedCount} dòng tiêu đề, quảng cáo hoặc chính sách không mô tả đặc điểm sản phẩm.`)
   if (!images.length) warnings.push('Chưa có ảnh sản phẩm; cần thêm ảnh trước khi xuất video.')
   if (!facts.length) warnings.push('Ít dữ liệu: dùng nội dung chọn mua và thiết kế, không khẳng định hiệu quả sử dụng.')
   else if (!usefulFacts.length) warnings.push('Thông tin đầu vào còn dài; dùng video ngắn, ưu tiên bổ sung mô tả từng chi tiết cụ thể.')
@@ -98,8 +102,8 @@ export function planAdaptiveVideo(product: ProductInput, requestedDuration = 22,
   const contentPlan: ContentPlan = {message: buildCommerceMessage(product, facts, storyboard.scenes, inspected, copy.focus?.id, copy.buyerQuestion), buyingProfile: profile, format, formatReason: `${images.length} ảnh, ${usefulFacts.length} ý khác nhau có nguồn; chọn số cảnh theo nội dung hiện có.`, angle: selectedAngle,
     primaryBuyingReason: copy.focus?.text || 'Thiết kế và mức độ phù hợp với nhu cầu', buyerQuestion: copy.buyerQuestion, focusFactId: copy.focus?.id, clickReason: copy.intent.clickReason, ctaLabel: copy.intent.cta, inputMode: !images.length ? 'details-only' : facts.length ? 'images-and-details' : 'image-only',
     images: inspected, facts, missingInformation, warnings, recommendedDuration: duration, source: 'rules'}
-  const analysis: ProductAnalysis = {productType: product.name, mainProblem: product.problemSolved || 'Cần chọn sản phẩm phù hợp', mainBenefit: contentPlan.primaryBuyingReason,
-    secondaryBenefits: (product.benefits || []).slice(1), targetAudience: product.targetAudience || 'Người đang cân nhắc sản phẩm này', sellingMechanism: format,
+  const analysis: ProductAnalysis = {productType: product.name, mainProblem: problem || 'Cần chọn sản phẩm phù hợp', mainBenefit: contentPlan.primaryBuyingReason,
+    secondaryBenefits: extraction.cleaned.benefits.slice(1), targetAudience: audience, sellingMechanism: format,
     visualDemoPotential: 'low', recommendedFormat: format, reasoningSummary: contentPlan.formatReason, claimsAllowed: facts.map((fact) => fact.text), claimsToAvoid: ['Trải nghiệm cá nhân chưa có', 'Hiệu quả chưa được chứng minh', 'Ưu đãi chưa xác minh']}
   const strategy: VideoStrategy = {concept: `Giúp chọn ${name} dựa trên ảnh và thông tin`, format, hook, angle: selectedAngle, tone: 'rõ ràng, tự nhiên', targetDuration: duration, cta,
     visualDirection: {mood: 'rõ sản phẩm', lighting: 'giữ ảnh gốc', palette: ['#f5f2eb', '#252922'], environment: 'nền trung tính'}}

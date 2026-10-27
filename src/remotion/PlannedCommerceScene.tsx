@@ -18,8 +18,9 @@ export const PlannedCommerceScene: React.FC<{scene: StoryboardScene; imageUrl: s
   const caption = captionAtProgress(scene.voice || scene.headline, speakingProgress)
   const variant = cta ? 'decision' : plan.layout === 'gallery' && !secondaryImageUrl ? 'hero' : plan.layout || 'hero'
   const cardWidth = layout.width
-  const hasSubheadline = !!scene.subheadline && scene.subheadline !== scene.headline && variant !== 'spec'
-  const imageSlot = cta ? {top: 480, height: 440} : hasSubheadline ? layout.image : {top: 420, height: 604}
+  const contextHero = !!contextImage && (variant === 'hero' || variant === 'decision')
+  const hasSubheadline = !contextHero && !!scene.subheadline && scene.subheadline !== scene.headline && variant !== 'spec'
+  const imageSlot = cta ? {top: 480, height: 440} : hasSubheadline ? layout.image : {top: 420, height: contextHero ? 688 : 604}
   const cardHeight = imageSlot.height
   const zoom = plan.framing === 'detail' ? 0.98 + speakingProgress * 0.02 : 0.95 + speakingProgress * 0.05
   const emphasis = new Set((scene.keywords || []).flatMap((keyword) => keyword.toLocaleLowerCase('vi').split(/\s+/)))
@@ -35,14 +36,21 @@ export const PlannedCommerceScene: React.FC<{scene: StoryboardScene; imageUrl: s
       <AbsoluteFill style={{background: 'linear-gradient(180deg, #f5f2ebf5 12%, #f5f2ebb0 32%, #f5f2eb80 52%, #f5f2ebf5 70%)'}} />
     </>}
     <div style={{...box(layout.label), zIndex: 2, display: 'flex', justifyContent: 'space-between', fontSize: 20, letterSpacing: 2, color: '#8c664a'}}>
-      <span>{cta ? 'CHỌN MUA' : detail ? 'CẬN CẢNH' : 'SẢN PHẨM'}</span><span>{detail ? 'GÓC NHÌN CHI TIẾT' : cta ? 'CHỌN MẪU PHÙ HỢP' : 'KHÁM PHÁ SẢN PHẨM'}</span>
+      <span>{cta ? 'CHỌN MUA' : detail ? 'CẬN CẢNH' : 'ĐIỂM ĐÁNG CHÚ Ý'}</span><span>{detail ? 'CHI TIẾT SẢN PHẨM' : cta ? 'XEM TRONG GIỎ HÀNG' : 'NHÌN GẦN HƠN'}</span>
     </div>
     <div style={{...box(layout.headline), zIndex: 2, display: 'flex', alignItems: 'center', opacity: enter, transform: `translateY(${(1 - enter) * 10}px)`}}>
       <div style={{...copyStyle(scene.headline, layout.headline.height, 52), fontWeight: 800, letterSpacing: -0.8}}>{scene.headline}</div>
     </div>
     {subheadline && <div style={{...box(layout.subheadline), zIndex: 2, ...copyStyle(subheadline, layout.subheadline.height, 27, layout.width - 32), color: '#6e665b', background: plan.evidenceIds.length ? '#eee6d8' : undefined, borderRadius: 12, padding: plan.evidenceIds.length ? '0 16px' : undefined, boxSizing: 'border-box', display: 'flex', alignItems: 'center'}}>{subheadline}</div>}
     <div style={{...box(imageSlot), borderRadius: 28, overflow: 'hidden', background: '#fff', boxShadow: '0 18px 50px #3a291b24', transform: `translateY(${(1 - enter) * 16}px)`, border: '1px solid #ffffffbb'}}>
-      {variant === 'gallery' && secondaryImageUrl ? <div style={{display: 'flex', gap: 16, padding: 16}}>
+      {contextHero ? <>
+        <Img src={contextImage!} style={{position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(18px)', opacity: 0.35}} />
+        <CommerceProductImage src={contextImage!} width={cardWidth} height={cardHeight} zoom={zoom} />
+        <div style={{position: 'absolute', right: 16, bottom: 16, width: 204, height: 220, background: '#fffffff5', border: '1px solid #eee6d8', borderRadius: 18, overflow: 'hidden', boxShadow: '0 6px 24px #25292225'}}>
+          <CommerceProductImage src={imageUrl} width={204} height={184} crop={plan.crop} />
+          <div style={{fontSize: 16, color: '#6e665b', textAlign: 'center'}}>CHI TIẾT SẢN PHẨM</div>
+        </div>
+      </> : variant === 'gallery' && secondaryImageUrl ? <div style={{display: 'flex', gap: 16, padding: 16}}>
         {[{src: imageUrl, width: 432, crop: plan.crop, label: 'ẢNH 1'}, {src: secondaryImageUrl, width: cardWidth - 480, crop: plan.secondaryAsset?.crop, label: 'ẢNH 2'}].map((item) => <div key={item.label} style={{width: item.width, borderRadius: 18, background: '#f8f6f1', overflow: 'hidden'}}>
           <CommerceProductImage src={item.src} width={item.width} height={cardHeight - 84} crop={item.crop} zoom={zoom} />
           <div style={{height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8c664a', fontSize: 18, letterSpacing: 1.5}}>{item.label}</div>

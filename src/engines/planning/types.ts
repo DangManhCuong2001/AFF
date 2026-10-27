@@ -5,6 +5,7 @@ export interface ImageInsight {
   assetId: string
   role: 'primary' | 'detail' | 'lifestyle' | 'packaging'
   observation?: string
+  details?: {text: string; focus?: ImageFocus}[]
   focus?: ImageFocus
   productBounds?: ImageFocus
   source: 'vision' | 'metadata'
@@ -44,7 +45,16 @@ export interface SceneRenderPlan {
   annotation?: string
   evidenceIds: string[]
 }
+export type AIAnalysisFailure = 'auth' | 'quota' | 'service' | 'request' | 'timeout' | 'blocked' | 'output-limit' | 'invalid-response' | 'invalid-content'
+export interface AIAnalysisAttempt {
+  model: string
+  stage?: 'vision' | 'copy'
+  outcome: AIAnalysisFailure | 'completed' | 'partial'
+  httpStatus?: number
+  elapsedMs: number
+}
 export interface ContentPlan {
+  aiStatus?: {state: 'not-configured' | 'completed' | 'partial' | 'failed'; reason?: 'missing-key' | AIAnalysisFailure; message: string; attachedImages: number; attempts?: AIAnalysisAttempt[]; review?: {part: string; index: number; reason: string}[]}
   message?: CommerceMessage
   buyingProfile?: {id: string; label: string; priorities: string[]; checks: string[]}
   format: ContentFormat

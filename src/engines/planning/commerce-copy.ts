@@ -1,4 +1,5 @@
 import type {ContentAngle, ImageInsight, ProductFact} from './types'
+import {isProductDetail} from './product-facts'
 
 const words = (text: string) => text.trim().split(/\s+/).filter(Boolean)
 export const normalizeCopy = (text: string) => text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd')
@@ -8,7 +9,7 @@ const intents = [
   {id: 'compatibility', pattern: /usb|bluetooth|tuong thich|ket noi|cong sac|jack|type.c/, label: 'Kiểu kết nối / tương thích', shortLabel: 'kết nối', cta: 'Kiểm tra tương thích', clickReason: 'Đối chiếu thông tin tương thích trước khi đặt.', check: 'Kiểm tra thiết bị của bạn có phù hợp với kiểu kết nối này.'},
   {id: 'size', pattern: /kich thuoc|so do|chieu dai|day dai|dung tich|\bsize\b|\d\s*(?:cm|mm|met|ml|lit|inch)\b/, label: 'Kích thước cần xem', shortLabel: 'kích thước', cta: 'Kiểm tra kích thước', clickReason: 'Đối chiếu kích thước với nhu cầu của bạn.', check: 'Đối chiếu kích thước với nhu cầu trước khi chọn.'},
   {id: 'contents', pattern: /bo gom|gom \d|phu kien|so luong|kem theo|co .*(?:va|,) .*(?:gia|keo|hop)|\d\s*(?:mon|chiec|cai)\b/, label: 'Thành phần của bộ', shortLabel: 'thành phần bộ', cta: 'Xem thành phần bộ', clickReason: 'Kiểm tra đúng thành phần và số lượng của phiên bản định mua.', check: 'Kiểm tra đúng thành phần bộ và số lượng ở phiên bản bạn định mua.'},
-  {id: 'color', pattern: /mau|tong mau|hoa tiet|kieu dang|thiet ke/, label: 'Màu sắc và thiết kế', shortLabel: 'màu và thiết kế', cta: 'Xem màu và phiên bản', clickReason: 'Đối chiếu màu và kiểu dáng với phiên bản bạn chọn.', check: 'Đối chiếu màu và kiểu dáng với ảnh của phiên bản bạn chọn.'},
+  {id: 'color', pattern: /mau|tong mau|hoa tiet|kieu dang|thiet ke/, label: 'Màu sắc và thiết kế', shortLabel: 'màu và thiết kế', cta: 'Xem màu và kiểu dáng', clickReason: 'Đối chiếu màu và kiểu dáng với nhu cầu của bạn.', check: 'Đối chiếu màu và kiểu dáng với ảnh sản phẩm.'},
   {id: 'fit', pattern: /\bform\b|dang om|dang rong|regular fit|oversize/, label: 'Form trang phục', shortLabel: 'form dáng', cta: 'Đối chiếu form và số đo', clickReason: 'Đối chiếu form và số đo với nhu cầu của bạn.', check: 'Đối chiếu form và số đo trước khi chọn.'},
   {id: 'care', pattern: /bao quan|giat|ve sinh|lam sach/, label: 'Cách bảo quản', shortLabel: 'cách bảo quản', cta: 'Xem cách bảo quản', clickReason: 'Đọc hướng dẫn bảo quản của đúng sản phẩm.', check: 'Đọc hướng dẫn bảo quản của sản phẩm.'},
   {id: 'ingredients', pattern: /thanh phan|ingredient|niacinamide|hyaluronic|retinol/, label: 'Thành phần theo mô tả', shortLabel: 'thành phần', cta: 'Xem thông tin thành phần', clickReason: 'Đọc thành phần và lưu ý sử dụng trước khi chọn.', check: 'Đọc thành phần và lưu ý sử dụng theo mô tả.'},
@@ -22,12 +23,15 @@ const intents = [
 const fallbackIntent = {id: 'design', label: 'Chi tiết đáng xem', shortLabel: 'chi tiết', cta: 'Xem chi tiết sản phẩm', clickReason: 'Đối chiếu ảnh, mô tả và lựa chọn trước khi đặt.', check: 'Quan sát chi tiết trong ảnh và đối chiếu với mô tả của shop.'}
 export function intentForFact(fact?: ProductFact) {
   const text = fact?.text || ''
-  return intents.find((intent) => intent.pattern.test(normalizeCopy(text)) && (intent.id !== 'color' || !/mẫu/i.test(text) || /màu|kiểu dáng|thiết kế|họa tiết/i.test(text))) || fallbackIntent
+  const plain = normalizeCopy(text)
+  // "Includes accessories" does not tell buyers which accessories they get.
+  const vagueContents = /phu kien|cac mon|cac chi tiet|do dung|dung cu/.test(plain) && !/[,:;]|\d/.test(plain)
+  return intents.find((intent) => intent.pattern.test(plain) && !(intent.id === 'contents' && vagueContents) && (intent.id !== 'color' || !/mẫu/i.test(text) || /màu|kiểu dáng|thiết kế|họa tiết/i.test(text))) || fallbackIntent
 }
 
 export function createCommerceCopy(name: string, angle: ContentAngle, facts: ProductFact[], preferredFocusId?: string, priorities: string[] = []) {
   // Prefer concise facts that can actually be explained in a short video.
-  const candidates = facts.filter((fact) => words(fact.text).length <= 18)
+  const candidates = facts.filter((fact) => words(fact.text).length <= 18 && isProductDetail(fact.text))
   const ranked = candidates.map((fact, index) => {
     const intent = intentForFact(fact)
     const relevant = angle === 'design' ? ['color', 'material', 'design'] : angle === 'fit' ? ['compatibility', 'size', 'contents'] : ['compatibility', 'size', 'contents', 'material']
@@ -53,10 +57,10 @@ export function createCommerceCopy(name: string, angle: ContentAngle, facts: Pro
 
 const stopWords = new Set(['san', 'pham', 'trong', 'anh', 'thiet', 'ke', 'nhung', 'duoc', 'mot', 'cac', 'voi', 'cho', 'cua', 'nay', 'mau'])
 export function visualMatch(fact: ProductFact, insight?: ImageInsight): number {
-  if (!insight?.observation || insight.source !== 'vision') return 0
+  if (!insight || insight.source !== 'vision' || (!insight.observation && !insight.details?.some((detail) => detail.text))) return 0
   if (fact.assetId === insight.assetId) return 100
   const tokens = normalizeCopy(fact.text).match(/[a-z0-9]+/g) || []
-  const observation = new Set(normalizeCopy(insight.observation).match(/[a-z0-9]+/g) || [])
+  const observation = new Set(normalizeCopy([insight.observation, ...(insight.details || []).map((detail) => detail.text)].filter(Boolean).join(' ')).match(/[a-z0-9]+/g) || [])
   return [...new Set(tokens)].filter((word) => word.length >= 3 && !stopWords.has(word) && observation.has(word)).length
 }
 

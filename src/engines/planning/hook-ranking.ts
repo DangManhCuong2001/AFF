@@ -14,8 +14,11 @@ export interface CommerceHook {
   reasoning?: string
   editorialScore?: HookEditorialScore
 }
-const genericTokens = new Set(['ban', 'can', 'dang', 'tim', 'chon', 'xem', 'thong', 'tin', 'truoc', 'khi', 'chi', 'tiet', 'phu', 'hop', 'ket', 'noi', 'kich', 'thuoc', 'chieu', 'dai', 'thanh', 'phan', 'chat', 'lieu'])
+const genericTokens = new Set(['ban', 'can', 'dang', 'tim', 'chon', 'xem', 'thong', 'tin', 'truoc', 'khi', 'chi', 'tiet', 'phu', 'hop', 'ket', 'noi', 'kich', 'thuoc', 'chieu', 'dai', 'thanh', 'phan', 'chat', 'lieu', 'mau', 'dong', 'bo', 'toan', 'so', 'huu', 'thiet', 'ke', 'ro', 'net'])
 const anchors = (text: string) => [...copyTokens(text)].filter((token) => !genericTokens.has(token))
+export function isGenericCommerceHook(text: string): boolean {
+  return /^(?:kham pha|quan sat|cung (?:xem|nhin))\b|ban da (?:xem|biet|nghe)|cung (?:xem|kham pha)|kham pha san pham|san pham nay co gi|xem qua thiet ke/.test(normalizeCopy(text))
+}
 export const answerScenes = (scenes: StoryboardScene[]) => scenes.filter((scene) => scene.type !== 'hook' && scene.type !== 'cta' && !scene.voice.trim().endsWith('?'))
 
 /** Only score promises the final body actually addresses; questions alone are not answers. */
@@ -42,8 +45,11 @@ export function hookIsAnswered(hook: Pick<CommerceHook, 'text' | 'evidenceIds'>,
 export function rankCommerceHooks<T extends CommerceHook>(candidates: T[], context: {product: ProductInput; facts: ProductFact[]; scenes: StoryboardScene[]; images: ImageInsight[]; focusId?: string}): Array<T & {editorialScore: HookEditorialScore; reasoning: string}> {
   const {product, facts, scenes, images, focusId} = context
   const focus = facts.find((fact) => fact.id === focusId)
-  const meaningful = anchors(focus?.text || product.name)
+  const productTokens = copyTokens(product.name)
+  const details = anchors(focus?.text || '').filter((token) => !productTokens.has(token))
+  const meaningful = details.length ? details : anchors(focus?.text || product.name)
   const ranked = candidates.filter((hook) => validateCommerceCopy({...hook, evidenceIds: hook.evidenceIds || []}, facts, product.name, 'hook', focusId) && hookIsAnswered(hook, facts, scenes))
+    .filter((hook) => !isGenericCommerceHook(hook.text))
     .map((hook) => {
       const tokens = copyTokens(hook.text)
       const covered = meaningful.filter((token) => tokens.has(token)).length

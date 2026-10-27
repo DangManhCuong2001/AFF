@@ -498,7 +498,7 @@ export function parseModernRouterData(html: string): {
       }
     }
     const description =
-      descParts.join('\n\n') || `Sản phẩm ${title} trên TikTok Shop`
+      descParts.join('\n\n')
 
     return {
       title,
@@ -976,7 +976,7 @@ export async function importTikTokShopProduct(rawInput: string): Promise<TikTokS
         product: {
           name: fallbackTitle,
           price: fallbackPrice,
-          description: `Sản phẩm ${fallbackTitle} tiện ích chính hãng trên TikTok Shop.`,
+          description: '',
           productUrl: resolvedUrl || targetUrl,
           shopProductId: productId || undefined,
           assets,

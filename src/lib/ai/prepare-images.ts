@@ -1,6 +1,25 @@
 import type { ProductAsset } from '@/engines/core/types'
 import { isProductImage } from '@/engines/planning/AdaptiveVideoPlanner'
 import type { AnalysisImage } from './gemini'
+import {isAllowedProductImageUrl} from './remote-image-url'
+
+/** Reuse the same readable source for vision, browser export and server export. */
+export async function loadProductImageBlob(asset: ProductAsset): Promise<Blob> {
+  if (asset.file) return asset.file
+  try {
+    const response = await fetch(asset.url, {signal: AbortSignal.timeout(8000)})
+    if (!response.ok) throw new Error('Image unavailable')
+    return await response.blob()
+  } catch (error) {
+    if (!isAllowedProductImageUrl(asset.url)) throw error
+    const response = await fetch('/api/assets/analysis-image', {
+      method: 'POST', signal: AbortSignal.timeout(12000), headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url: asset.url}),
+    })
+    if (!response.ok) throw new Error('Image unavailable')
+    return response.blob()
+  }
+}
 
 /** Encode in the browser so local uploads and CORS-accessible remote photos reach vision. */
 export async function prepareAnalysisImages(assets: ProductAsset[]): Promise<AnalysisImage[]> {
@@ -8,10 +27,7 @@ export async function prepareAnalysisImages(assets: ProductAsset[]): Promise<Ana
   const primary = images.find((image) => image.isPrimary)
   const selected = (primary ? [primary, ...images.filter((image) => image !== primary)] : images).slice(0, 3)
   const results = await Promise.allSettled(selected.map(async (asset) => {
-    const blob = asset.file || await fetch(asset.url, {signal: AbortSignal.timeout(8000)}).then((response) => {
-      if (!response.ok) throw new Error('Image unavailable')
-      return response.blob()
-    })
+    const blob = await loadProductImageBlob(asset)
     if (!blob) throw new Error('Image unavailable')
     const bitmap = await createImageBitmap(blob)
     try {

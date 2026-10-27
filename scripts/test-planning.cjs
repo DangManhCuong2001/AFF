@@ -3,6 +3,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
 const ts = require('typescript')
+process.env.NODE_ENV = 'test'
 
 // Type-checking is separate. This runner loads source TS using the installed compiler.
 const resolve = Module._resolveFilename
@@ -24,4 +25,9 @@ else {
   require('../tests/speech-timing.test.ts')
   require('../tests/content-improvements.test.ts')
   require('../tests/message-planning.test.ts')
+  require('../tests/product-facts.test.ts')
+  require('../tests/ai-main-flow.test.ts')
+  require('../tests/visual-evidence.test.ts')
+  require('../tests/product-video-analysis.test.ts')
+  require('../tests/context-cache.test.ts')
 }
