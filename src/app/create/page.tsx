@@ -163,7 +163,9 @@ export default function CreateVideoPage() {
   const previewRequestRef = React.useRef<AbortController | null>(null)
   useEffect(() => {
     const savedProvider = localStorage.getItem('voice_provider')
-    if (savedProvider === 'elevenlabs' || savedProvider === 'vibi') setVoiceProvider(savedProvider)
+    if (savedProvider === 'elevenlabs' || savedProvider === 'vibi' || savedProvider === 'vibi-capcut') {
+      setVoiceProvider(savedProvider)
+    }
   }, [])
   const [selectedVoicePreset, setSelectedVoicePreset] = useState<VoicePersonality>('Natural Friend')
   const [selectedHookId, setSelectedHookId] = useState<string>('')
@@ -2108,13 +2110,16 @@ export default function CreateVideoPage() {
                       >
                         <option value="google">Google — Test video</option>
                         <option value="elevenlabs">ElevenLabs — Video chính thức</option>
-                        <option value="vibi">Vibi — Voice ID đã cấu hình</option>
+                        <option value="vibi">Vibi — ElevenLabs</option>
+                        <option value="vibi-capcut">Vibi — CapCut</option>
                       </select>
                       <p className="text-[11px] text-neutral-500">
                         {voiceProvider === 'google'
                           ? 'Giọng Google Translate tiếng Việt. Không sử dụng credits ElevenLabs; các preset phong cách không đổi giọng Google.'
                           : voiceProvider === 'vibi'
-                            ? 'Giọng được tạo qua Vibi bằng Voice ID đã cấu hình; nghe thử và tạo video đều sử dụng credits Vibi.'
+                            ? 'Giọng ElevenLabs được tạo qua Vibi bằng Voice ID chính đã cấu hình; nghe thử và tạo video đều sử dụng credits Vibi.'
+                            : voiceProvider === 'vibi-capcut'
+                              ? 'Giọng CapCut tiếng Việt được tạo qua Vibi bằng Voice ID CapCut riêng; mức credits phụ thuộc giá hiển thị của Vibi.'
                             : 'Giọng ElevenLabs, sử dụng credits khi nghe thử và tạo thuyết minh.'}
                       </p>
                     </label>

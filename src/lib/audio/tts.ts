@@ -51,6 +51,7 @@ export async function generateVietnameseTTS(
   const provider = parseVoiceProvider(options?.provider)
   if (provider === 'google') return fetchGoogleTTSFallback(cleanText)
   if (provider === 'vibi') return generateVibiTTS(cleanText)
+  if (provider === 'vibi-capcut') return generateVibiTTS(cleanText, {upstreamProvider: 'capcut'})
 
   // 0. Ultra-realistic Human Speech Engine: ElevenLabs (if configured)
   const elevenKey = process.env.ELEVENLABS_API_KEY?.trim()

@@ -234,8 +234,8 @@ export class VipeeTTSProvider implements TTSProvider {
 
         if (provider === 'google') {
           success = await this.synthesizeGoogleTTS(cleanText, rawSegPath)
-        } else if (provider === 'vibi') {
-          success = await this.synthesizeVibi(cleanText, rawSegPath)
+        } else if (provider === 'vibi' || provider === 'vibi-capcut') {
+          success = await this.synthesizeVibi(cleanText, rawSegPath, provider === 'vibi-capcut' ? 'capcut' : undefined)
         } else {
           if (!process.env.ELEVENLABS_API_KEY?.trim()) {
             throw new Error('Chưa cấu hình ELEVENLABS_API_KEY')
@@ -427,8 +427,8 @@ export class VipeeTTSProvider implements TTSProvider {
     return true
   }
 
-  private async synthesizeVibi(text: string, outputPath: string): Promise<boolean> {
-    const buffer = await generateVibiTTS(text)
+  private async synthesizeVibi(text: string, outputPath: string, upstreamProvider?: 'capcut'): Promise<boolean> {
+    const buffer = await generateVibiTTS(text, {upstreamProvider})
     fs.writeFileSync(outputPath, buffer)
     return buffer.length > 500
   }

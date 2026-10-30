@@ -2,7 +2,13 @@ const VIBI_API_BASE_URL = 'https://api.vibi.pro'
 const DEFAULT_POLL_INTERVAL_MS = 800
 const DEFAULT_TIMEOUT_MS = 45_000
 
-type VibiUpstreamProvider = 'elevenlabs' | 'minimax' | 'capcut'
+export type VibiUpstreamProvider = 'elevenlabs' | 'minimax' | 'capcut'
+
+interface VibiTTSOptions {
+  pollIntervalMs?: number
+  timeoutMs?: number
+  upstreamProvider?: VibiUpstreamProvider
+}
 
 interface VibiTaskResponse {
   id?: string
@@ -48,12 +54,16 @@ function requestBody(text: string, upstream: VibiUpstreamProvider) {
 }
 
 /** Generate one narration segment through Vibi without exposing its API key. */
-export async function generateVibiTTS(text: string, options?: {pollIntervalMs?: number; timeoutMs?: number}): Promise<Buffer> {
+export async function generateVibiTTS(text: string, options?: VibiTTSOptions): Promise<Buffer> {
   const apiKey = process.env.VIBI_API_KEY?.trim()
-  const voiceId = process.env.VIBI_DEFAULT_VOICE_ID?.trim()
+  const upstream = options?.upstreamProvider ?? configuredUpstream()
+  const voiceId = upstream === 'capcut'
+    ? process.env.VIBI_CAPCUT_VOICE_ID?.trim() || (configuredUpstream() === 'capcut' ? process.env.VIBI_DEFAULT_VOICE_ID?.trim() : '')
+    : process.env.VIBI_DEFAULT_VOICE_ID?.trim()
   if (!apiKey) throw new Error('Chưa cấu hình VIBI_API_KEY')
-  if (!voiceId) throw new Error('Chưa cấu hình VIBI_DEFAULT_VOICE_ID')
-  const upstream = configuredUpstream()
+  if (!voiceId) {
+    throw new Error(upstream === 'capcut' ? 'Chưa cấu hình VIBI_CAPCUT_VOICE_ID' : 'Chưa cấu hình VIBI_DEFAULT_VOICE_ID')
+  }
   const endpoint = `${VIBI_API_BASE_URL}/v1/text-to-speech/${encodeURIComponent(voiceId)}`
   const createdResponse = await fetch(endpoint, {
     method: 'POST',
