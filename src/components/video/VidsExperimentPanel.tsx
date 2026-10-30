@@ -197,7 +197,13 @@ export function VidsExperimentPanel({mode, onModeChange, clipLimit, onClipLimitC
     try {
       const state = await call({action: 'status'}, token.trim())
       setRemainingLocalJobs(state.remainingJobs)
-      setNotice(state.remainingJobs === 0 ? 'Bridge đang giới hạn 0 tác vụ mới. Vẫn chuẩn bị ảnh, xem hoặc nhập MP4 đã có được. Đây là giới hạn local, không phải số dư hạn mức Google.' : state.worker.connected && state.worker.ready ? `Đã kết nối. Còn ${state.remainingJobs} tác vụ trong lần chạy bridge này; không phải số dư hạn mức Google.` : 'Đã thấy bridge, nhưng extension chưa sẵn sàng. Mở cửa sổ kết nối và làm mới phiên Vids.')
+      setNotice(state.remainingJobs === 0
+        ? 'Bridge đang giới hạn 0 tác vụ mới. Vẫn chuẩn bị ảnh, xem hoặc nhập MP4 đã có được. Đây là giới hạn local, không phải số dư hạn mức Google.'
+        : !state.worker.connected
+          ? 'Bridge đang chạy nhưng extension chưa kết nối với mã local hiện tại. Mở extension AFF Google Vids 0.3.0, dán lại mã từ bridge và giữ tab Google Vids mở.'
+          : state.worker.ready
+            ? `Đã kết nối. Còn ${state.remainingJobs} tác vụ trong lần chạy bridge này; không phải số dư hạn mức Google.`
+            : 'Extension đã kết nối nhưng phiên tạo clip chưa sẵn sàng. Trong cửa sổ extension, bấm Làm mới phiên Vids rồi mở bảng Create video trong tab Google Vids.')
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Chưa kết nối được bridge.') }
     finally {if (mounted.current) setCheckingConnection(false)}
   }
@@ -335,7 +341,7 @@ export function VidsExperimentPanel({mode, onModeChange, clipLimit, onClipLimitC
             {!clip && item?.image && <label className="flex items-start gap-2 text-xs text-neutral-300"><input type="checkbox" disabled={busy || preparing || disabled} checked={!!item.referenceReviewed} onChange={event => update(shot.sceneId, {referenceReviewed: event.target.checked})} />Ảnh gửi đã giữ đủ sản phẩm, phụ kiện và bỏ banner thừa nếu có</label>}
             <p className="text-xs text-neutral-400">{item?.error || (clip?.status === 'complete' ? `Đã lưu ${clip.durationSec?.toFixed(2)}s — dùng lại không tốn lượt` : clip?.status === 'pending' ? 'Tác vụ đang chờ — bấm tiếp tục để kiểm tra, không tạo lại' : clip?.status === 'failed' ? explain(clip.code || 'GENERATION_FAILED_CHECK_VIDS') : 'Chưa có clip đã lưu')}</p>
             {clip?.status === 'complete' && <label className="flex items-start gap-2 text-xs text-emerald-200"><input type="checkbox" disabled={disabled || !canApproveVidsClip(currentFidelity(item))} checked={!!item?.reviewed && canApproveVidsClip(currentFidelity(item))} onChange={event => {if (canApproveVidsClip(currentFidelity(item))) update(shot.sceneId, {reviewed: event.target.checked})}} />Đã xem hết: đúng sản phẩm, đường đi và tiếp xúc hợp lý, không xuyên vật; dùng clip này</label>}
-            {!canApproveVidsClip(currentFidelity(item)) && <p className="text-xs text-red-300">Clip có lỗi đã phát hiện, chưa được dùng để ghép. Chọn clip khác thay vì duyệt bỏ qua.</p>}
+            {clip?.status === 'complete' && currentFidelity(item) && !canApproveVidsClip(currentFidelity(item)) && <p className="text-xs text-red-300">Clip có lỗi đã phát hiện, chưa được dùng để ghép. Chọn clip khác thay vì duyệt bỏ qua.</p>}
             {!clip?.src && <label className="block text-xs text-neutral-400">Hoặc dùng MP4 đã có (tối đa 32 MB)<input type="file" accept="video/mp4" disabled={busy || preparing || disabled || !item?.image} onChange={event => {void importClip(shot, event.target.files?.[0]); event.target.value = ''}} className="mt-2 w-full text-[11px]" /></label>}
             <details className="text-xs text-neutral-500"><summary>Chuyển động dự kiến</summary><p className="mt-2 leading-relaxed break-words">{item?.motion?.prompt || shot.prompt}</p></details>
           </div>
