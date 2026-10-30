@@ -1,4 +1,5 @@
 import {spawn} from 'node:child_process'
+import {existsSync, readFileSync} from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -8,6 +9,14 @@ const nextBin = path.join(root, 'node_modules', 'next', 'dist', 'bin', 'next')
 const bridge = path.join(root, 'tools', 'google-vids-bridge', 'server.mjs')
 const children = new Set()
 let stopping = false
+
+// Next.js loads .env.local itself. The standalone bridge only needs this
+// non-secret origin allowlist so the production page can call localhost.
+const envPath = path.join(root, '.env.local')
+if (!process.env.AFF_PRODUCTION_ORIGINS && existsSync(envPath)) {
+  const match = readFileSync(envPath, 'utf8').match(/^AFF_PRODUCTION_ORIGINS\s*=\s*(.+)$/m)
+  if (match) process.env.AFF_PRODUCTION_ORIGINS = match[1].trim().replace(/^(['"])(.*)\1$/, '$2')
+}
 
 function start(label, args) {
   const child = spawn(process.execPath, args, {
