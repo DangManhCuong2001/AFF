@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "AFF Google Vids — Local Experiment",
+  "version": "0.3.0",
+  "description": "Experimental local Vids bridge. Google authentication stays in the Vids page; no cookie permissions.",
+  "permissions": ["scripting", "storage"],
+  "host_permissions": [
+    "https://docs.google.com/*",
+    "https://contribution-rt.usercontent.google.com/*",
+    "https://*.googleusercontent.com/*",
+    "http://127.0.0.1/*"
+  ],
+  "action": {"default_title": "Open AFF Vids connection"},
+  "background": {"service_worker": "background.js"},
+  "content_scripts": [{
+    "matches": ["https://docs.google.com/videos/*"],
+    "js": ["protocol.js", "page.js"],
+    "run_at": "document_start",
+    "world": "MAIN"
+  }]
+}

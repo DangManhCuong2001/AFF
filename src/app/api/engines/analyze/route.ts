@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     if (!parsed.success || (angle && !['design', 'features', 'fit'].includes(angle)) || (targetDuration !== undefined && !isVideoDurationSelection(targetDuration))) {
       return NextResponse.json({error: 'Thông tin sản phẩm hoặc lựa chọn video không hợp lệ'}, {status: 400})
     }
-    if (analysisImages && (!Array.isArray(analysisImages) || analysisImages.length > 3 || analysisImages.some((image) => typeof image?.assetId !== 'string' || typeof image?.dataUrl !== 'string' || image.dataUrl.length > 900_000))) {
+    if (analysisImages && (!Array.isArray(analysisImages) || analysisImages.length > 12 || analysisImages.some((image) => typeof image?.assetId !== 'string' || typeof image?.dataUrl !== 'string' || image.dataUrl.length > 900_000))) {
       return NextResponse.json({error: 'Ảnh phân tích không hợp lệ hoặc quá lớn'}, {status: 400})
     }
     const product = parsed.data

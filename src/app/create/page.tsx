@@ -52,6 +52,8 @@ import { applySceneAudioTimings, hasCompleteSceneAudioTimings, parseSceneAudioTi
 import { InfographicDeckViewer } from '@/components/infographic/InfographicDeckViewer'
 import { CABLE_ORGANIZER_SEED_PRODUCT } from '@/engines/home/seed'
 import { RemotionPlayerPreview } from '@/components/video/RemotionPlayerPreview'
+import {VidsExperimentPanel} from '@/components/video/VidsExperimentPanel'
+import {activeSceneVideos, planVidsShots, vidsPlanSignature, type SceneVideoClips, type VideoVisualMode} from '@/lib/video/vids-plan'
 import { renderVideoOnClient, isClientExportSupported } from '@/lib/video/client-renderer'
 import {hasPostingScope, requiredPostingScope, type TikTokPostingMode} from '@/lib/tiktok/posting-mode'
 import {TikTokPostingModeSelector} from '@/components/video/TikTokPostingModeSelector'
@@ -160,7 +162,8 @@ export default function CreateVideoPage() {
   const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>('google')
   const previewRequestRef = React.useRef<AbortController | null>(null)
   useEffect(() => {
-    if (localStorage.getItem('voice_provider') === 'elevenlabs') setVoiceProvider('elevenlabs')
+    const savedProvider = localStorage.getItem('voice_provider')
+    if (savedProvider === 'elevenlabs' || savedProvider === 'vibi') setVoiceProvider(savedProvider)
   }, [])
   const [selectedVoicePreset, setSelectedVoicePreset] = useState<VoicePersonality>('Natural Friend')
   const [selectedHookId, setSelectedHookId] = useState<string>('')
@@ -277,6 +280,26 @@ export default function CreateVideoPage() {
   const [renderedVideoFile, setRenderedVideoFile] = useState<File | null>(null)
 
   const [voiceTimings, setVoiceTimings] = useState<SceneAudioTiming[]>([])
+  // Experiments are opt-in per visit; never persist them as the image-flow default.
+  const [visualMode, setVisualMode] = useState<VideoVisualMode>('images')
+  const [vidsClipLimit, setVidsClipLimit] = useState<1 | 3>(1)
+  const [vidsClips, setVidsClips] = useState<{signature: string; clips: SceneVideoClips}>({signature: '', clips: {}})
+  const vidsShots = React.useMemo(() => planVidsShots(product, analysisResult?.storyboard.scenes || [], analysisResult?.contentPlan?.images, vidsClipLimit), [product, analysisResult?.storyboard.scenes, analysisResult?.contentPlan?.images, vidsClipLimit])
+  const vidsSignature = React.useMemo(() => vidsPlanSignature(product, vidsShots), [product, vidsShots])
+  const sceneVideos = React.useMemo(() => activeSceneVideos(visualMode, vidsShots, vidsClips.signature === vidsSignature ? vidsClips.clips : {}), [visualMode, vidsShots, vidsClips, vidsSignature])
+  const introVideo = sceneVideos?.[vidsShots[0]?.sceneId]
+  const supportingVideos = React.useMemo(() => sceneVideos ? Object.fromEntries(Object.entries(sceneVideos).filter(([id]) => id !== vidsShots[0]?.sceneId)) : undefined, [sceneVideos, vidsShots])
+  const canRenderVisuals = visualMode === 'images' || !!Object.keys(sceneVideos || {}).length
+  const changeVisualMode = (mode: VideoVisualMode) => {
+    if (isRenderingVideo || publishing) return
+    setVisualMode(mode)
+    setRenderedVideoUrl(null)
+    setRenderedVideoFile(null)
+    setPublishResult(null)
+    uploadSessionRef.current = null
+  }
+  const sceneVideosSignature = JSON.stringify({sceneVideos, introVideo})
+  useEffect(() => {setRenderedVideoUrl(null); setRenderedVideoFile(null)}, [sceneVideosSignature])
   const voiceSourceRef = React.useRef<{url: string; signature: string; timings: SceneAudioTiming[]} | null>(null)
   const playbackScenes = React.useMemo(() => applySceneAudioTimings(analysisResult?.storyboard.scenes || [], voiceTimings), [analysisResult?.storyboard.scenes, voiceTimings])
   const playbackDuration = playbackScenes.reduce((sum, scene) => sum + scene.duration, 0)
@@ -596,7 +619,7 @@ export default function CreateVideoPage() {
     setAnalyzing(true)
     setAnalysisStage('Đang đọc ảnh & chọn cách kể chuyện...')
     try {
-      const analysisImages = await prepareAnalysisImages(product.assets)
+      const analysisImages = await prepareAnalysisImages(product.assets, {selectionPool: true})
       const res = await fetch('/api/engines/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -681,7 +704,7 @@ export default function CreateVideoPage() {
       const angles: ContentAngle[] = ['design', 'features', 'fit']
       const current = analysisResult?.contentPlan?.angle || 'design'
       const angle = angles[(angles.indexOf(current) + 1) % angles.length]
-      const analysisImages = await prepareAnalysisImages(product.assets)
+      const analysisImages = await prepareAnalysisImages(product.assets, {selectionPool: true})
       const res = await fetch('/api/engines/analyze', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({...product, targetDuration: selectedDuration, angle, analysisImages, geminiApiKey: geminiApiKey.trim() || undefined}),
@@ -762,6 +785,7 @@ export default function CreateVideoPage() {
   // Start Step 3: Video Generation Flow (Real FFmpeg + Vietnamese TTS Rendering)
   const handleStartGeneratingVideo = async () => {
     if (isRenderingVideo || isGeneratingVoice) return
+    if (!canRenderVisuals) {toast.error('Chưa có clip Vids đã duyệt', 'Xem clip và đánh dấu đúng sản phẩm, hoặc chọn Từ ảnh để dùng luồng hiện tại.'); return}
     uploadSessionRef.current = null
     setPublishResult(null)
     const renderImageUrls: string[] = []
@@ -775,6 +799,15 @@ export default function CreateVideoPage() {
     try {
       let renderScenes = playbackScenes
       const formData = new FormData()
+      if (visualMode === 'vids-experiment' && sceneVideos) {
+        formData.append('visualMode', 'vids-experiment')
+        formData.append('sceneVideos', JSON.stringify(Object.entries(sceneVideos).map(([sceneId, clip]) => ({sceneId, durationSec: clip.durationSec, frameAspect: clip.frameAspect, placement: sceneId === vidsShots[0]?.sceneId ? 'intro' : 'scene'}))))
+        for (const [id, clip] of Object.entries(sceneVideos)) {
+          const response = await fetch(clip.src)
+          if (!response.ok) throw new Error('Không tải được clip đã lưu; chưa thể xuất bản thử nghiệm.')
+          formData.append(`sceneVideo:${id}`, await response.blob(), 'clip.mp4')
+        }
+      }
       formData.append('productName', product.name)
       if (product.price) formData.append('price', String(product.price))
       if (product.category) formData.append('category', product.category)
@@ -886,6 +919,8 @@ export default function CreateVideoPage() {
           }))
 
           const clientResult = await renderVideoOnClient({
+            sceneVideos: supportingVideos,
+            introVideo,
             productName: product.name,
             price: product.price ? Number(product.price) : undefined,
             category: product.category,
@@ -1060,7 +1095,7 @@ export default function CreateVideoPage() {
       if (mode === 'publish' && !fullCaption) throw new Error('Nhập caption trước khi đăng trực tiếp.')
       const session = uploadSessionRef.current?.video === videoFile && uploadSessionRef.current.session.mode === mode ? uploadSessionRef.current.session : undefined
       activePublishId = session?.publishId
-      const result = await sendTikTokVideo(videoFile, {mode, title: fullCaption, privacyLevel, isAigc, session,
+      const result = await sendTikTokVideo(videoFile, {mode, title: fullCaption, privacyLevel, isAigc: isAigc || visualMode === 'vids-experiment', session,
         onSession: (session) => {uploadSessionRef.current = {session, video: videoFile!}},
         onProgress: (message) => setPublishResult((current) => current?.phase === 'transferring' ? {...current, message} : current),
         onInitialized: (id) => {
@@ -1107,7 +1142,7 @@ export default function CreateVideoPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5 max-w-full">
             <button
               type="button"
               onClick={() => {
@@ -2073,11 +2108,14 @@ export default function CreateVideoPage() {
                       >
                         <option value="google">Google — Test video</option>
                         <option value="elevenlabs">ElevenLabs — Video chính thức</option>
+                        <option value="vibi">Vibi — Voice ID đã cấu hình</option>
                       </select>
                       <p className="text-[11px] text-neutral-500">
                         {voiceProvider === 'google'
                           ? 'Giọng Google Translate tiếng Việt. Không sử dụng credits ElevenLabs; các preset phong cách không đổi giọng Google.'
-                          : 'Giọng ElevenLabs, sử dụng credits khi nghe thử và tạo thuyết minh.'}
+                          : voiceProvider === 'vibi'
+                            ? 'Giọng được tạo qua Vibi bằng Voice ID đã cấu hình; nghe thử và tạo video đều sử dụng credits Vibi.'
+                            : 'Giọng ElevenLabs, sử dụng credits khi nghe thử và tạo thuyết minh.'}
                       </p>
                     </label>
 
@@ -2200,6 +2238,7 @@ export default function CreateVideoPage() {
         {/* ======================================================== */}
         {currentStep === 3 && analysisResult && (
           <div className="space-y-8">
+            <VidsExperimentPanel mode={visualMode} onModeChange={changeVisualMode} clipLimit={vidsClipLimit} onClipLimitChange={setVidsClipLimit} product={product} shots={vidsShots} signature={vidsSignature} onClipsChange={setVidsClips} disabled={isRenderingVideo || publishing} />
             {useAIContext && !getContextImage(analysisResult.storyboard.scenes) && <div role="alert" className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 space-y-2">
               <p>Chưa có ảnh bối cảnh: {contextError || 'Ảnh chưa được tạo hoặc tải lên.'}</p>
               <button type="button" onClick={() => setCurrentStep(2)} className="px-3 py-2 rounded-lg bg-neutral-800 text-white">Quay lại tạo / tải ảnh bối cảnh</button>
@@ -2240,6 +2279,8 @@ export default function CreateVideoPage() {
                 {/* Left Column: Remotion Player 9:16 */}
                 <div className="lg:col-span-5 flex flex-col items-center space-y-4">
                   <RemotionPlayerPreview
+                    sceneVideos={supportingVideos}
+                    introVideo={introVideo}
                     productName={product.name}
                     price={product.price ? Number(product.price) : undefined}
                     category={product.category}
@@ -2263,7 +2304,7 @@ export default function CreateVideoPage() {
                   ) : (
                     <button
                       type="button"
-                      disabled={isRenderingVideo || isGeneratingVoice || isGeneratingContext || !product.assets.some(isProductImage)}
+                      disabled={isRenderingVideo || isGeneratingVoice || isGeneratingContext || !canRenderVisuals || !product.assets.some(isProductImage)}
                       onClick={handleStartGeneratingVideo}
                       className="w-full py-3 px-4 rounded-2xl bg-neutral-900 border border-neutral-700 hover:border-emerald-500/50 hover:bg-neutral-800 text-neutral-200 hover:text-white font-semibold text-xs transition flex items-center justify-center gap-2 shadow cursor-pointer disabled:opacity-50"
                     >
@@ -2309,7 +2350,7 @@ export default function CreateVideoPage() {
                       <button
                         type="button"
                         onClick={handleStartGeneratingVideo}
-                        disabled={isRenderingVideo || isGeneratingVoice}
+                        disabled={isRenderingVideo || isGeneratingVoice || !canRenderVisuals}
                         className="w-full py-3.5 px-5 rounded-xl font-bold text-xs uppercase tracking-wide bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-lg shadow-rose-900/30 transition flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <Film className="w-4 h-4" />
@@ -2389,12 +2430,12 @@ export default function CreateVideoPage() {
 
                     {/* Direct Post settings are completed in TikTok for Inbox uploads. */}
                     {postingMode === 'publish' && <div className="pt-3 border-t border-neutral-800 space-y-2.5">
-                      <div className="flex items-center justify-between text-xs">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
                         <span className="text-neutral-300">Chế độ hiển thị (Privacy Level):</span>
                         <select
                           value={privacyLevel}
                           onChange={(e) => setPrivacyLevel(e.target.value as 'SELF_ONLY' | 'PUBLIC_TO_EVERYONE')}
-                          className="bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1 text-xs text-neutral-300"
+                          className="max-w-full min-w-0 bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1 text-xs text-neutral-300"
                         >
                           <option value="SELF_ONLY">SELF_ONLY (Bắt buộc khi đang chờ TikTok duyệt)</option>
                           <option value="PUBLIC_TO_EVERYONE">PUBLIC_TO_EVERYONE (Công khai)</option>
@@ -2406,12 +2447,13 @@ export default function CreateVideoPage() {
                         <label className="flex items-center gap-2 cursor-pointer text-xs font-medium">
                           <input
                             type="checkbox"
-                            checked={isAigc}
+                            checked={isAigc || visualMode === 'vids-experiment'}
+                            disabled={visualMode === 'vids-experiment'}
                             onChange={(e) => setIsAigc(e.target.checked)}
                             className="rounded border-neutral-700 text-rose-600 focus:ring-0"
                           />
-                          <span className={isAigc ? 'text-rose-400' : 'text-neutral-400'}>
-                            {isAigc ? 'Bật (Gắn nhãn do AI tạo)' : 'Tắt (Không gắn nhãn AI)'}
+                          <span className={isAigc || visualMode === 'vids-experiment' ? 'text-rose-400' : 'text-neutral-400'}>
+                            {isAigc || visualMode === 'vids-experiment' ? 'Bật (Gắn nhãn do AI tạo)' : 'Tắt (Không gắn nhãn AI)'}
                           </span>
                         </label>
                       </div>

@@ -19,6 +19,8 @@ export interface ClientRenderOptions {
   bgmAudioUrl?: string
   fps?: number
   onProgress?: (percent: number, message: string) => void
+  sceneVideos?: import('./vids-plan').SceneVideoClips
+  introVideo?: import('./vids-plan').SceneVideoClip
 }
 
 export interface ClientRenderResult {
@@ -125,6 +127,7 @@ export async function renderVideoOnClient(
     assertNarrationDuration(opts.scenes, decoded.duration)
   }
   const resolvedBgmUrl = await prepareAssetUrl(opts.bgmAudioUrl || '/music/lofi-beat.mp3')
+  const sceneVideos = opts.sceneVideos ? Object.fromEntries(await Promise.all(Object.entries(opts.sceneVideos).map(async ([id, clip]) => [id, {...clip, src: await prepareAssetUrl(clip.src)}]))) : undefined
 
   // 1. Build Exact Speech Timings matching RemotionPlayerPreview
   const speechTimings = opts.scenes.reduce<{
@@ -191,6 +194,8 @@ export async function renderVideoOnClient(
 
   const remotionProps: RemotionVideoProps = {
     beats: beatsWithCards,
+    sceneVideos,
+    introVideo: opts.introVideo ? {...opts.introVideo, src: await prepareAssetUrl(opts.introVideo.src)} : undefined,
     masterAudioUrl: resolvedVoiceUrl || '',
     bgmAudioUrl: resolvedBgmUrl,
     bgmVolume: 0.12,

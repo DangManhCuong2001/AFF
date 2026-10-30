@@ -6,13 +6,18 @@ const normalized = (text: string) => text.toLowerCase().normalize('NFD').replace
 const merchantCopy = /cham soc khach hang|dich vu khach hang|ho tro khach hang|\bcskh\b|bao hanh|doi tra|hoan tra|hoan tien|chinh sach|giao hang|van chuyen|freeship|free ship|ship cod|voucher|ma giam gia|khuyen mai|uu dai|dam bao chat luong|cam ket|chinh hang|uy tin|chat luong (?:cao|tot|hang dau)|cam on|ung ho shop|danh gia\s*(?:5|nam)\s*sao|inbox|nhan tin|lien he|hotline|zalo|tu van|kiem hang|quay video.*(?:mo|boc) hop|tiktok shop|customer (?:service|care|support)|warranty|return policy|refund|free shipping|quality (?:assurance|guarantee)|money.back/i
 const sectionLabel = /^(?:cac\s+)?(?:thong tin|mo ta|gioi thieu|dac diem|tinh nang|uu diem|thong so(?: ky thuat)?|chi tiet|hinh anh|quy cach|dac tinh|huong dan(?: su dung| bao quan)?)(?:\s+(?:san pham|noi bat|co ban|chi tiet))*$/
 const emptyAttribute = /^(?:chat lieu|kich thuoc|mau sac|cong suat|dung tich|thanh phan|so luong|cach su dung|cach bao quan)$/
+// Generic promises do not describe a verifiable attribute or justify a hook.
+const genericSalesClaim = /phu hop (?:voi )?moi (?:khong gian|gia dinh|doi tuong)|hoan hao cho|tiet kiem [^.!?]{0,35}thoi gian|tang tinh tham my|de dang truy cap|giu .*luon sach se|co the dat o nhieu vi tri|giup .*gon gang|sap xep .*co to chuc/
 const intrinsic = /chat lieu|kich thuoc|mau sac|tong mau|thiet ke|kieu dang|hoa tiet|cong suat|dien ap|ket noi|usb|bluetooth|type.c|jack|dung tich|khoi luong|trong luong|thanh phan|bo gom|gom \d|huong dan|cach dung|cach su dung|bao quan|ve sinh|lam sach|dung de|giu .*day|silicon|cotton|linen|inox|thep|nhua|vai |form |mui huong|nong do|\d+(?:[.,]\d+)?\s*(?:cm|mm|m\b|met|ml|lit|kg|g\b|w\b|mah|mon|chiec|cai|ranh|tang|ngan)\b/
 
 export const isMerchantCopy = (text: string) => merchantCopy.test(normalized(text))
+// JavaScript \b treats Vietnamese accented letters as non-word characters:
+// "1 kéo" is not "1k", and "1 đế" is not a price in đồng.
+export const hasPriceOrDiscount = (text: string) => /(?:₫|vnd|vnđ)\s*\d[\d.,]*|\d[\d.,]*\s*(?:k(?:đ|₫|vnd)?(?![\p{L}\p{N}])|đ(?:ồng)?(?![\p{L}\p{N}])|₫|vnd(?![\p{L}\p{N}])|vnđ(?![\p{L}\p{N}])|%)/iu.test(text)
 export function isProductDetail(text: string): boolean {
   const value = text.trim()
   const plain = normalized(value).replace(/[:\s]+$/, '')
-  return value.length > 2 && /[\p{L}]/u.test(value) && !isMerchantCopy(value) && !sectionLabel.test(plain) && !emptyAttribute.test(plain) && !value.endsWith(':') && !/\d[\d.,]*\s*(?:k\b|đ|₫|vnd|%)/i.test(value)
+  return value.length > 2 && /[\p{L}]/u.test(value) && !isMerchantCopy(value) && !genericSalesClaim.test(plain) && !sectionLabel.test(plain) && !emptyAttribute.test(plain) && !value.endsWith(':') && !hasPriceOrDiscount(value)
 }
 
 function clean(text: string) {
@@ -53,7 +58,7 @@ export function extractProductFacts(product: ProductInput) {
   }
   const features = (product.features || []).flatMap(parse)
   const benefits = (product.benefits || []).flatMap(parse)
-  const description = parse(product.description || '')
+  const description = parse(product.description || '').filter(text => normalized(text) !== normalized(product.name))
   const howToUse = parse(product.howToUse || '')
   const all = [...features, ...benefits, ...description, ...howToUse]
   const unique = all.filter((text, index) => !all.slice(0, index).some((previous) => equivalentCopy(previous, text)))

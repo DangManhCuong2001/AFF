@@ -1,6 +1,27 @@
 export type ContentFormat = 'design-showcase' | 'feature-explainer' | 'buying-guide' | 'problem-solution'
 export type ContentAngle = 'design' | 'features' | 'fit'
 export interface ImageFocus { x: number; y: number; width: number; height: number }
+export interface NarrativeVisualStep {
+  phrase: string
+  assetId: string
+  assetIndex: number
+  crop?: ImageFocus
+  label: string
+}
+/** Visual staging evidence only; never a product fact or a claimed use/result. */
+export interface ImageInteraction {
+  action: 'pick-place' | 'lift' | 'place' | 'touch' | 'point'
+  targetDetail: number
+  contact: 'handle' | 'rim' | 'body' | 'surface'
+  mobility: 'handheld' | 'fixed' | 'unknown'
+  arrangement: 'separate' | 'stacked' | 'occluded' | 'unknown'
+  confidence: 'high' | 'low'
+  prop: 'none' | 'phone' | 'book' | 'small-item' | 'loop-item' | 'sponge' | 'bottle' | 'cloth' | 'cup'
+  restingPose?: 'upright' | 'flat' | 'leaning' | 'unknown'
+  supportState?: 'empty' | 'occupied' | 'unclear'
+  access?: 'clear' | 'blocked' | 'unclear'
+  supportUse?: 'storage' | 'drainage' | 'unclear'
+}
 export interface ImageInsight {
   assetId: string
   role: 'primary' | 'detail' | 'lifestyle' | 'packaging'
@@ -8,7 +29,10 @@ export interface ImageInsight {
   details?: {text: string; focus?: ImageFocus}[]
   focus?: ImageFocus
   productBounds?: ImageFocus
+  interaction?: ImageInteraction
   source: 'vision' | 'metadata'
+  quality?: 'clean' | 'seller-text' | 'ui-overlay'
+  usageSpace?: 'empty-support' | 'occupied-support' | 'not-support' | 'uncertain'
 }
 export interface ProductFact { id: string; text: string; source: 'user_input' | 'image'; assetId?: string }
 export interface CommerceMessage {
@@ -32,6 +56,7 @@ export interface SceneRenderPlan {
   spec?: {label: string; value: string; evidenceId: string}
   fullProductCrop?: ImageFocus
   speechTiming?: {offsetSec: number; durationSec: number}
+  visualSteps?: NarrativeVisualStep[]
   contextImageUrl?: string
   ctaLabel?: string
   factLabel?: string

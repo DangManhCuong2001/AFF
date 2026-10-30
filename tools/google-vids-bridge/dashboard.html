@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="vi"><meta charset="utf-8"><title>Thử kết nối Google Vids</title><link rel="stylesheet" href="/controller.css">
+<main>
+  <h1>Google Vids — thử kết nối local</h1>
+  <p>Đây là trang kiểm tra từng clip. Trong /create, chế độ Từ ảnh vẫn là mặc định; chỉ tác vụ bạn chủ động gửi ở trang này hoặc chế độ Vids thử nghiệm mới dùng Google Vids.</p>
+  <p>Chỉ dùng để kiểm chứng một ảnh mới → một clip mới. Model, thời lượng và tỉ lệ giữ theo mẫu bạn tạo trong Vids. Mỗi lần gửi có thể tiêu tốn hạn mức Google.</p>
+  <label>Mã kết nối extension<input id="token" readonly type="password"></label><button id="copy">Sao chép mã local</button>
+  <p id="connection" role="status">Đang kiểm tra…</p>
+  <form id="job">
+    <label>Ảnh mới — PNG, JPEG hoặc WebP, tối đa 5 MB<input id="image" type="file" accept="image/png,image/jpeg,image/webp" required></label>
+    <label>Prompt<textarea id="prompt" rows="5" maxlength="4000" required></textarea></label>
+    <label><input id="confirm" type="checkbox" required> Tôi muốn gửi một lượt tạo clip và sử dụng hạn mức Google hiện có.</label>
+    <button id="upload" type="button" disabled>Chỉ kiểm tra upload — không tạo clip</button>
+    <button id="submit" type="submit" disabled>Tạo một clip thử</button>
+  </form>
+  <p id="message" role="status"></p><section id="results"></section>
+  <p>Không dán API key, Cookie hoặc token Google vào trang này. Khi tác vụ lỗi sau khi gửi Generate, kiểm tra lịch sử Vids trước khi tạo lại.</p>
+</main><script src="/dashboard.js"></script></html>

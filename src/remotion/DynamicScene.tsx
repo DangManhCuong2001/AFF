@@ -9,6 +9,7 @@ interface DynamicSceneProps {
   productName: string
   priceText?: string
   isLastScene: boolean
+  video?: import('../lib/video/vids-plan').SceneVideoClip
 }
 
 export const DynamicScene: React.FC<DynamicSceneProps> = ({
@@ -16,9 +17,10 @@ export const DynamicScene: React.FC<DynamicSceneProps> = ({
   productName,
   priceText,
   isLastScene,
+  video,
 }) => {
   if (beat.plannedScene?.renderPlan) {
-    return <PlannedCommerceScene scene={beat.plannedScene} imageUrl={beat.layers.product.url} secondaryImageUrl={beat.secondaryImageUrl} durationSec={beat.durationSec} />
+    return <PlannedCommerceScene scene={beat.plannedScene} imageUrl={beat.layers.product.url} secondaryImageUrl={beat.secondaryImageUrl} visualStepImages={beat.visualStepImages} durationSec={beat.durationSec} video={video} />
   }
   // Priority: If beat has an Infographic Card from Commercial Infographic Deck, render InfographicMotionScene!
   if (beat.infographicCard && beat.theme) {

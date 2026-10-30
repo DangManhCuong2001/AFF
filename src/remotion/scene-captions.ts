@@ -1,3 +1,5 @@
+import {narrationWords} from '../engines/planning/narrative-timing'
+
 /** Phrase-sized captions with estimated pacing; no claim of word-level audio alignment. */
 export function buildCaptionCues(text: string) {
   const tokens = text.trim().split(/\s+/).filter(Boolean)
@@ -11,7 +13,9 @@ export function buildCaptionCues(text: string) {
     }
   }
   if (current.length) groups.push(current)
-  const weights = groups.map((group) => group.reduce((sum, token) => sum + Math.max(2, token.length), 0))
+  const words = narrationWords(text)
+  let wordIndex = 0
+  const weights = groups.map(group => {const weight = words.slice(wordIndex, wordIndex + group.length).reduce((sum, word) => sum + word.weight, 0); wordIndex += group.length; return weight})
   const total = weights.reduce((sum, weight) => sum + weight, 0) || 1
   let cursor = 0
   return groups.map((group, index) => {

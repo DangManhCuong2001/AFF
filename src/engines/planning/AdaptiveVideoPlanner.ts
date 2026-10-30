@@ -59,8 +59,10 @@ export function planAdaptiveVideo(product: ProductInput, requestedDuration = 22,
   else if (!usefulFacts.length) warnings.push('Thông tin đầu vào còn dài; dùng video ngắn, ưu tiên bổ sung mô tả từng chi tiết cụ thể.')
   if (images.length === 1) warnings.push('Chỉ có một ảnh: giữ góc sản phẩm gốc, không mô phỏng mặt sau hoặc thao tác chưa thấy.')
   if (!inspected.some((image) => image.source === 'vision')) warnings.push('Chưa đọc được nội dung ảnh; bố cục dùng toàn ảnh và vai trò ảnh do bạn cung cấp.')
-  const maxDuration = usefulFacts.length >= 4 && images.length >= 3 ? 40 : usefulFacts.length >= 3 ? 22 : usefulFacts.length === 2 ? 18 : usefulFacts.length === 1 ? 14 : 12
   const automatic = automaticDuration(usefulFacts)
+  // Use the same content allowance as auto mode. The old manual cap (e.g. 22s
+  // for three facts) rejected a valid 30s request despite auto allowing 28s.
+  const maxDuration = usefulFacts.length >= 4 && images.length >= 3 ? 40 : automatic.seconds
   const duration = durationMode === 'auto' ? automatic.seconds : Math.max(12, Math.min(requestedDuration, maxDuration))
   if (durationMode === 'manual' && duration < requestedDuration) warnings.push(`Đề xuất ${duration}s vì dữ liệu hiện có chưa đủ cho ${requestedDuration}s.`)
   const name = short(product.name, 8)

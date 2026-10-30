@@ -3,6 +3,8 @@ import { AbsoluteFill, Sequence, staticFile, useVideoConfig } from 'remotion'
 import { Audio } from '@remotion/media'
 import { RemotionVideoProps } from './types'
 import { DynamicScene } from './DynamicScene'
+import {HybridIntroScene} from './HybridIntroScene'
+import {hybridIntroFrames} from './scene-video'
 
 function resolveAudioSrc(src?: string): string | undefined {
   if (!src) return undefined
@@ -31,10 +33,13 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
   productName,
   priceText,
   fps,
+  sceneVideos,
+  introVideo,
 }) => {
   const resolvedMasterAudio = resolveAudioSrc(masterAudioUrl)
   const {durationInFrames} = useVideoConfig()
   const resolvedBgmAudio = resolveAudioSrc(bgmAudioUrl)
+  const introFrames = hybridIntroFrames(introVideo, durationInFrames, fps, beats.find(beat => beat.plannedScene?.type === 'cta' || beat.shotType === 'CTAShot')?.startTimeSec)
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#09090b' }}>
@@ -58,10 +63,13 @@ export const TikTokCommerceVideo: React.FC<RemotionVideoProps> = ({
               productName={productName}
               priceText={priceText}
               isLastScene={isLastScene}
+              video={sceneVideos?.[beat.segmentId]}
             />
           </Sequence>
         )
       })}
+
+      {introVideo && introFrames > 0 && <Sequence durationInFrames={introFrames} name="AI opening — continuous action"><HybridIntroScene clip={introVideo} beats={beats} productName={productName} durationFrames={introFrames} /></Sequence>}
 
       {/* 2. Master narration already has a short audio fade before speech begins. */}
       {resolvedMasterAudio && (

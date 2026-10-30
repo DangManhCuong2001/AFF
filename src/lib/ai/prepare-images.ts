@@ -22,16 +22,16 @@ export async function loadProductImageBlob(asset: ProductAsset): Promise<Blob> {
 }
 
 /** Encode in the browser so local uploads and CORS-accessible remote photos reach vision. */
-export async function prepareAnalysisImages(assets: ProductAsset[]): Promise<AnalysisImage[]> {
+export async function prepareAnalysisImages(assets: ProductAsset[], options?: {selectionPool?: boolean}): Promise<AnalysisImage[]> {
   const images = assets.filter(isProductImage)
   const primary = images.find((image) => image.isPrimary)
-  const selected = (primary ? [primary, ...images.filter((image) => image !== primary)] : images).slice(0, 3)
+  const selected = (primary ? [primary, ...images.filter((image) => image !== primary)] : images).slice(0, options?.selectionPool ? 12 : 3)
   const results = await Promise.allSettled(selected.map(async (asset) => {
     const blob = await loadProductImageBlob(asset)
     if (!blob) throw new Error('Image unavailable')
     const bitmap = await createImageBitmap(blob)
     try {
-      const scale = Math.min(1, 768 / Math.max(bitmap.width, bitmap.height))
+      const scale = Math.min(1, (options?.selectionPool ? 640 : 768) / Math.max(bitmap.width, bitmap.height))
       const canvas = document.createElement('canvas')
       canvas.width = Math.max(1, Math.round(bitmap.width * scale))
       canvas.height = Math.max(1, Math.round(bitmap.height * scale))

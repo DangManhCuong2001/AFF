@@ -1,5 +1,6 @@
 import type {StoryboardScene} from '../core/types'
 import type {ProductFact} from './types'
+import {explicitNegations, hasExplicitNegation} from './negation'
 
 const filler = new Set(['san', 'pham', 'co', 'chieu', 'duoc', 'cua', 'la', 'nay', 'trong', 'anh', 'cac', 'va', 'voi', 'mot'])
 export function copyTokens(text: string): Set<string> {
@@ -11,9 +12,9 @@ export function copyTokens(text: string): Set<string> {
 /** Conservative lexical deduplication; different measurements and negatives stay distinct. */
 export function equivalentCopy(a: string, b: string): boolean {
   const left = copyTokens(a), right = copyTokens(b)
-  const signature = (tokens: Set<string>) => [...tokens].filter((token) => /\d/.test(token) || ['khong', 'chua'].includes(token)).sort().join('|')
-  if (signature(left) !== signature(right) || !left.size || !right.size) return false
-  if ([...left].some((token) => ['khong', 'chua'].includes(token)) && [...left].join('|') !== [...right].join('|')) return false
+  const signature = (tokens: Set<string>, text: string) => [...[...tokens].filter((token) => /\d/.test(token)), ...explicitNegations(text)].sort().join('|')
+  if (signature(left, a) !== signature(right, b) || !left.size || !right.size) return false
+  if (hasExplicitNegation(a) && [...left].join('|') !== [...right].join('|')) return false
   const overlap = [...left].filter((token) => right.has(token)).length
   // A different color/device/material is still new information, even in a long sentence.
   return overlap === left.size && left.size === right.size

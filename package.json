@@ -9,7 +9,12 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:planning": "node scripts/test-planning.cjs",
-    "test:tiktok": "node scripts/test-planning.cjs tests/tiktok-posting.test.ts"
+    "test:tiktok": "node scripts/test-planning.cjs tests/tiktok-posting.test.ts",
+    "video:local": "node tools/local-video-stack.mjs",
+    "vids:bridge": "node tools/google-vids-bridge/server.mjs",
+    "test:vids": "node scripts/test-planning.cjs tests/vids-experiment.test.ts tests/vids-action-quality.test.ts tests/veo-prompt-compression.test.ts",
+    "test:vids-native": "node tests/google-vids-bridge/create-ui.browser.cjs",
+    "test:vids-bridge": "node --test tests/google-vids-bridge/*.test.cjs tests/google-vids-bridge/*.test.mjs"
   },
   "dependencies": {
     "@mediabunny/aac-encoder": "^1.61.3",

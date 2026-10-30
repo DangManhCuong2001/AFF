@@ -40,6 +40,8 @@ async function main() {
     price,
     category,
     scenes = [],
+    sceneVideos,
+    introVideo,
     images = [],
     masterAudioBase64 = '',
     bgmAudioBase64 = '',
@@ -116,6 +118,8 @@ async function main() {
 
   const remotionProps: RemotionVideoProps = {
     beats: beatsWithCards,
+    sceneVideos,
+    introVideo,
     masterAudioUrl: masterAudioBase64,
     bgmAudioUrl: resolvedBgm,
     bgmVolume: 0.12,

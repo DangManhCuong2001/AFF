@@ -68,6 +68,16 @@ test('Short details remain usable without a redundant overall image observation'
   assert.equal(result.storyboard.scenes[2].renderPlan?.layout, 'detail')
 })
 
+test('Gemini quoted image details survive source checks, layout selection and final scene timing', async () => {
+  const value = draft()
+  Object.assign(value.scenes[2], {visualFocus: [{phrase: 'kéo và ống cắm', assetId: 'main', detailIndex: 2}, {phrase: 'chi tiết không được đọc', assetId: 'main', detailIndex: 1}]})
+  const result = await analyze(value)
+  const step = result.storyboard.scenes[2].renderPlan?.visualSteps
+  assert.equal(step?.length, 1)
+  assert.equal(step?.[0].phrase, 'kéo và ống cắm')
+  assert.deepEqual(step?.[0].crop, value.images[0].details[1].focus)
+})
+
 test('Rejecting an unsafe visual detail cannot shift the source IDs of later valid details', async () => {
   const value = draft()
   value.images[0].details.unshift({text: 'Bảo hành 1 năm'})

@@ -299,6 +299,7 @@ export interface VisualLayerTransform {
 
 export interface StoryplanBeat {
   secondaryImageUrl?: string
+  visualStepImages?: string[]
   plannedScene?: import('../engines/core/types').StoryboardScene
   id: string
   segmentId: string
@@ -408,6 +409,8 @@ export interface InfographicCardData {
 // ─── Remotion Video Props ─────────────────────────────────────────────────────
 
 export interface RemotionVideoProps {
+  introVideo?: import('../lib/video/vids-plan').SceneVideoClip
+  sceneVideos?: import('../lib/video/vids-plan').SceneVideoClips
   beats: StoryplanBeat[]
   masterAudioUrl: string
   bgmAudioUrl?: string

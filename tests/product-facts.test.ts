@@ -142,3 +142,11 @@ test('A later text-only AI response also retains valid observations from the ear
     assert.doesNotMatch(result.creativePlan.story, merchantPattern)
   })
 })
+
+test('Generic shop promises and a duplicated product title cannot displace actual product details', () => {
+  const name = 'Kệ để đồ rửa chén rửa bát tiện lợi cho nhà bếp'
+  const result = extractProductFacts({...product, name, description: `${name}\nThiết kế tiện lợi, phù hợp với mọi không gian bếp.\nGiúp bạn sắp xếp đồ dùng một cách có tổ chức, tiết kiệm thời gian.\nTăng tính thẩm mỹ cho không gian bếp của bạn.\nKệ có thể đặt ở nhiều vị trí trong nhà bếp.\nKích thước: 23 x 9 x 11 cm.\nMàu đen.`})
+  assert.deepEqual(result.facts.map(fact => fact.text), ['Kích thước: 23 x 9 x 11 cm', 'Màu đen'])
+  assert.ok(result.excludedCount >= 4)
+  assert.equal(extractProductFacts({...product, name: 'Bộ dao 6 món', description: '', features: ['Bộ dao 6 món']}).facts[0]?.text, 'Bộ dao 6 món', 'Explicit features remain usable even when matching the title')
+})

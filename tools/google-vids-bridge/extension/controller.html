@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="vi"><meta charset="utf-8"><title>Kết nối Google Vids</title>
+<link rel="stylesheet" href="controller.css">
+<main>
+  <h1>Kết nối Google Vids — bản thử</h1>
+  <p id="version">Đang đọc phiên bản extension…</p>
+  <p>Giữ cửa sổ này và tab Google Vids mở trong lúc chạy. Thông tin đăng nhập chỉ nằm trong tab Vids.</p>
+  <label>Mã kết nối local<input id="token" type="password" autocomplete="off" placeholder="Sao chép từ http://127.0.0.1:4317"></label>
+  <label>Tab Google Vids<select id="tab"></select></label>
+  <button id="refresh">Tìm lại tab</button> <button id="connect">Kết nối</button> <button id="stop" disabled>Ngừng nhận tác vụ mới</button>
+  <button id="reconnect">Làm mới phiên Vids</button>
+  <p id="status" role="status">Chưa kết nối.</p>
+  <p>Bản 0.3 tự điều khiển Create: chọn Portrait 8 giây, đưa ảnh và prompt vào, rồi nhận MP4 về app. Giữ tab Vids đã đăng nhập và cửa sổ này mở. Không cần tạo clip mẫu hoặc gửi Cookie/token Google vào ô trên.</p>
+  <p>Mỗi tác vụ chỉ bấm Generate một lần. Sai ảnh/prompt hoặc cấu hình chưa đúng sẽ dừng trước khi gửi; lỗi sau khi gửi không tự tạo lại. Cần duyệt sản phẩm trong clip trước khi xuất video hoàn chỉnh.</p>
+</main><script src="protocol.js"></script><script src="seed.js"></script><script src="controller.js"></script></html>

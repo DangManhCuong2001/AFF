@@ -31,6 +31,7 @@ export interface VisualLayerTransform {
 
 export interface VisualBeat {
   secondaryImageUrl?: string
+  visualStepImages?: string[]
   plannedScene?: import('../core/types').StoryboardScene
   id: string
   segmentId: string

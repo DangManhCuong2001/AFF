@@ -1,5 +1,6 @@
 import type {ContentAngle, ImageInsight, ProductFact} from './types'
 import {isProductDetail} from './product-facts'
+import {hasExplicitNegation} from './negation'
 
 const words = (text: string) => text.trim().split(/\s+/).filter(Boolean)
 export const normalizeCopy = (text: string) => text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd')
@@ -9,6 +10,7 @@ const intents = [
   {id: 'compatibility', pattern: /usb|bluetooth|tuong thich|ket noi|cong sac|jack|type.c/, label: 'Kiểu kết nối / tương thích', shortLabel: 'kết nối', cta: 'Kiểm tra tương thích', clickReason: 'Đối chiếu thông tin tương thích trước khi đặt.', check: 'Kiểm tra thiết bị của bạn có phù hợp với kiểu kết nối này.'},
   {id: 'size', pattern: /kich thuoc|so do|chieu dai|day dai|dung tich|\bsize\b|\d\s*(?:cm|mm|met|ml|lit|inch)\b/, label: 'Kích thước cần xem', shortLabel: 'kích thước', cta: 'Kiểm tra kích thước', clickReason: 'Đối chiếu kích thước với nhu cầu của bạn.', check: 'Đối chiếu kích thước với nhu cầu trước khi chọn.'},
   {id: 'contents', pattern: /bo gom|gom \d|phu kien|so luong|kem theo|co .*(?:va|,) .*(?:gia|keo|hop)|\d\s*(?:mon|chiec|cai)\b/, label: 'Thành phần của bộ', shortLabel: 'thành phần bộ', cta: 'Xem thành phần bộ', clickReason: 'Kiểm tra đúng thành phần và số lượng của phiên bản định mua.', check: 'Kiểm tra đúng thành phần bộ và số lượng ở phiên bản bạn định mua.'},
+  {id: 'structure', pattern: /thanh treo|khay|khoang|mat do|go do|khe cam|lo thoat/, label: 'Cấu tạo sản phẩm', shortLabel: 'cấu tạo', cta: 'Xem cấu tạo sản phẩm', clickReason: 'Xem các bộ phận và vị trí bố trí đồ trước khi chọn.', check: 'Xem vị trí các bộ phận có phù hợp với cách bạn sử dụng.'},
   {id: 'color', pattern: /mau|tong mau|hoa tiet|kieu dang|thiet ke/, label: 'Màu sắc và thiết kế', shortLabel: 'màu và thiết kế', cta: 'Xem màu và kiểu dáng', clickReason: 'Đối chiếu màu và kiểu dáng với nhu cầu của bạn.', check: 'Đối chiếu màu và kiểu dáng với ảnh sản phẩm.'},
   {id: 'fit', pattern: /\bform\b|dang om|dang rong|regular fit|oversize/, label: 'Form trang phục', shortLabel: 'form dáng', cta: 'Đối chiếu form và số đo', clickReason: 'Đối chiếu form và số đo với nhu cầu của bạn.', check: 'Đối chiếu form và số đo trước khi chọn.'},
   {id: 'care', pattern: /bao quan|giat|ve sinh|lam sach/, label: 'Cách bảo quản', shortLabel: 'cách bảo quản', cta: 'Xem cách bảo quản', clickReason: 'Đọc hướng dẫn bảo quản của đúng sản phẩm.', check: 'Đọc hướng dẫn bảo quản của sản phẩm.'},
@@ -33,7 +35,7 @@ export function intentForFact(fact?: ProductFact) {
 export function sellingContextForFact(fact?: ProductFact) {
   const intent = intentForFact(fact)
   const plain = normalizeCopy(fact?.text || '')
-  if (!fact || /\bkhong\b|\bchua\b/.test(plain)) return undefined
+  if (!fact || hasExplicitNegation(fact.text)) return undefined
   if (intent.id === 'size' && /day|cap|chieu dai/.test(plain)) return {need: 'Bàn cách xa thiết bị?', reason: 'Đáng cân nhắc nếu bạn cần bố trí dây xa thiết bị.'}
   if (intent.id === 'size' && /dung tich|\bml\b|\blit\b/.test(plain)) return {need: 'Bạn ưu tiên dung tích này?', reason: 'Đáng cân nhắc nếu dung tích này đúng nhu cầu của bạn.'}
   const contexts: Record<string, {need: string; reason: string}> = {
@@ -69,7 +71,7 @@ export function hasDecisionTarget(text: string, fact: ProductFact) {
     compatibility: /ket noi|tuong thich|dau cam|cong/,
     size: /kich thuoc|chieu dai|dung tich|so do|\bsize\b/,
     contents: /thanh phan bo|nhung mon|tron bo|ca bo|bo gom/,
-    color: /mau|tong|kieu dang/, fit: /form|dang|so do/,
+    color: /mau|tong|kieu dang/, structure: /cau tao|bo phan|khay|khoang|thanh|khe/, fit: /form|dang|so do/,
     material: /chat lieu/, care: /bao quan/, ingredients: /thanh phan/,
     skin: /doi tuong su dung|loai da/, scent: /mui huong|nhom huong/,
     concentration: /nong do/, power: /nguon dien|cong suat|dien ap/,
@@ -83,8 +85,12 @@ export function createCommerceCopy(name: string, angle: ContentAngle, facts: Pro
   const candidates = facts.filter((fact) => words(fact.text).length <= 18 && isProductDetail(fact.text))
   const ranked = candidates.map((fact, index) => {
     const intent = intentForFact(fact)
-    const relevant = angle === 'design' ? ['color', 'material', 'design'] : angle === 'fit' ? ['compatibility', 'size', 'contents'] : ['compatibility', 'size', 'contents', 'material']
-    return {fact, score: (relevant.includes(intent.id) ? angle === 'features' ? 3 : 10 : 0) + (angle !== 'design' && priorities.includes(intent.id) ? 30 - priorities.indexOf(intent.id) * 4 : 0) - index / 100}
+    const relevant = angle === 'design' ? ['color', 'material', 'design'] : angle === 'fit' ? ['compatibility', 'size', 'contents'] : ['compatibility', 'size', 'contents', 'material', 'structure']
+    // In feature mode a profile's low-priority colour preference must not
+    // outrank actual construction/connection/contents evidence. Explicit
+    // design mode still keeps its original visual preference.
+    const priority = angle !== 'design' && priorities.includes(intent.id) && !(angle === 'features' && intent.id === 'color') ? 30 - priorities.indexOf(intent.id) * 4 : 0
+    return {fact, score: (relevant.includes(intent.id) ? angle === 'features' ? 3 : 10 : 0) + priority - index / 100}
   }).sort((a, b) => b.score - a.score)
   const focus = ranked.find(({fact}) => fact.id === preferredFocusId)?.fact || ranked[0]?.fact
   const intent = intentForFact(focus)
@@ -101,7 +107,7 @@ export function createCommerceCopy(name: string, angle: ContentAngle, facts: Pro
   const ctaHeadline = ({compatibility: 'Khớp thiết bị của bạn?', size: 'Đúng kích thước bạn cần?', contents: 'Đúng bộ bạn đang tìm?', color: 'Đúng màu bạn muốn?', material: 'Đúng chất liệu bạn cần?'} as Record<string, string>)[intent.id] || 'Xem kỹ trước khi chọn'
   const buyerQuestion = ({compatibility: 'Kiểu kết nối này có khớp thiết bị của bạn?', size: 'Kích thước này có phù hợp nhu cầu của bạn?', contents: 'Bộ này có đúng những món bạn cần?', color: 'Màu và kiểu dáng có đúng lựa chọn của bạn?', material: 'Chất liệu này có phù hợp nhu cầu của bạn?'} as Record<string, string>)[intent.id] || `Bạn đã đọc kỹ ${intent.shortLabel} của sản phẩm chưa?`
   return {focus, intent, hooks, ctaHeadline, buyerQuestion, headline: focus ? trimWords(point, 9) : productName,
-    cta: focus ? /\bkhong\b|\bchua\b/.test(normalizeCopy(focus.text)) ? `Nhấn sản phẩm để xem: ${detail}.` : `Nhấn sản phẩm để xem ${intent.shortLabel.replace(/ và /g, ', ')} và giá hiện tại nhé.` : `Nhấn sản phẩm để xem ảnh và mô tả của ${productName}.`,
+    cta: focus ? hasExplicitNegation(focus.text) ? `Nhấn sản phẩm để xem: ${detail}.` : `Nhấn sản phẩm để xem ${intent.shortLabel.replace(/ và /g, ', ')} và giá hiện tại nhé.` : `Nhấn sản phẩm để xem ảnh và mô tả của ${productName}.`,
     orderedFacts: focus ? [focus, ...ranked.map(({fact}) => fact).filter((fact) => fact.id !== focus.id)] : ranked.map(({fact}) => fact)}
 }
 

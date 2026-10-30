@@ -28,6 +28,8 @@ interface RemotionPlayerPreviewProps {
   bgmAudioUrl?: string
   fps?: number
   renderedVideoUrl?: string | null
+  sceneVideos?: import('@/lib/video/vids-plan').SceneVideoClips
+  introVideo?: import('@/lib/video/vids-plan').SceneVideoClip
 }
 
 export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
@@ -40,6 +42,8 @@ export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
   bgmAudioUrl = '/music/lofi-beat.mp3',
   fps = 30,
   renderedVideoUrl,
+  sceneVideos,
+  introVideo,
 }) => {
   const [overlayMode, setOverlayMode] = useState<'off' | 'tiktok' | 'guides'>('tiktok')
   const [viewMode, setViewMode] = useState<'remotion' | 'mp4'>('remotion')
@@ -110,6 +114,8 @@ export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
 
     return {
       beats: beatsWithCards,
+      sceneVideos,
+      introVideo,
       masterAudioUrl: voiceAudioUrl || '',
       bgmAudioUrl: bgmAudioUrl,
       bgmVolume: 0.12,
@@ -119,7 +125,7 @@ export const RemotionPlayerPreview: React.FC<RemotionPlayerPreviewProps> = ({
       totalDurationFrames,
       fps,
     }
-  }, [visualDirector, scenes, imageUrls, productName, category, price, voiceAudioUrl, bgmAudioUrl, fps])
+  }, [visualDirector, scenes, imageUrls, productName, category, price, voiceAudioUrl, bgmAudioUrl, fps, sceneVideos, introVideo])
 
   return (
     <div className="w-full flex flex-col items-center space-y-4">

@@ -15,7 +15,8 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { getFfmpegBinaryPath } from '@/lib/video/ffmpeg'
 import { generateVietnameseTTS, normalizeVietnameseNumbers, sanitizeTextForTTS } from '@/lib/audio/tts'
-import { parseVoiceProvider, VoiceProvider } from '@/lib/audio/provider'
+import { parseVoiceProvider, VoiceProvider, voiceProviderLabel } from '@/lib/audio/provider'
+import {generateVibiTTS} from '@/lib/audio/vibi'
 import {analyzeVoiceFile, wavDuration} from '@/lib/audio/voice-processing'
 
 const execFilePromise = promisify(execFile)
@@ -233,6 +234,8 @@ export class VipeeTTSProvider implements TTSProvider {
 
         if (provider === 'google') {
           success = await this.synthesizeGoogleTTS(cleanText, rawSegPath)
+        } else if (provider === 'vibi') {
+          success = await this.synthesizeVibi(cleanText, rawSegPath)
         } else {
           if (!process.env.ELEVENLABS_API_KEY?.trim()) {
             throw new Error('Chưa cấu hình ELEVENLABS_API_KEY')
@@ -240,7 +243,7 @@ export class VipeeTTSProvider implements TTSProvider {
           success = await this.synthesizeElevenLabs(cleanText, rawSegPath, plan.voicePreset)
         }
         if (!success) {
-          throw new Error(`Không thể tạo giọng ${provider === 'google' ? 'Google' : 'ElevenLabs'} cho cảnh ${idx + 1}. Vui lòng thử lại.`)
+          throw new Error(`Không thể tạo giọng ${voiceProviderLabel(provider)} cho cảnh ${idx + 1}. Vui lòng thử lại.`)
         }
 
         // Pacing delay between segments to prevent socket rate limits
@@ -349,7 +352,8 @@ export class VipeeTTSProvider implements TTSProvider {
     if (!apiKey) return false
 
     // Priority: Default Voice ID configured by user (default: s6W2NupNY6TykGJoDtWy)
-    const configuredVoiceId = process.env.ELEVENLABS_DEFAULT_VOICE_ID?.trim() || 's6W2NupNY6TykGJoDtWy'
+    const explicitVoiceId = process.env.ELEVENLABS_DEFAULT_VOICE_ID?.trim()
+    const configuredVoiceId = explicitVoiceId || 's6W2NupNY6TykGJoDtWy'
 
     // Preset mapping for premade voices (fallback if user is on Free tier without library voice permissions)
     let fallbackVoiceId = 'cgSgspJ2msm6clMCkdW9' // Jessica (Female)
@@ -383,7 +387,7 @@ export class VipeeTTSProvider implements TTSProvider {
         const errText = await res.text().catch(() => '')
         console.warn(`[VipeeTTSProvider] ElevenLabs voice ${voiceId} HTTP ${res.status}:`, errText)
 
-        if (errText.includes('cannot use library voices') || res.status === 402) {
+        if (!explicitVoiceId && (errText.includes('cannot use library voices') || res.status === 402)) {
           console.warn(`[VipeeTTSProvider] Voice ${voiceId} requires paid plan. Automatically falling back to premade voice ${fallbackVoiceId}...`)
           res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${fallbackVoiceId}`, {
             method: 'POST',
@@ -421,6 +425,12 @@ export class VipeeTTSProvider implements TTSProvider {
     const buffer = await generateVietnameseTTS(text, { provider: 'google' })
     fs.writeFileSync(outputPath, buffer)
     return true
+  }
+
+  private async synthesizeVibi(text: string, outputPath: string): Promise<boolean> {
+    const buffer = await generateVibiTTS(text)
+    fs.writeFileSync(outputPath, buffer)
+    return buffer.length > 500
   }
 
 }

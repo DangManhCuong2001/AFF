@@ -13,6 +13,8 @@ import {assertNarrationDuration} from './narration-sync'
 const execFilePromise = promisify(execFile)
 
 export interface RenderRemotionOptions {
+  sceneVideos?: import('./vids-plan').SceneVideoClips
+  introVideo?: import('./vids-plan').SceneVideoClip
   productName: string
   price?: number
   category?: string
@@ -136,6 +138,8 @@ export async function renderWithRemotion(
   const outPath = path.join(tempDir, fileName)
 
   const payload = {
+    sceneVideos: opts.sceneVideos,
+    introVideo: opts.introVideo,
     productName: opts.productName,
     price: opts.price,
     category: opts.category,

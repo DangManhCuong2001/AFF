@@ -2,12 +2,15 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {analyzeProductForVideo} from '../src/lib/ai/product-video-analysis'
 import {readImageInsights} from '../src/lib/ai/gemini'
+import {planAdaptiveVideo} from '../src/engines/planning/AdaptiveVideoPlanner'
+import {planVidsShots} from '../src/lib/video/vids-plan'
 import type {ProductInput} from '../src/engines/core/types'
 
 const product: ProductInput = {id: 'two-stage', name: 'Bộ dao A', category: 'home', description: 'CHĂM SÓC KHÁCH HÀNG:\nBảo hành 1 năm\nHoàn trả 15 ngày', assets: [{id: 'main', type: 'PRODUCT_IMAGE', url: '/product.jpg'}]}
 const images = [{assetId: 'main', dataUrl: 'data:image/jpeg;base64,YWJj'}]
 const focus = 'image-main-detail-1'
-const vision = {images: [{assetId: 'main', role: 'primary', details: [{text: 'Bộ dao có tông màu kem'}, {text: 'Cán dao có đinh tán tròn'}], productBounds: {x: 20, y: 20, width: 60, height: 60}}]}
+const interaction = {action: 'lift', targetDetail: 2, contact: 'handle', mobility: 'handheld', arrangement: 'separate', confidence: 'high', prop: 'none'}
+const vision = {images: [{interaction, assetId: 'main', role: 'primary', details: [{text: 'Bộ dao có tông màu kem'}, {text: 'Cán dao có đinh tán tròn'}], productBounds: {x: 20, y: 20, width: 60, height: 60}}]}
 const copy = {
   recommendedAngle: 'features', focusFactId: focus, images: [],
   messagePlan: {viewerNeed: 'Bạn đang tìm bộ dao màu kem?', answer: 'Bộ dao này có tông màu kem.', evidenceIds: [focus]},
@@ -44,11 +47,19 @@ test('The production workflow reads photos before writing and restricts hooks/CT
     assert.equal(result.strategy.cta, copy.scenes.at(-1)!.voice)
     assert.doesNotMatch(result.creativePlan.story, /bảo hành|hoàn trả|chăm sóc/i)
     assert.equal(result.contentPlan.images[0].source, 'vision')
+    assert.deepEqual(result.contentPlan.images[0].interaction, interaction)
+    const shots = planVidsShots(product, result.storyboard.scenes, result.contentPlan.images)
+    assert.match(shots[0].prompt, /visible handle/)
+    assert.ok(shots[0].identityNotes?.includes('Cán dao có đinh tán tròn'))
+    assert.ok(result.contentPlan.facts.every(fact => !fact.text.includes('lift')), 'staging evidence is not an advertised product fact')
     assert.ok(result.contentPlan.warnings.every(warning => !warning.includes('Chưa có ảnh hợp lệ')))
   }, (call, init) => {
     const body = JSON.parse(String(init?.body))
     const schema = body.generationConfig.responseFormat.text.schema
     if (call === 1) {
+      assert.ok(schema.properties.images.items.required.includes('interaction'))
+      assert.deepEqual(schema.properties.images.items.properties.interaction.properties.action.enum, ['pick-place', 'lift', 'place', 'touch', 'point'])
+      assert.match(body.contents[0].parts[0].text, /không tra thao tác theo tên nhóm hàng/)
       assert.equal(body.contents[0].parts.filter((part: {inlineData?: unknown}) => part.inlineData).length, 1)
       return response(vision)
     }
@@ -57,7 +68,9 @@ test('The production workflow reads photos before writing and restricts hooks/CT
     assert.deepEqual(schema.properties.focusFactId.enum, [focus])
     assert.deepEqual(schema.properties.hookCandidates.items.properties.evidenceIds.items.enum, [focus])
     assert.deepEqual(schema.properties.cta.properties.evidenceIds.items.enum, [focus])
-    assert.deepEqual(schema.properties.scenes.prefixItems[1].properties.evidenceIds.items.enum, [focus])
+    assert.equal(schema.properties.scenes.prefixItems, undefined)
+    assert.ok(schema.properties.scenes.items.properties.evidenceIds.items.enum.includes(focus))
+    assert.ok(schema.properties.scenes.items.properties.evidenceIds.items.enum.includes('image-main-detail-2'))
     assert.equal(schema.properties.images.maxItems, 0)
     return response(copy)
   })
@@ -80,6 +93,11 @@ test('Copy failures retain the validated image details and identify the failed s
     assert.equal(result.contentPlan.aiStatus?.reason, 'quota')
     assert.equal(result.contentPlan.aiStatus?.attachedImages, 1)
     assert.equal(result.contentPlan.images[0].source, 'vision')
+    assert.deepEqual(result.contentPlan.images[0].interaction, interaction)
+    const shots = planVidsShots(product, result.storyboard.scenes, result.contentPlan.images)
+    assert.match(shots[0].prompt, /visible handle/)
+    assert.ok(shots[0].identityNotes?.includes('Cán dao có đinh tán tròn'))
+    assert.ok(result.contentPlan.facts.every(fact => !fact.text.includes('lift')), 'staging evidence is not an advertised product fact')
     assert.ok(result.contentPlan.facts.some(fact => fact.id === focus))
     assert.deepEqual(result.contentPlan.aiStatus?.attempts?.map(attempt => [attempt.stage, attempt.outcome]), [['vision', 'completed'], ['copy', 'quota']])
   }, call => call === 1 ? response(vision) : new Response('', {status: 429}))
@@ -101,4 +119,47 @@ test('Native Gemini edge coordinates convert to crop sizes instead of extending 
   const invalid = readImageInsights({images: [{assetId: 'main', role: 'primary', box_2d: [900, 200, 790, 680], details: [{text: 'Tay cầm màu kem'}]}]}, images)
   assert.equal(invalid[0].productBounds, undefined)
   assert.equal(invalid[0].details?.[0].text, 'Tay cầm màu kem')
+})
+
+
+test('invalid staging evidence is discarded independently and never shifts detail references', () => {
+  const validDetails = [{text: 'Chén có viền xanh ở miệng'}, {text: 'Thân chén có họa tiết hoa nhỏ'}]
+  const make = (value: unknown, details = validDetails) => readImageInsights({images: [{assetId: 'main', role: 'primary', details, interaction: value}]}, images)[0]
+  assert.deepEqual(make(interaction).interaction, interaction)
+  for (const bad of [{...interaction, targetDetail: 3}, {...interaction, action: 'pour'}, {...interaction, mobility: 'small'}, {...interaction, prompt: 'invent parts'}, {...interaction, confidence: 'maybe'}]) {
+    const result = make(bad)
+    assert.equal(result.interaction, undefined)
+    assert.equal(result.details?.[0].text, validDetails[0].text, 'bad motion cannot discard useful image facts')
+  }
+  const rejectedDetail = {text: 'Chất liệu inox cao cấp, cực kỳ tiện lợi'}
+  const validSecond = make(interaction, [rejectedDetail, validDetails[1]])
+  assert.equal(validSecond.details?.[0].text, '')
+  assert.equal(validSecond.interaction?.targetDetail, 2)
+  assert.equal(make({...interaction, targetDetail: 1}, [rejectedDetail, validDetails[1]]).interaction, undefined)
+})
+
+test('a verbose target keeps its complete leading visual clause without losing its motion reference', () => {
+  const text = 'Một con dao rời màu be nằm ở phía trước bên trái bộ giữ, có phần tay cầm được cầm bằng một tay'
+  const result = readImageInsights({images: [{assetId: 'main', role: 'primary', details: [{text}], interaction: {...interaction, targetDetail: 1}}]}, images)[0]
+  assert.equal(result.details?.[0].text, 'Một con dao rời màu be nằm ở phía trước bên trái bộ giữ')
+  assert.equal(result.interaction?.targetDetail, 1)
+  assert.doesNotMatch(result.details![0].text, /được cầm/)
+  const rejected = readImageInsights({images: [{assetId: 'main', role: 'primary', details: [{text: 'Chất liệu inox cao cấp cực kỳ bền và tiện lợi, có thể cầm nhẹ để cho người xem thấy rõ toàn bộ chi tiết'}], box_2d: [10, 10, 900, 900], interaction: {...interaction, targetDetail: 1}}]}, images)[0]
+  assert.equal(rejected.details?.[0].text, '')
+  assert.equal(rejected.interaction, undefined)
+})
+
+test('Props and uncertain objects never become product facts or a motion target; detail indices stay stable', () => {
+  const images = [{assetId: 'main', dataUrl: 'data:image/jpeg;base64,YWJj'}]
+  const value = {images: [{assetId: 'main', role: 'primary', details: [
+    {text: 'Khăn lau treo trên thanh phía trước', subject: 'context'},
+    {text: 'Thanh treo ngang màu đen ở mặt trước', subject: 'product'},
+    {text: 'Khung kệ sắt màu đen', subject: 'product'},
+  ], interaction: {...interaction, targetDetail: 1}}]}
+  const result = readImageInsights(value, images)
+  assert.deepEqual(result[0].details?.map(detail => detail.text), ['', 'Thanh treo ngang màu đen ở mặt trước', ''])
+  assert.equal(result[0].interaction, undefined)
+  const plan = planAdaptiveVideo({id: 'rack', name: 'Kệ để đồ', category: 'home', assets: [{id: 'main', type: 'PRODUCT_IMAGE', url: '/rack.jpg'}]}, 22, undefined, result)
+  assert.deepEqual(plan.contentPlan.facts.map(fact => fact.id), ['image-main-detail-2'])
+  assert.doesNotMatch(plan.creativePlan.story, /Khăn lau|sắt/)
 })

@@ -1,3 +1,4 @@
+import {dimensionSpecRows} from '../src/engines/planning/spec-values'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {collectProductFacts, planAdaptiveVideo} from '../src/engines/planning/AdaptiveVideoPlanner'
@@ -18,7 +19,7 @@ test('Repeated facts cannot inflate scene count; measurements and negatives rema
   assert.equal(collectProductFacts(repeated).length, 4)
   const sparse = planAdaptiveVideo({...product, features: ['Dây dài 1,2 mét', 'Dây có chiều dài 1.2m.']}, 40)
   assert.equal(sparse.storyboard.scenes.length, 3)
-  assert.ok(sparse.strategy.targetDuration <= 14)
+  assert.ok(sparse.strategy.targetDuration <= 18, 'a single distinct point keeps the same short content budget as auto mode')
   assert.equal(planAdaptiveVideo(product).storyboard.scenes.length, 4)
 })
 
@@ -103,4 +104,12 @@ test('Gemini scenes are shortened locally without a second API call and all plan
     assert.equal(result.creativePlan.story, result.storyboard.scenes.map((scene) => scene.voice).join(' '))
     assert.ok(result.contentPlan.warnings.some((warning) => warning.includes('cảnh lặp')))
   } finally {globalThis.fetch = original}
+})
+
+test('dimension cards preserve labelled measurements and do not invent axes or units', () => {
+  assert.deepEqual(dimensionSpecRows('Ống đựng cao 225 mm và rộng 190 mm'), [{label: 'Cao', value: '225 mm'}, {label: 'Rộng', value: '190 mm'}])
+  assert.deepEqual(dimensionSpecRows('Chiều dài 1,2 mét; rộng 25 cm'), [{label: 'Dài', value: '1,2 mét'}, {label: 'Rộng', value: '25 cm'}])
+  assert.deepEqual(dimensionSpecRows('225 × 190 mm'), [])
+  assert.deepEqual(dimensionSpecRows('Dung tích 500 ml, khối lượng 2 kg'), [])
+  assert.deepEqual(dimensionSpecRows('Đường kính 20 cm, dày 2 mm'), [{label: 'Đường kính', value: '20 cm'}, {label: 'Dày', value: '2 mm'}])
 })

@@ -32,4 +32,5 @@ else {
   require('../tests/context-cache.test.ts')
   require('../tests/sales-writing.test.ts')
   require('../tests/automatic-duration.test.ts')
+  require('../tests/narrative-visuals.test.ts')
 }

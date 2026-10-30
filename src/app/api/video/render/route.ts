@@ -6,6 +6,8 @@ import { renderProductVideo } from '@/lib/video/generator'
 import { renderWithRemotion } from '@/lib/video/remotion-renderer'
 import { StoryboardScene } from '@/engines/core/types'
 import {NarrationSyncError} from '@/lib/video/narration-sync'
+import type {SceneVideoClips} from '@/lib/video/vids-plan'
+import {validVidsFrameAspect} from '@/lib/video/vids-framing'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -20,6 +22,9 @@ export async function POST(request: NextRequest) {
     const category = (formData.get('category') as string) || undefined
     const voicePreset = (formData.get('voicePreset') as import('@/engines/speech/types').VoicePersonality) || undefined
     const storyboardRaw = formData.get('storyboard') as string
+    const experimentalVids = formData.get('visualMode') === 'vids-experiment'
+    let sceneVideos: SceneVideoClips | undefined
+    let introVideo: import('@/lib/video/vids-plan').SceneVideoClip | undefined
 
     let scenes: StoryboardScene[] = []
     if (storyboardRaw) {
@@ -92,6 +97,24 @@ export async function POST(request: NextRequest) {
       ]
     }
 
+    if (experimentalVids) {
+      const metadata = JSON.parse(String(formData.get('sceneVideos') || '[]')) as {sceneId: string; durationSec: number; placement?: 'intro' | 'scene'; frameAspect?: number}[]
+      if (!Array.isArray(metadata) || metadata.length < 1 || metadata.length > 3) throw new Error('Chưa có clip Vids đã duyệt để xuất thử nghiệm.')
+      sceneVideos = {}
+      for (const item of metadata) {
+        const file = formData.get(`sceneVideo:${item.sceneId}`)
+        if (item.frameAspect !== undefined && !validVidsFrameAspect(item.frameAspect)) throw new Error('Khung hình clip thử nghiệm không hợp lệ.')
+        if (!scenes.some(scene => scene.id === item.sceneId && scene.renderPlan) || !Number.isFinite(item.durationSec) || item.durationSec <= 0 || item.durationSec > 15 || !(file instanceof File) || file.size > 32 * 1024 * 1024) throw new Error('Clip thử nghiệm không hợp lệ.')
+        const bytes = Buffer.from(await file.arrayBuffer())
+        if (bytes.length < 24 || bytes.toString('ascii', 4, 8) !== 'ftyp') throw new Error('Clip thử nghiệm phải là MP4.')
+        const clip = {src: `data:video/mp4;base64,${bytes.toString('base64')}`, durationSec: item.durationSec, frameAspect: item.frameAspect}
+        if (item.placement === 'intro') {
+          if (introVideo) throw new Error('Chỉ dùng một clip mở đầu.')
+          introVideo = clip
+        } else sceneVideos[item.sceneId] = clip
+      }
+    }
+
     // 1. Check for multiple image files
     const imageFiles = formData.getAll('images') as File[]
     const imageBuffers: Buffer[] = []
@@ -149,6 +172,8 @@ export async function POST(request: NextRequest) {
     try {
       console.log('[VideoRenderAPI] Rendering with Remotion Engine for exact 100% visual match...')
       result = await renderWithRemotion({
+        sceneVideos,
+        introVideo,
         productName,
         price,
         category,
@@ -162,6 +187,7 @@ export async function POST(request: NextRequest) {
       console.log(`[VideoRenderAPI] Remotion render success: ${result.fileName} (${result.fileSizeBytes} bytes)`)
     } catch (remotionErr) {
       if (remotionErr instanceof NarrationSyncError) throw remotionErr
+      if (experimentalVids) throw new Error('Chưa xuất được bản Vids thử nghiệm. Clip được giữ lại; bạn có thể thử xuất lại hoặc chọn luồng Từ ảnh.')
       if (scenes.some((scene) => scene.renderPlan?.contextImageUrl)) {
         throw new Error('Không xuất được video bối cảnh bằng Remotion. Vui lòng thử lại; app giữ nguyên ảnh preview thay vì đổi sang bản dựng khác.')
       }
