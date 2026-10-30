@@ -1,4 +1,5 @@
 import {readFile, mkdir, writeFile} from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import {z} from 'zod'
 import {vidsCacheKey} from '../video/vids-store'
@@ -127,7 +128,9 @@ export async function prepareVidsMotion(image: string, productName: string): Pro
   const imageMatch = image.match(/^data:(image\/\w+);base64,(.+)$/)
   if (!imageMatch) throw new Error('INVALID_REFERENCE_IMAGE')
   const key = vidsCacheKey(image, `interaction-v${VIDS_MOTION_VERSION}:${productName}`)
-  const directory = path.join(process.cwd(), '.data', 'vids-motion')
+  // Vercel's deployed source tree is read-only. Its /tmp cache is ephemeral,
+  // which is fine because motion planning remains correct without persistence.
+  const directory = path.join(process.env.VERCEL ? os.tmpdir() : process.cwd(), '.data', 'vids-motion')
   const file = path.join(directory, `${key}.json`)
 
   const compile = (raw: unknown): PreparedVidsMotion => {
@@ -227,8 +230,12 @@ Return only path={entry,accessKind,clearance,fit,opening,destination,freeEnd,anc
       const target = {text: route.destination?.text || selectedPlan.interactionTarget, focus: route.destination?.focus || {x: 0, y: 0, width: 100, height: 100}}
       const raw = {wholeProduct: shortlist.wholeProduct, selected: {plan: selectedPlanRaw, scores: selectedIdea.scores, target}, path: route}
       const compiled = compile(raw)
-      await mkdir(directory, {recursive: true})
-      await writeFile(file, JSON.stringify(raw), {mode: 0o600})
+      try {
+        await mkdir(directory, {recursive: true})
+        await writeFile(file, JSON.stringify(raw), {mode: 0o600})
+      } catch (cacheError) {
+        console.warn('[VidsMotion] Skipped non-essential cache write:', cacheError)
+      }
       return compiled
     } catch (error) { throw new Error('INVALID_MOTION_PLAN', {cause: error}) }
   })()

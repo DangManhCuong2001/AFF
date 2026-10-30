@@ -1,11 +1,12 @@
 import {createHash} from 'node:crypto'
 import {mkdir, readFile, writeFile} from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import {parseVidsFidelityReport, type VidsFidelityReport} from '../video/vids-fidelity'
 import {physicalPathSchema} from '../video/vids-physical-path'
 import {z} from 'zod'
 
-const directory = path.join(process.cwd(), '.data', 'vids-reviews')
+const directory = path.join(process.env.VERCEL ? os.tmpdir() : process.cwd(), '.data', 'vids-reviews')
 const inFlight = new Map<string, Promise<VidsFidelityReport>>()
 const image = (value: unknown, max: number) => typeof value === 'string' && value.length <= max && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)
 export async function reviewVidsFidelity(reference: unknown, frames: unknown, expected?: unknown): Promise<VidsFidelityReport> {
@@ -52,8 +53,12 @@ export async function reviewVidsFidelity(reference: unknown, frames: unknown, ex
       report.verdict = 'mismatch'
       if (!report.issues.some(issue => issue.kind === 'path')) report.issues = [...report.issues.slice(0, 7), {frameIndex: 0, kind: 'path', detail: 'Đường tiếp cận trong clip khác lối vào đã xác định từ ảnh; cần xem lại trước khi ghép.'}]
     }
-    await mkdir(directory, {recursive: true})
-    await writeFile(cached, JSON.stringify(report))
+    try {
+      await mkdir(directory, {recursive: true})
+      await writeFile(cached, JSON.stringify(report))
+    } catch (cacheError) {
+      console.warn('[VidsReview] Skipped non-essential cache write:', cacheError)
+    }
     return report
   })()
   inFlight.set(key, operation)

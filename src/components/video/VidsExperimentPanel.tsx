@@ -46,6 +46,9 @@ const messages: Record<string, string> = {
   MOTION_PLAN_OUTDATED: 'Kế hoạch thao tác đã cũ. Tải lại trang để chuẩn bị đường thao tác hiện tại; chưa tạo clip mới.',
   PHYSICAL_PATH_UNVERIFIED: 'Chưa xác định được lối thao tác đủ rõ từ ảnh; chưa dùng hạn mức Vids.',
   MOTION_PROMPT_CHANGED: 'Prompt không khớp kế hoạch từ ảnh hiện tại. Chuẩn bị lại ảnh và thao tác trước khi tạo clip.',
+  INVALID_MOTION_PLAN: 'Gemini chưa trả được kế hoạch thao tác hợp lệ. Chưa dùng hạn mức Vids; hãy phân tích lại hoặc chọn ảnh khác.',
+  MOTION_PLAN_QUOTA: 'Gemini đang hết hạn mức lập chuyển động. Chưa dùng hạn mức Vids; hãy thử lại sau.',
+  GEMINI_NOT_CONFIGURED: 'Production chưa cấu hình GEMINI_API_KEY để lập chuyển động.',
 }
 const explain = (code: string) => messages[code] || `Chưa hoàn tất: ${code}. Clip đã có được giữ lại.`
 const subscribe = () => () => {}
@@ -105,6 +108,7 @@ export function VidsExperimentPanel({mode, onModeChange, clipLimit, onClipLimitC
   const [itemsSignature, setItemsSignature] = useState('')
   const [preparing, setPreparing] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [checkingConnection, setCheckingConnection] = useState(false)
   const [confirm, setConfirm] = useState(false)
   const [notice, setNotice] = useState('')
   const [remainingLocalJobs, setRemainingLocalJobs] = useState<number>()
@@ -150,7 +154,7 @@ export function VidsExperimentPanel({mode, onModeChange, clipLimit, onClipLimitC
         let motion: Motion | undefined = sameSource && previous.motion?.version === VIDS_MOTION_VERSION ? previous.motion : undefined
         let motionError: string | undefined
         try {motion ||= (await call({action: 'plan-motion', image, productName: product.name})).motion}
-        catch {motionError = 'Chưa lập được thao tác bằng Gemini. Chưa dùng hạn mức Vids; bạn vẫn có thể nhập MP4 đã có hoặc phân tích lại.'}
+        catch (error) {motionError = error instanceof Error ? error.message : 'Chưa lập được thao tác bằng Gemini. Chưa dùng hạn mức Vids; bạn vẫn có thể nhập MP4 đã có hoặc phân tích lại.'}
         const result = await call({action: 'prepare', image, prompt: motion?.prompt || shot.prompt})
         const fullClip: Clip | undefined = result.clip?.status === 'complete' && result.clip.origin === 'vids-create' ? result.clip : undefined
         const clip: Clip | undefined = fullClip ? (await call({action: 'clean-frame', key: fullClip.key, bottomPercent: 12})).clip : result.clip || undefined
@@ -188,11 +192,14 @@ export function VidsExperimentPanel({mode, onModeChange, clipLimit, onClipLimitC
     finally {if (mounted.current) setBusy(false)}
   }
   const checkConnection = async () => {
+    if (checkingConnection) return
+    setCheckingConnection(true)
     try {
       const state = await call({action: 'status'}, token.trim())
       setRemainingLocalJobs(state.remainingJobs)
       setNotice(state.remainingJobs === 0 ? 'Bridge đang giới hạn 0 tác vụ mới. Vẫn chuẩn bị ảnh, xem hoặc nhập MP4 đã có được. Đây là giới hạn local, không phải số dư hạn mức Google.' : state.worker.connected && state.worker.ready ? `Đã kết nối. Còn ${state.remainingJobs} tác vụ trong lần chạy bridge này; không phải số dư hạn mức Google.` : 'Đã thấy bridge, nhưng extension chưa sẵn sàng. Mở cửa sổ kết nối và làm mới phiên Vids.')
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Chưa kết nối được bridge.') }
+    finally {if (mounted.current) setCheckingConnection(false)}
   }
   const cleanFrame = async (shot: VidsShot) => {
     const item = itemsRef.current[shot.sceneId]
@@ -284,7 +291,8 @@ export function VidsExperimentPanel({mode, onModeChange, clipLimit, onClipLimitC
   const missing = shots.filter(shot => items[shot.sceneId]?.clip?.status !== 'complete').length
   const nextItem = shots.map(shot => items[shot.sceneId]).find(item => item?.clip?.status !== 'complete')
   const needsReferenceReview = !!nextItem?.image && !nextItem.clip && !nextItem.referenceReviewed
-  const blockedByMotion = !!nextItem?.image && !nextItem.clip && !verifiedMotion(nextItem.motion)
+  const blockedByPlanningError = !!nextItem?.image && !nextItem.clip && !!nextItem.error
+  const blockedByMotion = !!nextItem?.image && !nextItem.clip && !nextItem.error && !verifiedMotion(nextItem.motion)
   const blockedByLocalLimit = remainingLocalJobs === 0 && !shots.some(shot => items[shot.sceneId]?.clip?.status === 'pending')
   const gate = vidsBatchGate(shots.flatMap(shot => items[shot.sceneId]?.clip ? [{status: items[shot.sceneId].clip!.status, reviewed: items[shot.sceneId].reviewed}] : []))
   return <section className="rounded-2xl border border-neutral-700 bg-neutral-950/50 p-4 space-y-4">
@@ -300,7 +308,7 @@ export function VidsExperimentPanel({mode, onModeChange, clipLimit, onClipLimitC
       {!isLocal && <p className="text-sm text-emerald-200">Production đang dùng worker trên máy này. Hãy chạy <code>pnpm video:local</code>, mở bridge và giữ extension cùng tab Google Vids hoạt động.</p>}
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex-1 min-w-0 text-xs text-neutral-300">Mã kết nối local<input type="password" autoComplete="off" value={token} onChange={event => {setToken(event.target.value); setRemainingLocalJobs(undefined); setConfirm(false)}} placeholder="Mã từ http://127.0.0.1:4317" className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-900 p-2.5" /></label>
-          <button type="button" onClick={checkConnection} disabled={busy || disabled} className="rounded-lg border border-neutral-700 px-3 py-2.5 text-xs text-white">Kiểm tra kết nối</button>
+          <button type="button" onClick={checkConnection} disabled={checkingConnection} aria-busy={checkingConnection} className="rounded-lg border border-neutral-700 px-3 py-2.5 text-xs text-white disabled:opacity-40">{checkingConnection ? 'Đang kiểm tra…' : 'Kiểm tra kết nối'}</button>
           <a href="http://127.0.0.1:4317" target="_blank" rel="noreferrer" className="text-xs text-emerald-300 py-2.5">Mở bridge</a>
         </div>
         {preparing && <p className="text-xs text-neutral-400">Đang kiểm tra ảnh và tìm clip đã lưu. Chưa tạo clip Google.</p>}
@@ -336,8 +344,8 @@ export function VidsExperimentPanel({mode, onModeChange, clipLimit, onClipLimitC
           {gate === 'review' && <p className="text-xs text-amber-200">Chưa tạo các cảnh tiếp theo. Hãy đối chiếu ảnh gốc và duyệt clip đầu nếu sản phẩm chính xác.</p>}
           {needsReferenceReview && <p className="text-xs text-amber-200">Xác nhận ảnh gửi còn đủ sản phẩm trước khi tạo clip đầu tiên.</p>}
           {blockedByMotion && <p className="text-xs text-amber-200">Chưa tạo clip: ảnh chưa xác định đủ đường tiếp cận, khoảng trống hoặc mặt đỡ. Chọn ảnh khác rõ cấu tạo hơn, hoặc nhập MP4 đã có.</p>}
-          <label className="flex gap-2 text-xs text-neutral-300"><input type="checkbox" disabled={busy || disabled || gate === 'review' || needsReferenceReview || blockedByMotion || blockedByLocalLimit} checked={confirm} onChange={event => setConfirm(event.target.checked)} />{gate === 'batch' ? `Tạo tối đa ${missing} clip còn thiếu` : 'Chỉ tạo một clip kiểm tra'} bằng hạn mức Google hiện có. Không tự tạo lại khi lỗi.</label>
-          <button type="button" onClick={generate} disabled={busy || preparing || disabled || gate === 'review' || needsReferenceReview || blockedByMotion || blockedByLocalLimit || !confirm || !/^[a-f0-9]{64}$/.test(token.trim())} className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-40">{busy ? 'Đang xử lý clip…' : gate === 'sample' ? 'Thử 1 clip / tiếp tục tác vụ' : 'Tạo clip còn thiếu / tiếp tục tác vụ'}</button>
+          <label className="flex gap-2 text-xs text-neutral-300"><input type="checkbox" disabled={busy || disabled || gate === 'review' || needsReferenceReview || blockedByPlanningError || blockedByMotion || blockedByLocalLimit} checked={confirm} onChange={event => setConfirm(event.target.checked)} />{gate === 'batch' ? `Tạo tối đa ${missing} clip còn thiếu` : 'Chỉ tạo một clip kiểm tra'} bằng hạn mức Google hiện có. Không tự tạo lại khi lỗi.</label>
+          <button type="button" onClick={generate} disabled={busy || preparing || disabled || gate === 'review' || needsReferenceReview || blockedByPlanningError || blockedByMotion || blockedByLocalLimit || !confirm || !/^[a-f0-9]{64}$/.test(token.trim())} className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-40">{busy ? 'Đang xử lý clip…' : gate === 'sample' ? 'Thử 1 clip / tiếp tục tác vụ' : 'Tạo clip còn thiếu / tiếp tục tác vụ'}</button>
         </div>}
         {notice && <p role="status" className="text-xs leading-relaxed text-amber-200">{notice}</p>}
     </>}
