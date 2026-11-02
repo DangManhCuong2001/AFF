@@ -87,7 +87,7 @@ export function createBridge({outputDir = path.resolve('output/google-vids-bridg
       if (origin && origin !== `http://${host}`) { res.setHeader('Access-Control-Allow-Origin', origin); res.setHeader('Vary', 'Origin'); }
       if (req.method === 'OPTIONS') {
         if (req.headers['access-control-request-private-network'] === 'true') res.setHeader('Access-Control-Allow-Private-Network', 'true');
-        res.writeHead(204, {'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Authorization, Content-Type'}); res.end(); return;
+        res.writeHead(204, {'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Vids-Width, X-Vids-Height'}); res.end(); return;
       }
       const url = new URL(req.url, `http://${host}`);
       if (req.method === 'GET' && url.pathname === '/health') { send(200, {service: 'aff-vids-local', version: 1}); return; }
@@ -195,6 +195,8 @@ export function createBridge({outputDir = path.resolve('output/google-vids-bridg
         } else {
           if (job.kind !== 'generate') throw fail(409, 'NOT_A_VIDEO_JOB');
           if (req.headers['content-type'] !== 'video/mp4') throw fail(415, 'MP4_REQUIRED');
+          const width = Number(req.headers['x-vids-width']), height = Number(req.headers['x-vids-height']);
+          if (!Number.isInteger(width) || !Number.isInteger(height) || height <= width || Math.abs(width / height - 9 / 16) > 0.08) throw fail(400, 'PORTRAIT_VIDEO_REQUIRED');
           const data = await body(req, VIDEO_MAX);
           if (data.length < 24 || data.toString('ascii', 4, 8) !== 'ftyp') throw fail(400, 'INVALID_MP4');
           await mkdir(outputDir, {recursive: true});

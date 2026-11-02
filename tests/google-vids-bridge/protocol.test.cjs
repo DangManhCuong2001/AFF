@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- Node CommonJS test runner. */
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -44,6 +43,9 @@ test('only accept MP4 result URL on the observed Google host', () => {
   assert.deepEqual(protocol.videoResult(JSON.stringify(result)), {url: result[0][0][2][4], width: 720, height: 1280});
   assert.throws(() => protocol.videoResult(JSON.stringify(result).replace('contribution-rt.usercontent.google.com', 'evil.example')), /NO_VIDEO_RESULT/);
   assert.throws(() => protocol.videoResult(JSON.stringify(result).replace('video.mp4', 'image.png')), /NO_VIDEO_RESULT/);
+  const landscape = structuredClone(result); landscape[0][0][2][5] = 1280; landscape[0][0][2][6] = 720;
+  assert.throws(() => protocol.videoResult(JSON.stringify(landscape)), /NO_PORTRAIT_VIDEO_RESULT/);
+  assert.deepEqual(protocol.videoResult(JSON.stringify([landscape, result])), {url: result[0][0][2][4], width: 720, height: 1280});
 });
 
 function pageHarness({generateStatus = 200, quotaStatus = 200, quotaBody = '[1]', badHandle = false, fetchRequest = false, reused = false, missingUploadUrl = false, uploadNetworkStage = null, uploadStartStatus = 200, uploadPutStatus = 200, legacy = false, installPage = true} = {}) {
@@ -222,7 +224,7 @@ test('controller upgrades old page, passes uploadOnly and completes upload witho
     document: {getElementById: node, createElement: () => ({})},
     chrome: {
       storage: {local: {get: async () => ({}), set: async value => { storedBlueprint = value; }}},
-      runtime: {getManifest: () => ({version: '0.3.0'})},
+      runtime: {getManifest: () => ({version: '0.3.1'})},
       tabs: {query: async () => [{id: 37, title: 'Fixture Vids'}]},
       scripting: {executeScript: async options => {
         if (options.files) {
@@ -246,7 +248,7 @@ test('controller upgrades old page, passes uploadOnly and completes upload witho
   vm.runInContext(fs.readFileSync(path.join(extension, 'protocol.js'), 'utf8'), controller);
   vm.runInContext(fs.readFileSync(path.join(extension, 'seed.js'), 'utf8'), controller);
   vm.runInContext(fs.readFileSync(path.join(extension, 'controller.js'), 'utf8'), controller);
-  assert.equal(node('version').textContent, 'Extension 0.3.0 · Chưa kết nối tab Vids');
+  assert.equal(node('version').textContent, 'Extension 0.3.1 · Chưa kết nối tab Vids');
   assert.equal(localCalls.length, 0, 'show installed version without connecting or using Google quota');
   node('connect').events.click();
   await complete;
@@ -360,7 +362,7 @@ test('native Create controller downloads only the returned MP4 and completes onc
   const mp4 = Buffer.concat([Buffer.from([0,0,0,24]), Buffer.from('ftypisom'), Buffer.alloc(24)]);
   const controller = vm.createContext({console, URL, Blob, AbortSignal, setTimeout, setInterval, clearInterval,
     document: {getElementById: node, createElement: () => ({})},
-    chrome: {storage: {local: {get: async () => ({}), set: async () => {}}}, runtime: {getManifest: () => ({version: '0.3.0'})}, tabs: {query: async () => [{id: 37}]}, scripting: {executeScript: async options => {
+    chrome: {storage: {local: {get: async () => ({}), set: async () => {}}}, runtime: {getManifest: () => ({version: '0.3.1'})}, tabs: {query: async () => [{id: 37}]}, scripting: {executeScript: async options => {
       if (options.files) {for (const file of options.files) vm.runInContext(fs.readFileSync(path.join(extension, file), 'utf8'), page.context); return [];}
       page.context.__args = options.args; return [{result: await vm.runInContext(`(${options.func.toString()})(...__args)`, page.context)}];
     }}},

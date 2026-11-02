@@ -12,13 +12,17 @@ export const dynamic = 'force-dynamic'
 const BRIDGE = 'http://127.0.0.1:4317'
 const active = new Set<string>()
 const localHost = (host: string) => ['localhost', '127.0.0.1', '[::1]'].includes(host)
+function requireSameOrigin(request: NextRequest) {
+  const actual = new URL(`${request.nextUrl.protocol}//${request.headers.get('host') || request.nextUrl.host}`)
+  const origin = request.headers.get('origin')
+  if (origin && origin !== actual.origin) throw new Error('INVALID_ORIGIN')
+  return actual
+}
 function requireLocal(request: NextRequest) {
   // Next's internal URL can use localhost even when the browser opened 127.0.0.1.
   // Validate the actual Host rather than trusting forwarded host headers.
-  const actual = new URL(`${request.nextUrl.protocol}//${request.headers.get('host') || request.nextUrl.host}`)
+  const actual = requireSameOrigin(request)
   if (!localHost(actual.hostname)) throw new Error('LOCAL_EXPERIMENT_ONLY')
-  const origin = request.headers.get('origin')
-  if (origin && origin !== actual.origin) throw new Error('INVALID_ORIGIN')
 }
 async function bridge(request: NextRequest, route: string, body?: unknown) {
   const token = request.headers.get('x-vids-pairing') || ''
@@ -75,6 +79,7 @@ export async function POST(request: NextRequest) {
     }
     if (Number(request.headers.get('content-length')) > 7 * 1024 * 1024) throw new Error('INPUT_TOO_LARGE')
     const value = await request.json()
+    requireSameOrigin(request)
     if (value.action === 'plan-motion') return NextResponse.json({motion: await prepareVidsMotion(value.image, value.productName)})
     if (value.action === 'review') return NextResponse.json({report: await reviewVidsFidelity(value.reference, value.frames, value.expected)})
     requireLocal(request)

@@ -1,7 +1,7 @@
 import {z} from 'zod'
 import type {ProductInteraction} from './vids-interaction'
 
-export const VIDS_MOTION_VERSION = 17
+export const VIDS_MOTION_VERSION = 18
 const region = z.object({
   text: z.string().trim().min(4).max(120).regex(/^[^<>\r\n]+$/),
   focus: z.object({x: z.number().min(0), y: z.number().min(0), width: z.number().positive(), height: z.number().positive()})

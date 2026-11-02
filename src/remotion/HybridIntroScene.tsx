@@ -17,10 +17,10 @@ export function HybridIntroScene({clip, beats, productName, durationFrames}: {cl
   const voice = scene?.voice || beat?.layers.typography.subtitleText || headline
   const progress = speechProgressAtTime(Math.max(0, time - (beat?.startTimeSec || 0)), beat?.durationSec || clip.durationSec, scene?.renderPlan?.speechTiming)
   const caption = captionAtProgress(voice, progress)
-  // Keep the complete approach path below the heading. A gradient over the
-  // source hid hands entering from above, precisely where top access matters.
-  const videoTop = layout.headline.top + layout.headline.height + 20
-  const videoHeight = layout.caption.top - videoTop - 16
+  // The safe zone stays unchanged. Keep the product name and headline in a
+  // dedicated header, then use every remaining pixel down to the progress bar.
+  const videoTop = layout.headline.top + layout.headline.height + 12
+  const videoHeight = layout.progress.top - videoTop
   const videoFrame = vidsPresentationRect(layout.width, videoHeight, clip.frameAspect)
   return <AbsoluteFill style={{zIndex: 50, isolation: 'isolate', opacity: Math.min(1, (durationFrames - frame) / Math.max(1, Math.round(fps * 0.16))), background: '#f5f2eb', color: '#252922', fontFamily: 'Arial, sans-serif'}}>
     <div style={{position: 'absolute', left: layout.left, top: videoTop, width: layout.width, height: videoHeight, borderRadius: 28, overflow: 'hidden', background: '#eee8df', boxShadow: '0 18px 50px #3a291b24'}}>

@@ -157,9 +157,9 @@ test('Props and uncertain objects never become product facts or a motion target;
     {text: 'Khung kệ sắt màu đen', subject: 'product'},
   ], interaction: {...interaction, targetDetail: 1}}]}
   const result = readImageInsights(value, images)
-  assert.deepEqual(result[0].details?.map(detail => detail.text), ['', 'Thanh treo ngang màu đen ở mặt trước', ''])
+  assert.deepEqual(result[0].details?.map(detail => detail.text), ['', 'Thanh treo ngang màu đen ở mặt trước', 'Khung kệ màu đen'])
   assert.equal(result[0].interaction, undefined)
   const plan = planAdaptiveVideo({id: 'rack', name: 'Kệ để đồ', category: 'home', assets: [{id: 'main', type: 'PRODUCT_IMAGE', url: '/rack.jpg'}]}, 22, undefined, result)
-  assert.deepEqual(plan.contentPlan.facts.map(fact => fact.id), ['image-main-detail-2'])
+  assert.deepEqual(plan.contentPlan.facts.map(fact => fact.id), ['image-main-detail-2', 'image-main-detail-3'])
   assert.doesNotMatch(plan.creativePlan.story, /Khăn lau|sắt/)
 })

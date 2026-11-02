@@ -13,6 +13,7 @@ import {VidsClipReview} from './VidsClipReview'
 import {hasPurposefulVidsAction} from '@/lib/video/vids-interaction'
 import {VIDS_MOTION_VERSION, type VidsPhysicalPath} from '@/lib/video/vids-physical-path'
 import {canApproveVidsClip, type VidsFidelityReport} from '@/lib/video/vids-fidelity'
+import {VIDS_PRESENTATION_CROP_PERCENT} from '@/lib/video/vids-framing'
 
 interface Clip {key: string; status: 'pending' | 'complete' | 'failed'; src?: string; durationSec?: number; code?: string; originalKey?: string; trimBottomPercent?: number; origin?: 'vids-create'}
 interface Motion {version: number; ready: boolean; prompt: string; path: VidsPhysicalPath; action: {id: string; label: string; reason?: string}}
@@ -36,7 +37,7 @@ const messages: Record<string, string> = {
   LOCAL_PAIRING_REQUIRED: 'Nhập mã local 64 ký tự từ trang http://127.0.0.1:4317.',
   LOCAL_PAIRING_REJECTED: 'Mã local đã đổi. Sao chép mã mới từ trang bridge và kết nối lại extension.',
   WORKER_NOT_READY: 'Extension chưa sẵn sàng. Làm mới phiên Vids và mở bảng tạo video trong Vids.',
-  NATIVE_EXTENSION_UPDATE_REQUIRED: 'Tải lại extension AFF Google Vids bản 0.3.0 và kết nối lại để tự tạo bằng Create, khung dọc 8 giây.',
+  NATIVE_EXTENSION_UPDATE_REQUIRED: 'Tải lại extension AFF Google Vids bản 0.3.1 và kết nối lại để tự tạo bằng Create, khung dọc 9:16 trong 8 giây.',
   LOCAL_JOB_LIMIT: 'Đã hết số tác vụ trong lần chạy bridge này. Clip đã lưu vẫn dùng được.',
   JOB_ALREADY_ACTIVE: 'Đang có một tác vụ khác trong bridge. Chờ tác vụ đó hoàn tất.',
   PREVIOUS_JOB_NOT_IN_BRIDGE: 'Tác vụ thuộc lần chạy bridge trước. Kiểm tra lịch sử Vids; có thể tải MP4 vào cảnh để dùng lại.',
@@ -157,7 +158,7 @@ export function VidsExperimentPanel({mode, onModeChange, clipLimit, onClipLimitC
         catch (error) {motionError = error instanceof Error ? error.message : 'Chưa lập được thao tác bằng Gemini. Chưa dùng hạn mức Vids; bạn vẫn có thể nhập MP4 đã có hoặc phân tích lại.'}
         const result = await call({action: 'prepare', image, prompt: motion?.prompt || shot.prompt})
         const fullClip: Clip | undefined = result.clip?.status === 'complete' && result.clip.origin === 'vids-create' ? result.clip : undefined
-        const clip: Clip | undefined = fullClip ? (await call({action: 'clean-frame', key: fullClip.key, bottomPercent: 12})).clip : result.clip || undefined
+        const clip: Clip | undefined = fullClip ? (await call({action: 'clean-frame', key: fullClip.key, bottomPercent: VIDS_PRESENTATION_CROP_PERCENT})).clip : result.clip || undefined
         return [shot.sceneId, {image, originalBlob, originalImage, motion, error: motionError, planSignature: sourceSignature, referenceKind: reusableReference ? previous.referenceKind : 'framed', referenceFrameAspect, frameAspect: reusableReference ? previous.frameAspect : undefined, referenceReviewed: reusableReference && !!previous.referenceReviewed, clip, fullClip, fidelity: reusableReference ? previous.fidelity : undefined, reviewed: reusableReference && previous?.clip?.key === clip?.key && !!previous?.reviewed}] as const
       } catch (error) { return [shot.sceneId, {error: error instanceof Error ? error.message : 'Chưa đọc được ảnh.'}] as const }
       }))
@@ -200,7 +201,7 @@ export function VidsExperimentPanel({mode, onModeChange, clipLimit, onClipLimitC
       setNotice(state.remainingJobs === 0
         ? 'Bridge đang giới hạn 0 tác vụ mới. Vẫn chuẩn bị ảnh, xem hoặc nhập MP4 đã có được. Đây là giới hạn local, không phải số dư hạn mức Google.'
         : !state.worker.connected
-          ? 'Bridge đang chạy nhưng extension chưa kết nối với mã local hiện tại. Mở extension AFF Google Vids 0.3.0, dán lại mã từ bridge và giữ tab Google Vids mở.'
+          ? 'Bridge đang chạy nhưng extension chưa kết nối với mã local hiện tại. Mở extension AFF Google Vids 0.3.1, dán lại mã từ bridge và giữ tab Google Vids mở.'
           : state.worker.ready
             ? `Đã kết nối. Còn ${state.remainingJobs} tác vụ trong lần chạy bridge này; không phải số dư hạn mức Google.`
             : 'Extension đã kết nối nhưng phiên tạo clip chưa sẵn sàng. Trong cửa sổ extension, bấm Làm mới phiên Vids rồi mở bảng Create video trong tab Google Vids.')
@@ -214,7 +215,7 @@ export function VidsExperimentPanel({mode, onModeChange, clipLimit, onClipLimitC
     try {
       if (item.fullClip) update(shot.sceneId, {clip: item.fullClip, fullClip: undefined, reviewed: false, frameAspect: undefined})
       else {
-        const result = await call({action: 'clean-frame', key: item.clip.key, bottomPercent: 12})
+        const result = await call({action: 'clean-frame', key: item.clip.key, bottomPercent: VIDS_PRESENTATION_CROP_PERCENT})
         update(shot.sceneId, {clip: result.clip, fullClip: item.clip, reviewed: false, frameAspect: undefined})
       }
       setNotice('Đã đổi khung clip, không tạo lại bằng Google. Xem hết clip để chắc mép cắt không mất sản phẩm hoặc thao tác. Bản gốc vẫn được giữ; khai báo AI vẫn áp dụng khi đăng.')
@@ -259,7 +260,7 @@ export function VidsExperimentPanel({mode, onModeChange, clipLimit, onClipLimitC
         if ((clip.durationSec || 0) > (shot.expectedDurationSec || 8) + 0.5) throw new Error('Clip dài hơn dự kiến. Đã lưu và dừng tạo thêm để bạn kiểm tra clip có lẫn đoạn cũ hoặc khoảng trống không.')
         if (clip.origin === 'vids-create' && !clip.originalKey) {
           const fullClip = clip
-          clip = (await call({action: 'clean-frame', key: clip.key, bottomPercent: 12})).clip
+          clip = (await call({action: 'clean-frame', key: clip.key, bottomPercent: VIDS_PRESENTATION_CROP_PERCENT})).clip
           update(shot.sceneId, {clip, fullClip, reviewed: false})
         }
         if (gate === 'sample') {

@@ -119,7 +119,7 @@ async function perform(job) {
       if (total > 80 * 1024 * 1024) { await reader.cancel(); throw new Error('VIDEO_TOO_LARGE'); }
       chunks.push(value);
     }
-    await api(`/jobs/${job.id}/result`, {method: 'POST', headers: {'Content-Type': 'video/mp4'}, body: new Blob(chunks, {type: 'video/mp4'}), signal: AbortSignal.timeout(120_000)});
+    await api(`/jobs/${job.id}/result`, {method: 'POST', headers: {'Content-Type': 'video/mp4', 'X-Vids-Width': String(result.width), 'X-Vids-Height': String(result.height)}, body: new Blob(chunks, {type: 'video/mp4'}), signal: AbortSignal.timeout(120_000)});
     show(`Đã lưu clip. Kích thước do Google trả về: ${result.width} × ${result.height}. Xem tại ${LOCAL}.`);
   } catch (error) {
     // Report static codes only, never a captured URL or Chrome exception text.

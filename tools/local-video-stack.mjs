@@ -54,7 +54,7 @@ process.once('SIGTERM', () => stop('SIGTERM'))
 console.log('\nAFF local video stack')
 console.log(`- Video Studio: http://127.0.0.1:${appPort}/create`)
 console.log('- Google Vids bridge: http://127.0.0.1:4317')
-console.log('- Giữ cửa sổ này, tab Google Vids và extension 0.3.0 mở trong lúc tạo video.')
+console.log('- Giữ cửa sổ này, tab Google Vids và extension 0.3.1 mở trong lúc tạo video.')
 console.log('- Nhấn Ctrl+C để dừng cả app và bridge.\n')
 
 start('Google Vids bridge', [bridge])

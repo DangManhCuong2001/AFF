@@ -26,6 +26,7 @@ for (const product of ['wall-hook', 'cable-organizer', 'car-phone-holder'] as co
       assert.ok(prompt.includes(`Keep the ${plan.productType} stationary throughout the shot.`))
       assert.equal(prompt.match(/contact point unobstructed/g)?.length, 1)
       assert.equal(prompt.split(/\s+/).length < 370, true)
+      assert.doesNotMatch(prompt, /watermark|synthid/i)
       if (inProgress) {
         assert.match(prompt, /0–0\.5s/)
         assert.doesNotMatch(prompt, /establish|approaches|enters/i)
@@ -48,4 +49,5 @@ test('PromptQualityValidator rejects repetitions, unverified properties, claims,
   assert.ok(validatePromptQuality(unexpectedEnding, plan).issues.includes('UNPLANNED_FINAL_ACTION'))
   const repeatedVisibility = prompt.replace('\nPAYOFF\n', '\nPAYOFF\nKeep the interaction point visible.\n')
   assert.ok(validatePromptQuality(repeatedVisibility, plan).issues.includes('DUPLICATE_INSTRUCTION'))
+  assert.ok(validatePromptQuality(`${prompt}\nNo watermarks.`, plan).issues.includes('PROVENANCE_CONTROL_INSTRUCTION'))
 })

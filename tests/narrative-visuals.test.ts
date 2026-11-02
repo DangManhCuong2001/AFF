@@ -104,9 +104,9 @@ test('Repeated and concurrent frame reviews reuse the exact image report without
   } finally {globalThis.fetch = originalFetch; if (oldKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = oldKey}
 })
 
-test('Frame review remains local and same origin before contacting Gemini', async () => {
-  for (const [url, origin] of [['https://example.com/api/experiments/vids', 'https://example.com'], ['http://localhost:3000/api/experiments/vids', 'https://example.com']]) {
+test('Frame review allows production same-origin requests but rejects cross-origin callers before Gemini', async () => {
+  for (const [url, origin, expected] of [['https://example.com/api/experiments/vids', 'https://example.com', 400], ['http://localhost:3000/api/experiments/vids', 'https://example.com', 403]] as const) {
     const request = new NextRequest(url, {method: 'POST', headers: {host: new URL(url).host, origin, 'Content-Type': 'application/json'}, body: JSON.stringify({action: 'review', reference: 'invalid', frames: []})})
-    assert.equal((await POST(request)).status, 403)
+    assert.equal((await POST(request)).status, expected)
   }
 })

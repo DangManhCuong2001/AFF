@@ -102,7 +102,11 @@
       }
     });
     if (!results.length) throw new Error('NO_VIDEO_RESULT');
-    return results[0];
+    const portrait = results
+      .filter(item => item.height > item.width && Math.abs(item.width / item.height - 9 / 16) <= 0.08)
+      .sort((left, right) => Math.abs(left.width / left.height - 9 / 16) - Math.abs(right.width / right.height - 9 / 16) || right.width * right.height - left.width * left.height);
+    if (!portrait.length) throw new Error('NO_PORTRAIT_VIDEO_RESULT');
+    return portrait[0];
   }
   const api = Object.freeze({parse, inspectTemplate, buildPayload, uploadHandle, videoResult, createBlueprint, validateBlueprint, materializeBlueprint, PLACEHOLDERS, RESULT_HOST});
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

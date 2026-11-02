@@ -67,9 +67,10 @@ test('lease once, save MP4, strip source payload from status, block duplicate co
   assert.equal(first.job.id, job.id);
   assert.equal(first.job.image, png);
   assert.deepEqual(await (await call('/worker/next?protocolVersion=4')).json(), {job: null});
-  assert.equal((await fetch(`${base}/jobs/${job.id}/result`, {method: 'POST', headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'video/mp4'}, body: Buffer.from('invalid file')})).status, 400);
+  assert.equal((await fetch(`${base}/jobs/${job.id}/result`, {method: 'POST', headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'video/mp4', 'X-Vids-Width': '1280', 'X-Vids-Height': '720'}, body: Buffer.from('invalid file')})).status, 400);
+  assert.equal((await fetch(`${base}/jobs/${job.id}/result`, {method: 'POST', headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'video/mp4', 'X-Vids-Width': '720', 'X-Vids-Height': '1280'}, body: Buffer.from('invalid file')})).status, 400);
   const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypisom'), Buffer.alloc(24)]);
-  const complete = await fetch(`${base}/jobs/${job.id}/result`, {method: 'POST', headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'video/mp4'}, body: mp4});
+  const complete = await fetch(`${base}/jobs/${job.id}/result`, {method: 'POST', headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'video/mp4', 'X-Vids-Width': '720', 'X-Vids-Height': '1280'}, body: mp4});
   assert.equal(complete.status, 200);
   assert.equal((await complete.json()).status, 'complete');
   const status = await (await call('/status')).json();

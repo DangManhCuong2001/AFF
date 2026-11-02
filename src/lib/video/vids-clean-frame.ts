@@ -4,13 +4,14 @@ import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
 import path from 'node:path'
 import {getFfmpegBinaryPath} from './ffmpeg'
+import {VIDS_PRESENTATION_CROP_PERCENT} from './vids-framing'
 import {clipFilePath, readVidsClip, saveVidsVideo, VIDS_CACHE_DIR, writeVidsClip, type StoredVidsClip} from './vids-store'
 
 const execute = promisify(execFile)
 const inFlight = new Map<string, Promise<StoredVidsClip>>()
 /** A reviewed presentation crop; the full original stays available for comparison. */
 export async function cleanVidsFrame(sourceKey: string, bottomPercent: number) {
-  if (![8, 12, 16].includes(bottomPercent)) throw new Error('INVALID_FRAME_CROP')
+  if (![8, 12, 16, VIDS_PRESENTATION_CROP_PERCENT].includes(bottomPercent)) throw new Error('INVALID_FRAME_CROP')
   let source = await readVidsClip(sourceKey)
   if (source?.originalKey) source = await readVidsClip(source.originalKey)
   if (source?.status !== 'complete') throw new Error('SOURCE_CLIP_REQUIRED')

@@ -229,6 +229,10 @@ export function validatePromptQuality(prompt: string, plan: InteractionPlan): In
   if (unverified.length) issues.push('UNVERIFIED_PROPERTY')
   if (claimWords.test(prompt)) issues.push('PERFORMANCE_CLAIM')
   if (/until the planned action moves it|End-state mode:|Natural micro-motions within|viewer should immediately understand|Contact behavior:/iu.test(prompt)) issues.push('GENERIC_BOILERPLATE')
+  // Google adds its own provenance markers. Asking the generator to remove or
+  // suppress them can be interpreted as bypassing a safety/provenance control.
+  // Presentation cleanup, when appropriate, belongs to a separate review step.
+  if (/\b(?:watermarks?|synthid)\b/iu.test(prompt)) issues.push('PROVENANCE_CONTROL_INSTRUCTION')
   if (ongoing(plan) && /\bestablish\b|\bapproach(?:es|ing)?\b|\benters?\b/iu.test(prompt)) issues.push('ONGOING_INTERACTION_RESET')
   if (ongoing(plan) && !/0–0\.5s/iu.test(prompt)) issues.push('INCORRECT_TIMING')
   const payoffSection = prompt.split('\nPAYOFF\n')[1]?.split('\nNEGATIVE CONSTRAINTS')[0] || ''
@@ -296,7 +300,7 @@ PAYOFF
 ${uniqueSentences([endText, withdraw])} Hold this final state for the last 1–2 seconds.
 
 NEGATIVE CONSTRAINTS
-No redesign, added parts, invented functions, clipping, floating, teleportation, extra fingers, text overlays, new logos, watermarks, cuts, artificial zoom or unsupported performance claims. ${protection}`.replace(/\n{3,}/gu, '\n\n').trim()
+No redesign, added parts, invented functions, clipping, floating, teleportation, extra fingers, text overlays, new logos, cuts, artificial zoom or unsupported performance claims. ${protection}`.replace(/\n{3,}/gu, '\n\n').trim()
   const quality = validatePromptQuality(prompt, plan)
   if (!quality.valid) throw new Error(`INVALID_PROMPT_QUALITY:${quality.issues.join(',')}`)
   return prompt

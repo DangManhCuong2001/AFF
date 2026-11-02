@@ -11,8 +11,20 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    // Local render and browser-QA artifacts are already excluded from Git.
+    // Linting bundled dependencies and generated one-off scripts produces
+    // thousands of unrelated errors and makes the production check unusable.
+    "output/**",
     "next-env.d.ts",
   ]),
+  {
+    // These files are executed directly by Node's test runner, not bundled by
+    // Next.js. CommonJS imports are intentional in this isolated harness.
+    files: ["tests/**/*.cjs"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

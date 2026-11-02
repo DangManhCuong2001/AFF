@@ -29,7 +29,7 @@ export const PlannedCommerceScene: React.FC<{scene: StoryboardScene; imageUrl: s
   const cardWidth = layout.width
   const contextHero = !!contextImage && (variant === 'hero' || variant === 'decision')
   const hasSubheadline = !visualStep && !contextHero && !!scene.subheadline && scene.subheadline !== scene.headline && variant !== 'spec'
-  const imageSlot = visualStep ? {top: 420, height: layout.caption.top - 420 - 24} : cta ? plan.decisionPrompt ? {top: 480, height: 440} : {top: 420, height: 660} : hasSubheadline ? layout.image : {top: 420, height: contextHero ? 688 : 604}
+  const imageSlot = visualStep ? {top: 420, height: layout.caption.top - 420 - 24} : cta ? plan.decisionPrompt ? {top: 480, height: 440} : {top: 420, height: 720} : hasSubheadline ? layout.image : {top: 420, height: contextHero ? 736 : 720}
   const cardHeight = imageSlot.height
   const videoFrame = vidsFrameRect(cardWidth, cardHeight, video?.frameAspect)
   const zoom = plan.framing === 'detail' ? 0.98 + speakingProgress * 0.02 : 0.95 + speakingProgress * 0.05

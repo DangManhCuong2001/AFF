@@ -7,7 +7,8 @@ export const COMMERCE_LAYOUT = {
   label: {top: 248, height: 24},
   headline: {top: 294, height: 100},
   subheadline: {top: 408, height: 64},
-  image: {top: 488, height: 536},
+  // Fill the available safe-zone height; captions still begin at y=1180.
+  image: {top: 488, height: 652},
   annotation: {top: 1040, height: 52},
   cta: {top: 1104, height: 60},
   caption: {top: 1180, height: 64},

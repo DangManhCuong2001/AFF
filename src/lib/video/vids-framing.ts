@@ -1,3 +1,6 @@
+/** Google Vids places its visible mark above the lowest 16% on some landscape clips. */
+export const VIDS_PRESENTATION_CROP_PERCENT = 20
+
 /** Optional, reviewed framing. Full source remains the default. */
 export function validVidsFrameAspect(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0.5 && value <= 2

@@ -17,7 +17,7 @@ Sau khi bridge mở, sao chép mã kết nối vào extension, chọn đúng tab
 Vids rồi thực hiện luồng sản phẩm trong Video Studio. Đây là mốc chạy hoàn
 chỉnh đơn giản trên một máy; chưa dùng hàng đợi cloud hoặc worker Vercel.
 
-## Luồng Create tự động — extension 0.3.0
+## Luồng Create tự động — extension 0.3.1
 
 ### Kiểm tra đường thao tác trong luồng Video Studio hiện tại
 
@@ -59,7 +59,7 @@ không có retry, số lượt còn lại của phiên kiểm tra là 0. Chất 
 sản phẩm vẫn cần người dùng duyệt; tự động hóa thành công không có nghĩa AI
 đã giữ đúng mọi chi tiết hoặc đạt tiền kiểm TikTok.
 
-Để dùng: Reload extension lên 0.3.0, mở cửa sổ kết nối mới, chọn tab Vids đã
+Để dùng: Reload extension lên 0.3.1, mở cửa sổ kết nối mới, chọn tab Vids đã
 đăng nhập và kết nối bằng mã local. Trong Bước 3 chọn Google Vids, kiểm tra
 kết nối, duyệt ảnh rồi tạo clip. Không cần tự chuyển tab, copy prompt, tải
 MP4 hoặc tạo clip học mẫu. Khi local đã hết lượt, khởi động lại bridge theo
@@ -128,7 +128,7 @@ cắm/lồng/xếp chồng không được tách ra; ảnh cận hoặc bao bì 
 Đề xuất tương tác không trở thành fact/lời quảng cáo. Dữ liệu không hợp lệ
 hoặc kế hoạch cũ thiếu `interaction` vẫn chạy bằng cảnh chỉ chi tiết, không
 tự gọi lại Gemini/Vids. Phân tích lại sản phẩm ở Bước 1 để nhận dữ liệu mới;
-không cần đổi extension 0.3.0. Lựa chọn chuyển động vẫn cần xem và duyệt kết
+không cần đổi extension 0.3.1. Lựa chọn chuyển động vẫn cần xem và duyệt kết
 quả Vids, không thể bảo đảm mọi sản phẩm đều có clip AI đúng hình dáng.
 
 Đây vẫn là luồng thử nghiệm: lựa chọn cảnh không chứng minh clip tạo ra đúng
